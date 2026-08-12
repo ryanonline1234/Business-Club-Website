@@ -96,6 +96,7 @@ Full setup (Supabase project, Google OAuth, Vercel) is in
 | Route | Guard | Notes |
 |---|---|---|
 | `/` | approved | Home: greeting, next event, latest announcements, club figures; officers also see the approval-queue nudge |
+| `/about` | **public** | The club's showcase for non-members: past events with officer-written recaps and photos, officer bios, link to the school's clubs page. Its own Bold Graphic design, not the portal's Warm system; renders empty-but-alive until STEPs 16–18 of the schema are applied |
 | `/login` | public | Google sign-in; fixed error copy keyed by `?error=` |
 | `/pending` | any session | Waiting room: pending / declined / server-error states |
 | `/calendar` | approved | Month grid + agenda; officers get event composer, cancel, and Present mode (projected QR, auto-refreshing) |

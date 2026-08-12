@@ -15,6 +15,10 @@
  *     — approve / decline / restore. Officer-guarded server-side.
  *   • PATCH /api/members/:id         { role }
  *     — admin-guarded server-side. Last-admin 409 surfaced inline.
+ *   • PATCH /api/profile/bio         { bio }
+ *     — the signed-in officer's OWN public /about bio, edited from their own
+ *       roster row only. Officer-guarded server-side; the prefill read fails
+ *       soft while STEP 16 of supabase-schema.sql is still unapplied.
  */
 import DashboardLayout from '../layouts/DashboardLayout.astro';
 import { requireApproved } from '../lib/auth';
@@ -72,6 +76,32 @@ let checkinCounts: Map<string, number> | null = null;
     checkinCounts = new Map(
       countRows.map((r: any) => [r.id as string, r.attendance?.[0]?.count ?? 0])
     );
+  }
+}
+
+/* ── Own bio (officer editing; the read FAILS SOFT) ────────────────────────
+   profiles.bio arrives with STEP 16 of supabase-schema.sql, applied by hand
+   and possibly AFTER this code deploys. A missing column prefills the editor
+   empty, never 500s — PATCH /api/profile/bio names the fix on save. Officers
+   only: they are the only people the public /about page describes, and the
+   endpoint is officer-guarded to match. */
+let myBio = '';
+if (session.isOfficer) {
+  const { data: bioRow, error: bioError } = await supabaseAdmin
+    .from('profiles')
+    .select('bio')
+    .eq('id', session.id)
+    .maybeSingle();
+  if (bioError) {
+    // 42703/PGRST204 = profiles.bio not added yet — expected pre-migration.
+    if (bioError.code !== '42703' && bioError.code !== 'PGRST204') {
+      console.error('[pages/members] bio read failed', {
+        code: bioError.code,
+        message: bioError.message,
+      });
+    }
+  } else {
+    myBio = (bioRow?.bio as string | null) ?? '';
   }
 }
 
@@ -263,6 +293,28 @@ const plural = (n: number, one: string, many: string) => (n === 1 ? one : many);
                   <span class="row-err" role="alert" style="display:none"></span>
                 </span>
               )}
+              {session.isOfficer && m.id === session.id && (
+                <details class="bioedit">
+                  <summary>Edit my bio</summary>
+                  <form class="bioedit__form owned" id="bio-form" novalidate>
+                    <div class="bioedit__head">
+                      <b>My bio</b>
+                      <span class="flag">Officer only</span>
+                    </div>
+                    <label class="field">
+                      <span>Bio</span>
+                      <textarea class="textarea" name="bio" maxlength="1200">{myBio}</textarea>
+                      <span class="field__hint">
+                        Shown publicly on the /about page beside your name and role — anyone can
+                        read it, member or not. Each line break starts a new paragraph; save it
+                        empty to take it down.
+                      </span>
+                    </label>
+                    <p id="bio-error" class="small" role="alert" style="color:var(--clay); display:none;"></p>
+                    <p class="bioedit__actions"><button class="btn" type="submit">Save bio</button></p>
+                  </form>
+                </details>
+              )}
             </li>
           );
         })}
@@ -326,6 +378,61 @@ const plural = (n: number, one: string, many: string) => (n === 1 ? one : many);
   .declined .row-err {
     flex: 1 1 100%;
     margin-top: 0;
+  }
+
+  /* "Edit my bio" — a declined-style disclosure spanning the row's grid.
+     Only ever rendered inside the signed-in officer's own roster row. */
+  .bioedit {
+    grid-column: 1 / -1;
+  }
+  .bioedit > summary {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    min-height: var(--tap);
+    cursor: pointer;
+    list-style: none;
+    font-family: var(--f-cond);
+    text-transform: uppercase;
+    letter-spacing: var(--tr-2);
+    font-size: var(--t-14);
+    font-weight: 600;
+    color: var(--gold-2);
+  }
+  .bioedit > summary::-webkit-details-marker {
+    display: none;
+  }
+  .bioedit > summary::before {
+    content: "+";
+    font-size: var(--t-19);
+    line-height: 1;
+  }
+  .bioedit[open] > summary::before {
+    content: "–";
+  }
+  .bioedit > summary:hover {
+    color: var(--ink);
+  }
+  .bioedit__form {
+    margin: 4px 0 10px;
+  }
+  .bioedit__form > * + * {
+    margin-top: 14px;
+  }
+  .bioedit__head {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+  .bioedit__head b {
+    font-family: var(--f-serif);
+    font-size: var(--t-16);
+    color: var(--ink);
+    font-weight: 600;
+  }
+  .bioedit__actions {
+    display: flex;
   }
 </style>
 
@@ -428,6 +535,27 @@ const plural = (n: number, one: string, many: string) => (n === 1 ? one : many);
       rowError(ctl, result.error);
     });
   });
+
+  /* ── Edit my bio (only rendered in the signed-in officer's own row) ──── */
+  const bioForm = document.getElementById('bio-form') as HTMLFormElement | null;
+  if (bioForm) {
+    const bioErr = document.getElementById('bio-error') as HTMLElement;
+    bioForm.addEventListener('submit', async (ev) => {
+      ev.preventDefault();
+      bioErr.style.display = 'none';
+      const textarea = bioForm.querySelector('textarea[name="bio"]') as HTMLTextAreaElement;
+      const submitBtn = bioForm.querySelector('button[type="submit"]') as HTMLButtonElement;
+      submitBtn.disabled = true;
+      const result = await patchJSON('/api/profile/bio', { bio: textarea.value });
+      if (result.ok) {
+        location.reload();
+        return;
+      }
+      submitBtn.disabled = false;
+      bioErr.textContent = result.error;
+      bioErr.style.display = 'block';
+    });
+  }
 
   /* ── Client-side roster filter (visibility toggles only) ─────────────── */
   const searchInput = document.getElementById('roster-search') as HTMLInputElement | null;

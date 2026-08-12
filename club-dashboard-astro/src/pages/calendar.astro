@@ -8,13 +8,19 @@
  * use Pacific-local date keys, never the server's UTC date.
  *
  * Officer flows: New event (disclosure composer → POST /api/events/create),
- * Cancel event (inline confirm → DELETE /api/events/[id]/delete), and Present
+ * Cancel event (inline confirm → DELETE /api/events/[id]/delete), Present
  * mode (full-bleed projected surface fed by GET /api/events/[id]/qr, silently
- * re-fetched before the 15-minute token expires).
+ * re-fetched before the 15-minute token expires), and — for past,
+ * non-cancelled events —
+ * Recap & photos (PATCH /api/events/[id]/recap, multipart POST /api/photos,
+ * DELETE /api/photos/[id]), which publishes to the public /about page. The
+ * recap/photos reads FAIL SOFT: STEPs 16-18 of supabase-schema.sql may land
+ * after this code, so a missing column/table renders the block empty.
  */
 import DashboardLayout from '../layouts/DashboardLayout.astro';
 import { requireApproved } from '../lib/auth';
 import { supabaseAdmin } from '../lib/supabase';
+import { PUBLIC_SUPABASE_URL } from '../lib/env';
 
 const user = await requireApproved(Astro.request, Astro.response.headers, Astro.redirect);
 
@@ -205,6 +211,65 @@ if (selected) {
     creatorName = (creator?.name as string | null) ?? null;
   }
 }
+
+/* ── Recap & photos (officer editing block — both reads FAIL SOFT) ────────
+   events.recap and the photos table arrive with STEPs 16-18 of
+   supabase-schema.sql, applied by hand and possibly AFTER this code deploys.
+   A missing column/table here renders as an empty prefill / no thumbnails,
+   never a 500 — the save endpoints name the fix ("run STEPs 16-18") when an
+   officer actually tries to write. */
+const selectedIsPast =
+  selected !== null && !Number.isNaN(startMsOf(selected)) && startMsOf(selected) < nowMs;
+
+interface PhotoRow {
+  id: string;
+  storage_path: string;
+  caption: string | null;
+}
+
+let selectedRecap = '';
+let selectedPhotos: PhotoRow[] = [];
+if (selected && selectedIsPast && selected.status !== 'cancelled' && user.isOfficer) {
+  const [recapRes, photosRes] = await Promise.all([
+    supabaseAdmin.from('events').select('recap').eq('id', selected.id).maybeSingle(),
+    supabaseAdmin
+      .from('photos')
+      .select('id, storage_path, caption')
+      .eq('event_id', selected.id)
+      .order('created_at', { ascending: true }),
+  ]);
+  if (recapRes.error) {
+    // 42703/PGRST204 = events.recap not added yet — expected pre-migration.
+    if (recapRes.error.code !== '42703' && recapRes.error.code !== 'PGRST204') {
+      console.error('[pages/calendar] recap read failed', {
+        code: recapRes.error.code,
+        message: recapRes.error.message,
+      });
+    }
+  } else {
+    selectedRecap = (recapRes.data?.recap as string | null) ?? '';
+  }
+  if (photosRes.error) {
+    // 42P01/PGRST205 = photos table not created yet — expected pre-migration.
+    if (photosRes.error.code !== '42P01' && photosRes.error.code !== 'PGRST205') {
+      console.error('[pages/calendar] photos read failed', {
+        code: photosRes.error.code,
+        message: photosRes.error.message,
+      });
+    }
+  } else {
+    selectedPhotos = (photosRes.data ?? []) as PhotoRow[];
+  }
+}
+
+/** Public object URL — the club-photos bucket is public-read by design.
+ *  storage_path is server-generated (photos/<uuid>.<ext>) but treated as
+ *  data: segment-encoded, same as /about's photoUrl. */
+const photoUrl = (path: string) =>
+  `${PUBLIC_SUPABASE_URL}/storage/v1/object/public/club-photos/${path
+    .split('/')
+    .map(encodeURIComponent)
+    .join('/')}`;
 
 const selectedIsNow = selected ? isNow(selected) : false;
 const selectedCancelled = selected?.status === 'cancelled';
@@ -408,6 +473,72 @@ const canPresent =
               <p id="event-actions-error" class="small" role="alert" style="color:var(--clay); display:none; margin-top:10px;"></p>
             </div>
           )}
+
+          {/* Not for cancelled events: /about never shows them, so the block's
+              "published on /about" promise would be false there. */}
+          {user.isOfficer && selectedIsPast && !selectedCancelled && (
+            <section class="recapblock owned" aria-labelledby="recap-h">
+              <div class="recapblock__head">
+                <b id="recap-h">Recap &amp; photos</b>
+                <span class="flag">Officer only</span>
+              </div>
+              <p class="small muted recapblock__pub">
+                What you save here is published on the club's public{' '}
+                <a class="textlink" href="/about">/about</a> page — anyone can see it, member or not.
+              </p>
+
+              <form id="recap-form" data-event-id={selected.id} novalidate>
+                <label class="field">
+                  <span>Recap</span>
+                  <textarea class="textarea" name="recap" maxlength="8000">{selectedRecap}</textarea>
+                  <span class="field__hint">
+                    Plain text — each line break starts a new paragraph. Save it empty to take the recap down.
+                  </span>
+                </label>
+                <p id="recap-error" class="small" role="alert" style="color:var(--clay); display:none;"></p>
+                <p class="recapblock__actions"><button class="btn" type="submit">Save recap</button></p>
+              </form>
+
+              {selectedPhotos.length > 0 && (
+                <ul class="photogrid">
+                  {selectedPhotos.map((p) => (
+                    <li data-photo-id={p.id}>
+                      <img src={photoUrl(p.storage_path)} alt={p.caption ?? 'Club photo'} loading="lazy" />
+                      {p.caption && <span class="photogrid__cap">{p.caption}</span>}
+                      <details class="confirm">
+                        <summary class="btn btn--sm btn--danger">Delete</summary>
+                        <div class="confirm__row">
+                          <span class="confirm__q">Delete this photo?</span>
+                          <button class="btn btn--sm btn--danger-go js-photo-delete" type="button" data-photo-id={p.id}>
+                            Delete it
+                          </button>
+                          <button class="btn btn--sm btn--ghost js-photo-keep" type="button">Keep</button>
+                        </div>
+                      </details>
+                      <span class="row-err" role="alert" style="display:none"></span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+
+              <form id="photo-form" data-event-id={selected.id} novalidate>
+                <label class="field">
+                  <span>Add a photo</span>
+                  <input class="input" type="file" name="file" accept="image/*" />
+                  <span class="field__hint">
+                    JPEG, PNG, WEBP, or GIF. Keep files under about 4MB — the host rejects bigger uploads.
+                  </span>
+                </label>
+                <label class="field">
+                  <span>Caption</span>
+                  <input class="input" type="text" name="caption" maxlength="300" autocomplete="off" />
+                  <span class="field__hint">Optional — shows under the photo on /about.</span>
+                </label>
+                <p id="photo-error" class="small" role="alert" style="color:var(--clay); display:none;"></p>
+                <p class="recapblock__actions"><button class="btn" type="submit" id="photo-submit">Upload photo</button></p>
+              </form>
+            </section>
+          )}
         </article>
       )}
     </div>
@@ -450,6 +581,35 @@ const canPresent =
     </div>
   )}
 </DashboardLayout>
+
+<style>
+  /* Approximations with existing tokens — no recap-block or photo-grid class
+     exists in the design system (same pattern as members.astro's row-err). */
+  .recapblock{ margin-top:26px; padding:4px 0; }
+  .recapblock__head{ display:flex; align-items:baseline; gap:10px; flex-wrap:wrap; }
+  .recapblock__head b{ font-family:var(--f-serif); font-size:var(--t-19); color:var(--ink); font-weight:600; }
+  .recapblock__pub{ margin-top:6px; max-width:60ch; }
+  .recapblock form{ margin-top:18px; }
+  .recapblock form > * + *{ margin-top:14px; }
+  .recapblock__actions{ display:flex; }
+  .photogrid{
+    margin-top:20px;
+    display:grid; gap:16px 14px;
+    grid-template-columns:repeat(auto-fill, minmax(150px, 1fr));
+  }
+  .photogrid img{
+    display:block; width:100%; aspect-ratio:4/3; object-fit:cover;
+    border:1px solid var(--rule); border-radius:var(--r); background:var(--paper-2);
+  }
+  .photogrid__cap{
+    display:block; margin-top:6px; font-size:var(--t-14); color:var(--ink-2);
+    line-height:1.5; overflow-wrap:anywhere;
+  }
+  .photogrid .confirm{ display:block; margin-top:8px; }
+  .row-err{
+    display:block; font-size:var(--t-14); color:var(--clay-2); margin-top:6px;
+  }
+</style>
 
 <script>
   /* Client JS is wiring only — no data is ever rendered into DOM HTML here.
@@ -573,6 +733,158 @@ const canPresent =
       }
     });
   }
+
+  /* ── Recap (officers, past events) ────────────────────────────────────── */
+  const recapForm = document.getElementById('recap-form') as HTMLFormElement | null;
+  if (recapForm) {
+    const recapErr = document.getElementById('recap-error') as HTMLElement;
+    recapForm.addEventListener('submit', async (ev) => {
+      ev.preventDefault();
+      recapErr.style.display = 'none';
+      const id = recapForm.dataset.eventId;
+      if (!id) return;
+      const textarea = recapForm.querySelector('textarea[name="recap"]') as HTMLTextAreaElement;
+      const submitBtn = recapForm.querySelector('button[type="submit"]') as HTMLButtonElement;
+      submitBtn.disabled = true;
+      try {
+        const res = await fetch(`/api/events/${encodeURIComponent(id)}/recap`, {
+          method: 'PATCH',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ recap: textarea.value }),
+        });
+        if (!res.ok) {
+          let msg = 'Could not save the recap.';
+          try {
+            const body = await res.json();
+            if (body && typeof body.error === 'string') msg = body.error;
+          } catch {
+            /* non-JSON error body — keep the fallback message */
+          }
+          recapErr.textContent = msg;
+          recapErr.style.display = 'block';
+          return;
+        }
+        location.reload();
+      } catch {
+        recapErr.textContent = 'Network error — check your connection and try again.';
+        recapErr.style.display = 'block';
+      } finally {
+        submitBtn.disabled = false;
+      }
+    });
+  }
+
+  /* ── Photo upload (officers, past events) ─────────────────────────────── */
+  const photoForm = document.getElementById('photo-form') as HTMLFormElement | null;
+  if (photoForm) {
+    const photoErr = document.getElementById('photo-error') as HTMLElement;
+    const photoBtn = document.getElementById('photo-submit') as HTMLButtonElement;
+    const showPhotoErr = (msg: string) => {
+      photoErr.textContent = msg;
+      photoErr.style.display = 'block';
+    };
+    photoForm.addEventListener('submit', async (ev) => {
+      ev.preventDefault();
+      photoErr.style.display = 'none';
+      const id = photoForm.dataset.eventId;
+      if (!id) return;
+      const fileInput = photoForm.querySelector('input[type="file"]') as HTMLInputElement;
+      const captionInput = photoForm.querySelector('input[name="caption"]') as HTMLInputElement;
+      const file = fileInput.files?.[0];
+      if (!file) {
+        showPhotoErr('Choose a photo first.');
+        return;
+      }
+      // Pre-check at 4MB to match the hint: Vercel rejects bodies over
+      // ~4.5MB with a 413 before the endpoint (and its 8MB limit) ever runs,
+      // so letting a 5MB file upload in full just wastes the officer's time.
+      if (file.size > 4 * 1024 * 1024) {
+        showPhotoErr('That file is over about 4MB — the host rejects bigger uploads. Resize it and try again.');
+        return;
+      }
+
+      const fd = new FormData();
+      fd.append('file', file);
+      fd.append('event_id', id);
+      const caption = captionInput.value.trim();
+      if (caption) fd.append('caption', caption);
+
+      photoBtn.disabled = true;
+      const restingLabel = photoBtn.textContent;
+      photoBtn.textContent = 'Uploading…';
+      try {
+        // No content-type header: the browser sets the multipart boundary.
+        const res = await fetch('/api/photos', { method: 'POST', body: fd });
+        if (!res.ok) {
+          // Vercel caps request bodies at ~4.5MB and answers 413 with a
+          // non-JSON body before the endpoint ever runs.
+          let msg =
+            res.status === 413
+              ? 'The host rejected that upload as too large — keep photos under about 4MB.'
+              : 'Could not upload the photo.';
+          try {
+            const body = await res.json();
+            if (body && typeof body.error === 'string') msg = body.error;
+          } catch {
+            /* non-JSON error body — keep the fallback message */
+          }
+          showPhotoErr(msg);
+          return;
+        }
+        location.reload();
+      } catch {
+        showPhotoErr('Network error — check your connection and try again.');
+      } finally {
+        photoBtn.disabled = false;
+        photoBtn.textContent = restingLabel;
+      }
+    });
+  }
+
+  /* ── Photo delete (officers, inline confirm per thumbnail) ────────────── */
+  document.querySelectorAll<HTMLElement>('.js-photo-keep').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      btn.closest('details')?.removeAttribute('open');
+    });
+  });
+  document.querySelectorAll<HTMLButtonElement>('.js-photo-delete').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const id = btn.dataset.photoId;
+      if (!id) return;
+      const row = btn.closest('li');
+      const err = row?.querySelector<HTMLElement>('.row-err') ?? null;
+      if (err) {
+        err.textContent = '';
+        err.style.display = 'none';
+      }
+      btn.disabled = true;
+      try {
+        const res = await fetch(`/api/photos/${encodeURIComponent(id)}`, { method: 'DELETE' });
+        if (!res.ok) {
+          let msg = 'Could not delete the photo.';
+          try {
+            const body = await res.json();
+            if (body && typeof body.error === 'string') msg = body.error;
+          } catch {
+            /* keep fallback */
+          }
+          if (err) {
+            err.textContent = msg;
+            err.style.display = 'block';
+          }
+          btn.disabled = false;
+          return;
+        }
+        location.reload();
+      } catch {
+        if (err) {
+          err.textContent = 'Network error — check your connection and try again.';
+          err.style.display = 'block';
+        }
+        btn.disabled = false;
+      }
+    });
+  });
 
   /* ── Present mode (officers) ──────────────────────────────────────────── */
   const openBtn = document.getElementById('present-open') as HTMLButtonElement | null;

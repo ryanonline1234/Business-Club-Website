@@ -28,6 +28,22 @@ is still open:
   STEP 10–11 trigger, STEP 13b. STEP 7 is the one worth confirming by hand — a
   rejected non-school signup leaves an orphan profile row without it.
 
+### STEPs 16–18 may not be applied yet
+
+The `/about` feature (officer bios, event recaps, the `photos` table) ships
+with its schema in STEPs 16–18 of `supabase-schema.sql`, applied by hand and
+**possibly after the code deploys — that order is safe here**, unlike
+STEPs 0–15. Until they run:
+
+- `/about` renders with empty sections (no recaps, no photos, no bios) —
+  every read of the new columns/table fails soft, never a 500.
+- The portal's editors still render, but **saving** a recap, bio, or photo
+  comes back `500` with fixed copy naming the fix: "run STEPs 16-18".
+
+The `club-photos` Storage bucket is separate from the SQL (created in the
+dashboard: public read, 8MB, image mime allow-list) and already exists.
+Delete this entry once STEPs 16–18 are verified applied.
+
 ### Local dev and production share one database
 
 No local Supabase, no seed script — `npm run dev` points at whatever project
@@ -84,6 +100,37 @@ OAuth callback. Consequences: the DB-level domain constraint (STEP 9) must
 never be applied while that row exists, and the domain rule for that account
 is enforced in exactly one code path. If the admin ever moves to a school
 account, apply STEP 9 and delete this entry.
+
+### `/about`'s select lists are a privacy boundary — do not widen them casually
+
+**Severity: structural.** `/about` is the one guard-less page, and it reads
+through `supabaseAdmin`, which can see everything. What keeps it safe is that
+its queries name only the columns the public may see:
+
+- `events` → `id, title, start_time, category, recap` (never `created_by`;
+  `id` is used only for the server-side photo join and never reaches the DOM)
+- `photos` → `storage_path, caption, event_id` (never `uploaded_by`)
+- `profiles` → `name, role, bio`, filtered to **approved officers only** —
+  never email, never member rows, never member counts, never attendance
+
+Adding a column to one of those selects, or loosening the officers filter, is
+a privacy decision, not a refactor — the page header in
+`src/pages/about.astro` says the same thing. The DB mirrors the boundary:
+STEP 18's column-level grant keeps `photos.uploaded_by` unreadable under the
+anon key even though the photo rows themselves are public.
+
+### A deleted photo can outlive its delete in caches, briefly
+
+**Severity: low, accepted.** Supabase serves public-bucket objects through a
+CDN, and `/about` itself is CDN-cached (`s-maxage=60,
+stale-while-revalidate=600`). `DELETE /api/photos/:id` removes the row and
+the object, but a cached copy of the bytes can keep serving until TTLs run
+out. Uploads set `cache-control: max-age=300`, so the object-cache ceiling is
+~5 minutes (plus up to ~11 minutes of the stale page still linking the URL,
+which by then 404s or serves from a dead cache entry). These are photos of
+students, so takedown latency matters: accepted at ~minutes, would not be
+accepted at the Supabase default of 1 hour. If instant takedown ever matters,
+Supabase's "purge CDN cache" is the manual lever.
 
 ### Service role is the only database identity
 
@@ -151,6 +198,24 @@ The UI signs out via POST forms, but GET is still exported for direct
 navigation and old links, hardened by `checkSafeNavigation` (Sec-Fetch-Site
 catches the `<img src>` trick that carries no Origin header). Removing GET is
 fine once nothing links it; keep the check if it stays.
+
+### `/about`'s photo budget is global, not per-event
+
+`/about` fetches the 80 newest photo rows and joins them to the 12 events it
+shows. Under 80 total photos (a season or two of club life) this is exact.
+Past 80, older photos of a still-shown event silently drop while newer
+unattached photos consume the budget. Revisit when the club actually exceeds
+~80 photos: query photos `in (shown event ids)` plus a separate unattached
+query instead of one global fetch.
+
+### The recap/photo APIs accept cancelled past events
+
+`PATCH /api/events/:id/recap` and `POST /api/photos` check that the event
+exists and is past, not its status — so the raw API will happily save content
+against a cancelled event that `/about` will never show. Harmless (the
+content is simply invisible, and `/calendar` doesn't offer the editor for
+cancelled events, so no officer reaches it through the UI), but if an officer
+ever reports "my recap isn't showing", check the event's status first.
 
 ### No pagination anywhere
 

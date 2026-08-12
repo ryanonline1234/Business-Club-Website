@@ -600,3 +600,92 @@ select status, count(*) from public.profiles group by status order by status;
 select id, email, name, role, status, created_at
   from public.profiles
  order by status, created_at;
+
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- PUBLIC /about PAGE — STEPS 16-18
+--
+-- ✅ SAFE TO RUN ANY TIME, in either order relative to the code deploy, on a
+--   live database, repeatedly. Unlike STEPs 1-15 there is no lockout surface
+--   here: no default changes, no backfill, no NOT NULL added to an existing
+--   column. STEPs 16-17 add nullable columns that older code never selects;
+--   STEP 18 creates a brand-new table nothing else references. The /about
+--   code is written fail-soft — a missing bio/recap column or photos table
+--   renders as an empty section, never a 500 — so code-before-SQL and
+--   SQL-before-code both work. Paste STEPs 16-18 as one block; every
+--   statement is idempotent.
+-- ═══════════════════════════════════════════════════════════════════════════
+
+-- ── STEP 16: officer self-description for the public /about page ───────────
+-- Nullable, no default: NULL means "no bio yet" and the page skips that
+-- officer's description. Written only by PATCH /api/profile/bio, which always
+-- targets the caller's own row (id from the session, never the request body).
+alter table public.profiles
+  add column if not exists bio text;
+
+-- ── STEP 17: officer-written recap for past events ──────────────────────────
+-- "What happened" prose for the /about page's What We've Done section. Only
+-- events whose start_time is already in the past can carry one (enforced by
+-- PATCH /api/events/:id/recap — recaps are history, not previews). Nullable,
+-- no default; NULL means "no recap written".
+alter table public.events
+  add column if not exists recap text;
+
+-- ── STEP 18: photos for the public /about page ──────────────────────────────
+-- Rows here point at objects in the `club-photos` Storage bucket (public read,
+-- 8MB, image mime allow-list — created separately in the Storage dashboard,
+-- not by this file). storage_path is always photos/<random-uuid>.<ext>,
+-- generated server-side; it is never derived from a client filename.
+--
+-- FK notes, same posture as the finance tables: uploaded_by references
+-- profiles with NO ACTION, so hard-deleting a profile row that has uploads
+-- fails on this constraint (events.created_by already behaves this way for
+-- officers, so this adds no new restriction in practice). event_id is
+-- NULLABLE — a photo does not have to belong to an event — and events are
+-- soft-deleted (status → 'cancelled'), never removed, so no cascade is needed.
+create table if not exists public.photos (
+  id uuid default uuid_generate_v4() primary key,
+  event_id uuid references public.events,
+  storage_path text not null,
+  caption text,
+  uploaded_by uuid references public.profiles not null,
+  created_at timestamptz default now()
+);
+
+alter table public.photos enable row level security;
+
+-- Serves "photos of this event" on /about and in the portal's event views.
+create index if not exists idx_photos_event_id on public.photos(event_id);
+
+-- Photo RLS. The select policy is `using (true)` ON PURPOSE and that is the
+-- honest choice, not an oversight: these rows render on the PUBLIC /about
+-- page and the storage objects live in a public-read bucket, so a policy
+-- pretending the row data is private would be theater. Writes stay
+-- officer-only via the STEP 12 helper. (As everywhere else in this file, the
+-- app queries through the service role today; these policies are the truthful
+-- second line of defence.)
+--
+-- ONE COLUMN IS NOT PUBLIC: uploaded_by. It names which officer's profile
+-- uploaded each photo — /about never selects it, so the public set is only
+-- what the page can render (storage_path, caption, event_id, plus the
+-- harmless id/created_at). RLS cannot restrict columns, and Supabase's
+-- default privileges grant anon/authenticated SELECT on every column of a
+-- new public-schema table, so without the revoke+grant below the
+-- `using (true)` policy would let anyone read uploaded_by through PostgREST
+-- with the (public-by-design) anon key. The column-level grant keeps the
+-- policy honest AND the boundary real. Both statements converge on re-run.
+drop policy if exists "Public can read photos" on public.photos;
+drop policy if exists "Officers can manage photos" on public.photos;
+
+create policy "Public can read photos"
+  on public.photos for select
+  using (true);
+
+create policy "Officers can manage photos"
+  on public.photos for all
+  using (public.is_officer())
+  with check (public.is_officer());
+
+revoke select on public.photos from anon, authenticated;
+grant select (id, event_id, storage_path, caption, created_at)
+  on public.photos to anon, authenticated;

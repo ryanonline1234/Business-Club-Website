@@ -14,9 +14,15 @@ no-op and running it on an empty project builds everything from scratch.
    "relation does not exist" — that counts as zero rows.)
 2. **PART 1 → STEP 14** as one block.
 3. **STEP 15 alone** — verification. Read it before deploying any code.
+4. **STEPs 16–18 as one block** — the `/about` additions (`bio`, `recap`, the
+   `photos` table). Unlike the rest, these are safe **any time, in either
+   order relative to the code deploy**: nullable columns older code never
+   selects, a new table nothing else references, and the code that reads them
+   fails soft. See [KNOWN-GAPS.md](KNOWN-GAPS.md#steps-1618-may-not-be-applied-yet).
 
 Deploy order is **SQL first, then code** — the wrong order strands every user
 on `/pending`. See [DEPLOYMENT.md](DEPLOYMENT.md#deploy-order-sql-first-then-code).
+(That constraint is about STEPs 0–15; STEPs 16–18 are exempt, as above.)
 
 ---
 
@@ -24,13 +30,14 @@ on `/pending`. See [DEPLOYMENT.md](DEPLOYMENT.md#deploy-order-sql-first-then-cod
 
 ```
 auth.users ──trigger──> profiles ──┬──> events ──> attendance
-  (on delete cascade)              ├──> announcements
+  (on delete cascade)              ├──> photos ─(event_id, nullable)─> events
+                                   ├──> announcements
                                    ├──> transactions ──> categories   ┐
                                    ├──> budgets ─────────┘            │ retained,
                                    └──> audit_logs                    ┘ read by nothing
 ```
 
-The app touches **profiles, events, attendance, announcements**. The finance
+The app touches **profiles, events, attendance, announcements, photos**. The finance
 tables (`categories`, `transactions`, `budgets`, `audit_logs`) survive from
 the cut finance module: kept so the data is not lost and re-enabling treasury
 is a page, not a migration. Do not drop them — and note `transactions.user_id`
@@ -56,6 +63,7 @@ by the `on_auth_user_created` trigger, with the OAuth callback as a fallback
 | `status` | `text` | `'pending' \| 'approved' \| 'rejected'`, default `'pending'`, not null (STEPs 1–4) |
 | `approved_by` | `uuid` | FK → `profiles`; who **ruled** (declines stamped too). NULL = grandfathered, never explicitly decided |
 | `approved_at` | `timestamptz` | when they ruled |
+| `bio` | `text` | nullable, no default (STEP 16). Officer self-description for the **public** `/about` page; NULL = "no bio yet", section skipped. Written only by `PATCH /api/profile/bio`, which always targets the caller's own row |
 | `created_at` | `timestamptz` | default `now()` |
 
 Indexes: `idx_profiles_status`, plus the partial `idx_profiles_pending_queue`
@@ -78,8 +86,9 @@ clients as a 409 with fixed copy, never the raw Postgres message).
 | `password` | `text` | **DEAD.** Nothing reads or writes it; kept only because dropping a column is irreversible. If password check-in is ever built, hash it — the old app stored it in plaintext |
 | `capacity` | `integer` | validated positive on create, displayed, **never enforced** at check-in |
 | `category` | `text` | default `'meeting'`; free text |
-| `status` | `text` | `'active' \| 'completed' \| 'cancelled'`, default `'active'`. Nothing ever sets `'completed'` |
+| `status` | `text` | `'active' \| 'completed' \| 'cancelled'`, default `'active'`. Nothing ever sets `'completed'`, but readers must treat it as a legitimate past state (`/about` and `/attendance` count `active` + `completed`) |
 | `created_by` | `uuid` | FK → `profiles`, not null |
+| `recap` | `text` | nullable, no default (STEP 17). Officer-written "what happened" prose for the **public** `/about` page; NULL = "no recap". Only past events may carry one — enforced by `PATCH /api/events/:id/recap` |
 | `created_at` | `timestamptz` | |
 
 Indexed on `start_time`, `status`, `created_by`. Deletion is soft —
@@ -113,6 +122,37 @@ duplicate check. Indexed on `event_id` and `member_id`.
 | `author_id` | `uuid` | FK → `profiles`, nullable |
 | `author_name` | `text` | denormalised snapshot — survives author deletion, goes stale on rename |
 | `created_at` | `timestamptz` | |
+
+### `photos`
+
+Photos for the public `/about` page (STEP 18). Rows point at objects in the
+`club-photos` Storage bucket — the row is what renders; an object without a
+row is invisible.
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | `uuid` PK | |
+| `event_id` | `uuid` | FK → `events`, **nullable** — a photo doesn't have to belong to an event (unattached ones render as "Around the club"). No cascade needed: events are soft-deleted, never removed |
+| `storage_path` | `text` | not null. Always `photos/<random-uuid>.<ext>`, generated server-side — **never** derived from a client filename |
+| `caption` | `text` | plain text, ≤ 300 enforced by the API |
+| `uploaded_by` | `uuid` | FK → `profiles`, not null. **The one non-public column** — see the RLS note below. Same NO ACTION posture as `events.created_by`: hard-deleting a profile with uploads fails on this key |
+| `created_at` | `timestamptz` | default `now()` |
+
+Indexed on `event_id` (serves "photos of this event" on `/about` and in the
+calendar's editor).
+
+### The `club-photos` Storage bucket
+
+Created **in the Storage dashboard, not by the SQL file**: public read, 8MB
+file limit, mime allow-list `image/jpeg | png | webp | gif`. Public object
+URLs are `<PUBLIC_SUPABASE_URL>/storage/v1/object/public/club-photos/<path>`.
+
+Writes are server-side only, through the Storage REST API with the service
+role key (`POST`/`DELETE /storage/v1/object/club-photos/<path>`) — no client
+ever writes to the bucket, and `POST /api/photos` re-validates type (by magic
+bytes) and size regardless of what the bucket config enforces, because bucket
+config can drift. Uploads carry `cache-control: max-age=300` so caches can't
+serve a deleted photo for long.
 
 ### The finance tables
 
@@ -172,11 +212,21 @@ paths write `id`/`email`/`name` only on the insert and never touch
 
 ## Row Level Security
 
-RLS is enabled on all eight tables and the policies are **approval-aware**:
+RLS is enabled on all nine tables and the policies are **approval-aware**:
 built on the STEP 12 helpers, so a pending or rejected account reads nothing,
 members read their own attendance/transactions, officers read and manage
 everything, and (new in the rebuild) treasurers can actually read other
 profiles.
+
+The one exception to "pending accounts read nothing" is `photos` (STEP 18):
+its select policy is `using (true)` **on purpose** — the rows render on the
+public `/about` page and the objects live in a public-read bucket, so a
+policy pretending otherwise would be theater. But one column is *not* public:
+`uploaded_by` (which officer uploaded each photo). RLS can't restrict
+columns, so STEP 18 pairs the policy with a column-level grant — `revoke
+select` from `anon`/`authenticated`, then `grant select` on only
+`id, event_id, storage_path, caption, created_at`. Don't "simplify" that back
+to a table-level grant.
 
 **These policies still do not gate the application.** Every app query runs
 through the service-role client, which bypasses RLS entirely; authorization is

@@ -14,7 +14,8 @@ deleted in the rebuild. If you need a new read, put it in page frontmatter.
 
 ## Conventions
 
-- Request and response bodies are JSON unless noted.
+- Request and response bodies are JSON unless noted (`POST /api/photos` is the
+  one multipart exception).
 - Errors are `{ "error": "<human-readable message>" }`. Some carry a machine
   `reason` field, noted per endpoint. **Raw Postgres/Supabase messages are
   never echoed to the client** — detail goes to the Vercel function log.
@@ -49,11 +50,22 @@ Checks run in that order — the origin check fires before authentication.
 | `POST` | `/api/events/create` | officer | `/calendar` composer |
 | `DELETE` | `/api/events/:id/delete` | officer | `/calendar` cancel |
 | `GET` | `/api/events/:id/qr` | **officer** | `/calendar` Present mode |
+| `PATCH` | `/api/events/:id/recap` | officer | `/calendar` recap editor (past events) |
 | `POST` | `/api/attendance/checkin` | **approved** | `/checkin` |
 | `PATCH` | `/api/members/:id` | **admin** | `/members` role select |
 | `PATCH` | `/api/members/:id/status` | officer | `/members` approval queue |
+| `PATCH` | `/api/profile/bio` | officer | `/members` own-row bio editor |
+| `POST` | `/api/photos` | officer | `/calendar` photo upload (multipart) |
+| `DELETE` | `/api/photos/:id` | officer | `/calendar` photo delete |
 | `POST` | `/api/announcements/create` | officer | `/announcements` composer |
 | `DELETE` | `/api/announcements/:id` | officer | `/announcements` delete |
+
+The recap, bio, and photo endpoints write **public content** — everything they
+save renders on the guard-less `/about` page. All three fail soft while
+STEPs 16–18 of `supabase-schema.sql` are unapplied: the write comes back
+`500` with fixed copy naming the fix ("run STEPs 16-18"), and the pages that
+*read* the same columns render the section empty instead of erroring. See
+[KNOWN-GAPS.md](KNOWN-GAPS.md#steps-1618-may-not-be-applied-yet).
 
 ---
 
@@ -177,6 +189,33 @@ Minting is refused for events that can no longer accept check-ins:
 There is deliberately no *lower* bound here (unlike check-in itself): an
 officer setting up a room early may open Present mode before the window opens.
 
+### `PATCH /api/events/:id/recap` — officer
+
+Officer-written "what happened" prose for a past event, rendered on the
+public `/about` page.
+
+```json
+{ "recap": "<plain text>" }
+```
+
+≤ 8000 characters after end-trim; `''` (or whitespace-only) clears the recap
+to NULL. **Interior newlines are preserved** — they are the paragraph breaks
+`/about` renders (each line break starts a new paragraph); the value stays
+plain text and is rendered server-side, escaped.
+
+Recaps are history, not previews: only an event whose `start_time` is already
+in the past may carry one. Status is not checked here — `/calendar` only
+offers the editor for non-cancelled past events, and `/about` only shows
+`active`/`completed` ones, so a recap written to a cancelled event via the
+raw API simply never renders.
+
+**Responses:** `200 { data }` (`id`, `title`, `start_time`, `recap`) · `400`
+(invalid id / invalid JSON / not a string / too long /
+`"Recaps are for events that have already happened"`) · `404` · guard
+responses · `500` — `"The recap feature needs a database update — run STEPs 16-18"`
+when `events.recap` doesn't exist yet (codes `42703`/`PGRST204`; real error in
+the log), else `"Could not save the recap"`.
+
 ---
 
 ## Attendance
@@ -263,6 +302,89 @@ ruled**, not only who said yes; declines are stamped identically.
 
 **Responses:** `200 { data }` · `400` · `403` (self) · `404` · `409` · `503` ·
 guard responses · `500`.
+
+### `PATCH /api/profile/bio` — officer
+
+The caller edits **their own** public `/about` bio, nothing else. The target
+row is always `session.id` — no id is accepted from the body or URL, so the
+endpoint cannot be pointed at anyone else's profile. Writes **only** the
+`bio` column, never `role` or `status` (invariant 4 — this must never become
+a second place profile privileges get rewritten).
+
+```json
+{ "bio": "<plain text>" }
+```
+
+≤ 1200 characters after end-trim; `''` clears to NULL. Newlines are paragraph
+breaks, same as recaps.
+
+Officer-guarded rather than approved-guarded **on purpose**: only officers
+appear in `/about`'s About Us section, so only officers have a bio anywhere
+to render. Deliberate consequence: an officer in "view as student" preview
+gets the preview `403` here ("You're viewing as a student — exit the preview
+to do this.") — the guard reads the *effective* role, and a member cannot
+edit an `/about` bio. That is the preview keeping its promise, not a bug.
+
+**Responses:** `200 { data }` (`id`, `name`, `bio`) · `400` (invalid JSON /
+not a string / too long) · guard responses · `500` — the STEPs 16-18 copy
+when `profiles.bio` doesn't exist yet (`42703`/`PGRST204`), else
+`"Could not save your bio"`.
+
+---
+
+## Photos
+
+Club photos for the public `/about` page, stored in the `club-photos`
+Storage bucket (public read — see
+[DATA-MODEL.md](DATA-MODEL.md#the-club-photos-storage-bucket)).
+
+### `POST /api/photos` — officer
+
+The one **multipart** endpoint: `multipart/form-data`, not JSON.
+
+| Field | Required | Notes |
+|---|---|---|
+| `file` | ✅ | The image. Type is decided by **magic bytes** (JPEG `ff d8 ff`, PNG, WEBP, GIF) — the client's mime string and filename are never trusted. ≤ 8MB, checked against the actual received bytes, not client metadata |
+| `event_id` | | uuid of an existing event whose `start_time` is already past (`400` otherwise — same history-only rule as recaps). Omit for an unattached "around the club" photo |
+| `caption` | | plain text, trimmed, ≤ 300 chars; empty → NULL |
+
+The storage path is `photos/<crypto.randomUUID()>.<ext-from-detected-type>` —
+never derived from the client filename, so there is no traversal or
+weird-character surface. The object is uploaded with
+`cache-control: max-age=300` so caches can't hold a later-deleted photo for
+more than ~5 minutes (see
+[KNOWN-GAPS.md](KNOWN-GAPS.md#a-deleted-photo-can-outlive-its-delete-in-caches-briefly)).
+
+Write order: storage object first, DB row second; if the insert fails the
+object is best-effort deleted. An orphaned object is invisible; a row
+pointing at nothing is a broken image on the public page — that asymmetry
+decides the order here and in DELETE.
+
+**Platform caveat:** Vercel caps request bodies at ~4.5MB and answers `413`
+with a **non-JSON body** before the endpoint runs, so the effective limit in
+production is lower than the endpoint's 8MB. The `/calendar` client
+pre-checks at 4MB and translates the 413 into friendly copy.
+
+**Responses:** `201 { data }` (the row plus `url`, the public object URL) ·
+`400` with a named reason (not multipart / file missing / too large / not a
+recognized image / bad or unknown `event_id` /
+`"Photos can only be attached to past events"` / caption too long) · guard
+responses · `500` — `"Could not store the photo"` (storage),
+`"Could not save the photo"` (insert), or the STEPs 16-18 copy when the
+`photos` table doesn't exist yet (`42P01`/`PGRST205`).
+
+### `DELETE /api/photos/:id` — officer
+
+Reverse order from the upload: **DB row first** (`delete … returning
+storage_path` in one statement — no read-then-write window), storage object
+second, best-effort. `200 { "success": true }` is returned even if the
+object delete fails — the row is what the public page renders from, and it
+is already gone; the orphaned object is logged.
+
+**Responses:** `200 { "success": true }` · `400 { "error": "Invalid photo id" }`
+(non-UUID) · `404 { "error": "Photo not found" }` (also on repeat deletes) ·
+guard responses · `500` (STEPs 16-18 copy on a missing table, else
+`"Could not delete the photo"`).
 
 ---
 
