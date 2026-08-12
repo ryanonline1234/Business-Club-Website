@@ -100,14 +100,49 @@ Supabase project for development if that matters.
 
 ---
 
-## The SITE_URL cutover (pending)
+## Astro's `security.checkOrigin` must stay `false`
 
-`SITE_URL` on Vercel currently points at `https://mitty-business-club.vercel.app`,
-which returns `DEPLOYMENT_NOT_FOUND`; production is served at
-`https://mittybusinessclub.vercel.app`. Until the cutover, **sign-in is dead
-in production**. Two things move together, one thing explicitly does not:
+Non-negotiable on Vercel, and it fails in a way that looks like a permissions
+bug. Astro 5 enables CSRF protection by default and implements it by comparing
+the `Origin` header against **the request URL the handler sees**. Inside a
+Vercel serverless function that URL is not the public hostname (same root cause
+as commit `361927b`, "Vercel reports localhost as request origin"), so the
+comparison can never succeed.
 
-1. **Vercel** → set `SITE_URL` = `https://mittybusinessclub.vercel.app`.
+Astro's middleware rejects a request whose content-type is form-like **or
+absent**, so it took out exactly the calls that send neither a JSON body nor a
+content-type — cancel event, delete announcement, and the form-POST sign-out —
+while every JSON `fetch` sailed through. That asymmetry is what made it read as
+"my account lost permissions" instead of a framework default.
+
+The rejection happens in Astro's own middleware, above our handlers, so it
+produces a bare-text `Cross-site <METHOD> form submissions are forbidden` and
+**nothing in our logs**.
+
+Turning it off costs no protection: `isCrossSiteRequest()` in `lib/auth.ts`
+runs first inside every `apiRequire*` guard and in `checkSafeNavigation()`, and
+it compares `Origin` against `SITE_ORIGIN` (validated at boot) as well as the
+request's own origin, plus rejects any `Sec-Fetch-Site` that is not
+`same-origin`/`none`. On Vercel that is strictly more correct — it knows the
+real public origin and Astro does not.
+
+---
+
+## The SITE_URL cutover (done — kept for the next domain change)
+
+Production is served at `https://mittybusinessclub.vercel.app`. The hyphenated
+`https://mitty-business-club.vercel.app` returns `DEPLOYMENT_NOT_FOUND` and was
+`SITE_URL` for 136 days, which is why sign-in was dead: `SITE_URL` drives the
+OAuth `redirectTo`, the URL inside QR codes, every post-auth redirect, and the
+CSRF origin check.
+
+Two things move together, one thing explicitly does not:
+
+1. **Vercel** → set `SITE_URL` = `https://mittybusinessclub.vercel.app` in
+   Production, Preview *and* Development. Verify by pulling it back
+   (`vercel env pull`) rather than trusting the write — piping a value into
+   `vercel env add` can silently store an **empty string**, which then fails the
+   boot check and 500s every page.
 2. **Supabase** → Authentication → URL Configuration: add
    `https://mittybusinessclub.vercel.app/api/auth/callback` to the redirect
    allow-list (and align Site URL). Skip this and the OAuth redirect silently

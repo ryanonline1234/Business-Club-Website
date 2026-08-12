@@ -20,7 +20,19 @@ import ThumbBar from '../components/ThumbBar.astro';
 interface Props {
   title: string;
   subtitle?: string;
-  user: { name: string | null; role: string; email: string };
+  user: {
+    name: string | null;
+    /** EFFECTIVE role — reads 'member' while an officer previews, which is
+        exactly what the badge should say. */
+    role: string;
+    email: string;
+    /** The REAL officer-ness, never downgraded by the preview. Both preview
+        controls key off this and never off `isOfficer`: while previewing, the
+        session reads as a member, so an `isOfficer` check would hide the only
+        way back to officer view. */
+    actualIsOfficer: boolean;
+    viewingAsStudent: boolean;
+  };
 }
 
 /* Default subtitle = the current school term in America/Los_Angeles.
@@ -50,6 +62,11 @@ const initials =
     .join('') || user.email.slice(0, 2).toUpperCase();
 
 const currentPath = Astro.url.pathname;
+
+/* Officer preview. Both flags come from the real profiles role, so the exit
+   banner survives the downgrade that hides everything else officer-shaped. */
+const previewing = user.viewingAsStudent;
+const canEnterPreview = user.actualIsOfficer && !previewing;
 ---
 <!doctype html>
 <html lang="en">
@@ -73,13 +90,39 @@ const currentPath = Astro.url.pathname;
     </defs>
   </svg>
 
+  {previewing && (
+    <div class="viewas">
+      <div class="viewas__inner">
+        <span class="viewas__tag">Viewing as a student</span>
+        <span class="viewas__note">Officer controls are hidden.</span>
+        {/* A REAL FORM, NOT A SCRIPTED BUTTON — deliberately, and unlike the
+            "enter" control below. The cookie this clears is HttpOnly, so no
+            page script can clear it as a fallback; if this depended on the
+            bundled module and that chunk failed to load, the officer would be
+            held in student view with nothing on the page able to get them out.
+            A form submit works with JavaScript dead, exactly like Sign out.
+            No data-preview-mode here: that attribute is the script's hook, and
+            leaving it on would fire the fetch AND submit the form. */}
+        <form method="post" action="/api/preview" class="viewas__exitform">
+          <input type="hidden" name="mode" value="officer" />
+          <button type="submit" class="viewas__exit">Back to officer view</button>
+        </form>
+      </div>
+    </div>
+  )}
+
   <header class="topbar">
-    <div class="topbar__inner">
+    <div class:list={['topbar__inner', canEnterPreview && 'topbar__inner--viewas']}>
       <a class="mark" href="/">
         <svg width="30" height="30" viewBox="0 0 40 40" aria-hidden="true"><use href="#monogram"/></svg>
         <span class="mark__word">Mitty Business Club<span>{subtitle}</span></span>
       </a>
       <TopRail currentPath={currentPath} />
+      {canEnterPreview && (
+        <button type="button" class="viewas-enter" data-preview-mode="student">
+          View as student
+        </button>
+      )}
       <div class="whoami">
         <span class="avatar" aria-hidden="true">{initials}</span>
         <span class="whoami__meta">
@@ -98,5 +141,46 @@ const currentPath = Astro.url.pathname;
   </main>
 
   <ThumbBar currentPath={currentPath} />
+
+  <script>
+    /* The "View as student" (enter) control only — the exit is a plain form and
+       must stay script-free, since the cookie it clears is HttpOnly and a dead
+       script would otherwise trap the officer in student view.
+
+       No HTML is built from data here: the script toggles `disabled`, writes
+       textContent into the button it owns, and reloads so the SERVER re-renders
+       every page under the new effective role. A no-op when the button is
+       absent, i.e. for everyone who is not an officer. */
+    document
+      .querySelectorAll<HTMLButtonElement>('button[data-preview-mode="student"]')
+      .forEach((btn) => {
+        btn.addEventListener('click', async () => {
+          btn.disabled = true;
+          try {
+            const res = await fetch('/api/preview', {
+              method: 'POST',
+              headers: { 'content-type': 'application/json' },
+              body: JSON.stringify({ mode: 'student' }),
+            });
+            if (res.ok) {
+              location.reload();
+              return;
+            }
+            /* 401 = the session expired while this page sat open; 403 = the
+               role changed under us. Retrying can only fail again, so reload
+               and let the guards route them (to /login, or to a page whose
+               chrome now matches reality) instead of leaving a dead button. */
+            if (res.status === 401 || res.status === 403) {
+              location.reload();
+              return;
+            }
+          } catch {
+            /* network error — fall through to the retry label */
+          }
+          btn.disabled = false;
+          btn.textContent = 'Try again';
+        });
+      });
+  </script>
 </body>
 </html>

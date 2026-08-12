@@ -12,32 +12,36 @@ is at the bottom for the record.
 
 ## Operational — the ones that bite next
 
-### The deploy and migration have not happened yet
+### Deployed — but `rebuild/mbc-portal` is not merged to `main`
 
-**Severity: this is the current blocker.** The rebuild is code-complete on
-`rebuild/mbc-portal`, but as of this writing the approval migration has not
-been confirmed applied to the production database and the code has not been
-deployed. Three things must happen, in order: the SQL (STEP 0 pre-flight
-first), the code, the SITE_URL cutover. Until the cutover, **sign-in is dead
-in production** — `SITE_URL` points at a host that returns
-`DEPLOYMENT_NOT_FOUND`. The exact sequence lives in
-[DEPLOYMENT.md](DEPLOYMENT.md#deploy-order-sql-first-then-code) and the
-cutover pair in
-[DEPLOYMENT.md](DEPLOYMENT.md#the-site_url-cutover-pending).
+The rebuild is **live** at `https://mittybusinessclub.vercel.app`. The
+migration was applied, `SITE_URL` was cut over, and the branch is pushed. What
+is still open:
 
-### No tests, no CI, no lint
+- **The branch has not been merged to `main`.** Vercel's git integration builds
+  `main`, so a push to `main` today would deploy the *pre-rebuild* app over the
+  top of the current deployment. Merge before anyone pushes to `main`.
+- **Verified applied**: `status`, `approved_by`, `approved_at`,
+  `is_school_email()`, `is_approved/is_officer/is_admin()`, and the RLS rewrite
+  (proved via an anon read of `categories` returning 0 of 4 rows). **Not
+  verifiable from outside**: STEP 6 indexes, STEP 7's `on delete cascade`, the
+  STEP 10–11 trigger, STEP 13b. STEP 7 is the one worth confirming by hand — a
+  rejected non-school signup leaves an orphan profile row without it.
 
-No test suite, no runner in `package.json`, no GitHub Actions. The only
-pre-merge signal is whether `npm run build` succeeds. The guard layer and the
-migration's lockout guards are exactly the kind of code that deserves tests;
-nothing verifies them but reading.
-
-### Local dev writes production data
+### Local dev and production share one database
 
 No local Supabase, no seed script — `npm run dev` points at whatever project
-`.env` names. Every local experiment mutates real club data unless a second
-Supabase project is set up. Worth doing before the next stretch of feature
-work.
+`.env` names, so **every local experiment mutates real club data**. This is now
+sharper than it looks on paper: the app is live and officers may be using it.
+Stand up a second Supabase project before the next stretch of feature work.
+
+### No tests, no CI, no lint — and the last two bugs prove the cost
+
+No suite, no runner, no Actions. Both production failures found after deploy
+were things a smoke test would have caught in seconds: every mutating request
+with no content-type returning 403, and a malformed session cookie 500ing
+`/login`. The guard layer, the migration's lockout guards, and the CSRF path
+are exactly what deserves tests.
 
 ### `SITE_URL` and preview deployments
 
@@ -90,6 +94,27 @@ at the top of each route is the only access control on the hot path.** Forget
 the guard in a new endpoint and there is no second line of defence. This is
 why `lib/auth.ts` is the only place checks may live.
 
+### One guard ignores the student preview — on purpose
+
+**Severity: low today, sharp if it spreads.** `apiRequireActualOfficer_previewToggleOnly`
+in `lib/auth.ts` is the single guard that a previewing officer still passes: it
+checks `actualIsOfficer`, the real profiles role, which the "view as student"
+preview never downgrades. Every other role guard checks the effective role and
+therefore fails closed while previewing.
+
+It exists because `apiRequireOfficer` cannot guard the preview toggle. With the
+preview on, `isOfficer` is false, so `apiRequireOfficer` would 403 the exact
+request that turns the preview OFF and strand the officer in student view with
+no way back but hand-clearing an HttpOnly cookie.
+
+**`POST /api/preview` is its only legitimate caller.** Using it on any other
+endpoint silently un-does the preview for that route — the build passes, the
+route works, and the officer keeps a privilege they believe they dropped. That
+is a review failure, not a runtime one; nothing catches it. The `_previewToggleOnly`
+suffix is deliberately ugly so it cannot be picked out of autocomplete beside
+`apiRequireOfficer` without noticing. If a second legitimate caller ever appears,
+argue it here first.
+
 ---
 
 ## Half-built and dead-column inventory
@@ -119,14 +144,6 @@ not share a module during the rebuild because `src/lib` was owned by another
 work stream. If they ever drift, check-in gets confusing at the edges — lift
 them into `lib/` on the next touch of either file.
 
-### A stale warning block in `lib/qrcode.ts`
-
-The comment above `QR_TOKEN_TTL_SECONDS` still claims the QR modal fetches
-once and never re-fetches. That was true mid-rebuild; `/calendar`'s Present
-mode now re-fetches at `expires_in − 180s`, surfaces 4xx on screen, and
-retries 5xx. The endpoint-side comment in `api/events/[id]/qr.ts` is current.
-Fix the comment on the next touch of `lib/qrcode.ts` — the TTL guidance
-around it (do not lengthen) still stands.
 
 ### `GET /api/auth/signout` still exists
 
@@ -179,3 +196,18 @@ closed on `rebuild/mbc-portal`:
 | Hardcoded "Spring 2026" term label | Derived from the Pacific date |
 | RLS policies stale and recursion-prone; treasurers couldn't read profiles | Rewritten on security-definer helpers, approval-aware, plus the role-change guard trigger |
 | The dead Next.js app at the repo root | Deleted (60 files); `vercel.json` posture unchanged |
+
+### A malformed session cookie used to 500 every route
+
+**Fixed, recorded because the failure mode was invisible.** `@supabase/ssr`
+stores the session as `base64-<b64>` and decodes it with a strict UTF-8
+decoder; non-UTF-8 bytes threw `Invalid UTF-8 sequence` from inside
+`getUser()`, an unhandled rejection that 500s the route — including `/login`
+and `/api/auth/signout`, the two pages a user needs to recover. The realistic
+trigger is not tampering: Supabase chunks large sessions across
+`…auth-token.0` / `.1`, and a browser evicting one chunk produces exactly this.
+
+`isDecodableAuthCookie()` in `lib/supabase.ts` now drops such a cookie at our
+own boundary, degrading the request to "signed out", which every route already
+handles. Do not remove it, and do not widen it beyond `sb-*` + `base64-` — the
+PKCE verifier cookie must pass through untouched.

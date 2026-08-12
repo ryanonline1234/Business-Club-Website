@@ -203,6 +203,82 @@ button,input,select,textarea{ font:inherit; color:inherit; }
 }
 .signout__btn:hover{ color:var(--ink); background:var(--paper); }
 
+/* ---------- OFFICER PREVIEW: "VIEW AS STUDENT" ----------
+   Being in the preview is a genuine right-now state, so the exit banner
+   takes the highlighter — the same treatment as "happening now". Both
+   colours are tokens (--lit / --lit-ink), so light and dark are covered
+   by the one declaration. Sticky at the top; the thumb bar is fixed at
+   the bottom, so the two never meet. */
+.viewas{
+  position:sticky; top:0; z-index:50;
+  background:var(--lit); color:var(--lit-ink);
+  border-bottom:1px solid var(--gold-ink);
+}
+.viewas__inner{
+  max-width:1180px; margin:0 auto;
+  display:flex; align-items:center; gap:4px 14px; flex-wrap:wrap;
+  padding:2px var(--gut);
+  padding-top:max(2px, env(safe-area-inset-top));
+}
+.viewas__tag{
+  font-family:var(--f-cond); text-transform:uppercase; letter-spacing:var(--tr-2);
+  font-size:var(--t-12); font-weight:600; flex:none;
+}
+.viewas__note{ font-size:var(--t-14); min-width:0; }
+/* The exit is a <form> (it must work with JS dead), so the form is the flex
+   child that gets pushed to the end — same shape as .signout above. */
+.viewas__exitform{ display:flex; flex:none; margin-left:auto; }
+.viewas__exit{
+  flex:none;
+  display:inline-flex; align-items:center; justify-content:center;
+  min-height:var(--tap); padding:0 14px;
+  background:transparent; border:1px solid var(--gold-ink); border-radius:var(--r);
+  color:var(--lit-ink); cursor:pointer; white-space:nowrap;
+  font-family:var(--f-cond); text-transform:uppercase; letter-spacing:var(--tr-2);
+  font-size:var(--t-12); font-weight:600;
+}
+.viewas__exit:hover{ background:var(--lit-ink); color:var(--lit); }
+/* No [disabled] rule: the exit is a plain form submit and no script ever
+   disables it. The enter button below is the scripted one. */
+/* --focus is a gold in dark mode and would vanish against --lit. */
+.viewas__exit:focus-visible{ outline-color:var(--lit-ink); }
+/* At phone widths the tag plus the button are the whole message; the note
+   repeats it and would push the banner to a third row. */
+@media (max-width:560px){ .viewas__note{ display:none; } }
+
+/* The way in, beside the role badge. Only ever rendered for a real officer. */
+.viewas-enter{
+  flex:none;
+  display:inline-flex; align-items:center; justify-content:center;
+  min-height:var(--tap); padding:0 12px;
+  background:transparent; border:1px solid var(--rule-2); border-radius:var(--r);
+  color:var(--gold-2); cursor:pointer; white-space:nowrap;
+  font-family:var(--f-cond); text-transform:uppercase; letter-spacing:var(--tr-2);
+  font-size:var(--t-12); font-weight:600;
+}
+.viewas-enter:hover{ border-color:var(--gold-2); color:var(--ink); }
+.viewas-enter[disabled]{ opacity:.55; cursor:not-allowed; }
+/* The class is only on the topbar when that button exists, so no other
+   user's layout changes. At 375px the brand mark, the avatar and Sign out
+   already fill the row — the button takes its own full-width row below
+   them rather than squeezing the mark off the screen.
+
+   BOTH DECLARATIONS BELONG INSIDE THIS QUERY. flex-wrap sat outside it at
+   first, which enabled wrapping at every width; the rules that justify it
+   (order/width) are phone-only, so from 961px up the extra button simply
+   overflowed the line and the container ejected .whoami onto a second,
+   left-aligned row under the brand mark — measured 138px tall vs 76px at
+   1024 and 1100. From 701 to 960 .topbar__inner already wraps for everyone,
+   and above 960 the nav absorbs the squeeze by wrapping its own links. */
+@media (max-width:700px){
+  .topbar__inner--viewas{ flex-wrap:wrap; }
+  .topbar__inner--viewas .viewas-enter{
+    order:3; width:100%; justify-content:flex-start;
+    padding-left:0; margin-top:2px;
+    border:0; border-top:1px solid var(--rule); border-radius:0;
+  }
+}
+
 /* ---------- THE THUMB BAR ----------
    Under 700px this IS the navigation. The top rail is not shrunk,
    scrolled or hidden behind an affordance — it is removed. */

@@ -1,6 +1,6 @@
 import type { APIRoute } from 'astro';
 import { createSupabaseServerClient } from '../../../lib/supabase';
-import { checkSafeNavigation } from '../../../lib/auth';
+import { checkSafeNavigation, previewCookieHeader } from '../../../lib/auth';
 import { SITE_URL } from '../../../lib/env';
 
 /**
@@ -41,6 +41,20 @@ async function signOut(request: Request): Promise<Response> {
       status: error.status,
     });
   }
+
+  // Sign-out clears the officer "view as student" preview too.
+  //
+  // WHY IT MATTERS: `mbc-view` is a session cookie scoped to the browser, not
+  // to the account, and it is HttpOnly — no page script can reach it. Left
+  // behind, it survives into the NEXT sign-in on this browser. On the club's
+  // shared laptop that means officer A previews, signs out, and officer B signs
+  // in already in student view they never asked for. It also makes "sign out
+  // and back in" — the first thing anyone tries when a UI looks stuck — a
+  // genuine escape hatch rather than a no-op.
+  //
+  // Appended, not set: supabase.auth.signOut() has already put its own
+  // cookie-clearing Set-Cookie values on these headers.
+  responseHeaders.append('set-cookie', previewCookieHeader(false));
 
   responseHeaders.set('location', `${SITE_URL}/login`);
   return new Response(null, { status: 302, headers: responseHeaders });
