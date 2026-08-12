@@ -23,7 +23,7 @@ Settled with the repo owner before any code changed:
 | Legacy Next.js app | **Deleted.** It was never deployed; `vercel.json` always skipped it. |
 | Finance / treasury | **Cut from the UI** — page, endpoints, and nav entry. The `transactions` / `budgets` / `categories` **tables stay in the database**, untouched. Reversible on purpose: re-enabling treasury later is a page, not a migration. |
 | Features | Announcements, member roster, QR-code attendance, event scheduling. |
-| Who can sign in | School Google domains only — `@mittymonarch.com` (students), `@mitty.com` (faculty/adults) — **and** an officer must approve each new account before it sees anything. |
+| Who can sign in | School Google domains only — `@mittymonarch.com` (students), `@mitty.com` (faculty/adults). Since **2026-08-12** a school account is approved **automatically** at signup — owner decision ("security feels too strict"); the original approve-first queue shipped and was then deliberately relaxed. Moderation is after-the-fact: an officer decline flips the account to `rejected` and locks it out, and the rejection sticks on every later sign-in. |
 | Deploy target | Vercel project `mitty-business-club`, production alias `mittybusinessclub.vercel.app`. |
 
 ---
@@ -55,7 +55,13 @@ Four gates. Gate 1 is a hint; 2–4 are enforcement.
 3. **Session layer** (`lib/auth.ts`) — `requireSession` / `requireApproved` / `requireOfficer` for pages, `apiRequireApproved` / `apiRequireOfficer` / `apiRequireAdmin` for endpoints. Every route starts with one of these. No hand-rolled role checks — copy-pasted checks are exactly how two endpoints ended up unauthenticated.
 4. **Page level** — the only public routes are `/login`, `/pending`, `/checkin`, and `/api/auth/*`.
 
-**Approval flow:** new school-domain accounts land on `/pending`. Officers (admin *or* treasurer — treasurers run meetings, so this is deliberately not admin-only) see a pending queue above the roster and approve or decline via `PATCH /api/members/[id]/status`. Reversible in both directions.
+**Approval flow (as relaxed 2026-08-12):** new school-domain accounts are
+approved automatically at signup and go straight to the dashboard. Officers
+(admin *or* treasurer — treasurers run meetings, so this is deliberately not
+admin-only) moderate **after the fact**: decline via
+`PATCH /api/members/[id]/status` flips an account to `rejected` and locks it
+out, and the queue UI above the roster stays for declined-account management
+and the rare edge-case `pending` row. Reversible in both directions.
 
 ### Two ways this locks you out — both guarded
 

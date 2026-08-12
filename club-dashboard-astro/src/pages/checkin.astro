@@ -177,11 +177,11 @@ const firstName = session?.name?.trim().split(/\s+/)[0] || null;
           {event.location && <><br />{event.location}</>}
         </p>
         <p class="pcheck__meta">
-          Your account is still waiting on officer approval, so check-in isn&rsquo;t open
-          to you yet. Once you&rsquo;re approved, scan the code again.
+          Your account isn&rsquo;t active yet, so check-in isn&rsquo;t open to you.
+          School accounts normally get in right away &mdash; mention it to a club officer.
         </p>
         <div class="pcheck__spacer"></div>
-        <a class="btn btn--ghost btn--wide" href="/pending">Check your approval status</a>
+        <a class="btn btn--ghost btn--wide" href="/pending">See account status</a>
         <div class="pcheck__foot">
           Signed in as {session.email} ·
           <form method="post" action="/api/auth/signout" style="display:inline">

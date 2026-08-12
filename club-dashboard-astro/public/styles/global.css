@@ -681,6 +681,13 @@ button,input,select,textarea{ font:inherit; color:inherit; }
 .composer__actions{ display:flex; gap:12px; flex-wrap:wrap; }
 .composer__actions .btn{ flex:1 1 170px; }
 @media (min-width:620px){ .composer__actions .btn{ flex:0 0 auto; } }
+/* Two-up field pair inside a composer form (calendar's event composer:
+   Starts/Ends, Location/Capacity). Single column under 700px; a lone child
+   takes the left half. */
+.composer__duo{ display:grid; gap:16px; grid-template-columns:minmax(0,1fr); }
+@media (min-width:700px){
+  .composer__duo{ grid-template-columns:minmax(0,1fr) minmax(0,1fr); align-items:start; }
+}
 
 .ann{
   display:grid; grid-template-columns:auto minmax(0,1fr);
@@ -788,8 +795,16 @@ button,input,select,textarea{ font:inherit; color:inherit; }
    CALENDAR / EVENTS + QR + PRESENT MODE
    ============================================================ */
 .eventgrid{ display:grid; gap:clamp(24px,3.2vw,40px); }
+/* The officer composer is a direct grid child (between the two column divs,
+   so phone stacking order is unchanged): capped so its line lengths stay
+   sane, and on desktop it spans a full-width row under both columns instead
+   of squeezing into the 264px month column. */
+.eventgrid > .composer{ max-width:680px; }
 @media (min-width:980px){
   .eventgrid{ grid-template-columns:minmax(0,264px) minmax(0,1fr); align-items:start; }
+  .eventgrid > div:first-of-type{ grid-column:1; grid-row:1; }
+  .eventgrid > div:last-of-type{ grid-column:2; grid-row:1; }
+  .eventgrid > .composer{ grid-column:1 / -1; grid-row:2; }
 }
 .month__head{
   display:flex; align-items:baseline; gap:10px; margin-bottom:12px;

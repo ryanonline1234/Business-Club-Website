@@ -176,9 +176,14 @@ const firstName = user.name?.trim().split(/\s+/)[0] || null;
 const greeting = firstName ? `${daypart}, ${firstName}.` : `${daypart}.`;
 const greetDate = fmtDate(now, { weekday: 'long', month: 'long', day: 'numeric' });
 
+// Post-auto-approval, pending rows are edge cases (a school account that
+// didn't get in automatically), not a routine queue — the copy must not
+// imply approval still gates sign-ups.
+const stuckPhrase =
+  pendingCount === 1 ? 'A stuck sign-up needs a look' : 'Some stuck sign-ups need a look';
 let greetNote: string;
 if (hero?.isToday && user.isOfficer && pendingCount > 0) {
-  greetNote = 'The approval queue needs you, and there’s an event on the calendar today.';
+  greetNote = `${stuckPhrase}, and there’s an event on the calendar today.`;
 } else if (hero?.isToday) {
   greetNote = 'There’s an event on the calendar today.';
 } else if (heroEvent) {
@@ -188,7 +193,7 @@ if (hero?.isToday && user.isOfficer && pendingCount > 0) {
     ? `Nothing today — the next event is ${fmtDate(heroEvent.start_time, { weekday: 'long' })}.`
     : `Nothing today — the next event is on ${fmtDate(heroEvent.start_time, { month: 'long', day: 'numeric' })}.`;
 } else if (user.isOfficer && pendingCount > 0) {
-  greetNote = 'The approval queue needs you.';
+  greetNote = `${stuckPhrase}.`;
 } else {
   greetNote = 'Here’s where the club stands.';
 }
@@ -274,7 +279,7 @@ if (hero?.isToday && user.isOfficer && pendingCount > 0) {
           <b id="nudge-h">
             {pendingCount === 1 ? 'One person is waiting on you' : `${pendingCount} people are waiting on you`}
           </b>
-          <p>New accounts need an officer’s approval before they can get in.</p>
+          <p>School sign-ups normally get in automatically — anyone waiting here didn’t, so take a look.</p>
           <a href="/members">Review requests</a>
         </section>
       )}

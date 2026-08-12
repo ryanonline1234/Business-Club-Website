@@ -18,8 +18,9 @@ import {
  *      the domain decision is made.
  *   3. Domain gate. A non-school address is rejected UNLESS an existing profile
  *      row says status='approved' — the grandfather clause (see below).
- *   4. Profile fallback: insert a missing row, or refresh email/name on an
- *      existing one. NEVER role, NEVER status.
+ *   4. Profile fallback: insert a missing row (status decided by the domain
+ *      rule, matching the DB trigger's auto-approval), or refresh email/name
+ *      on an existing one — the update NEVER touches role or status.
  *   5. Read status back and route: approved → /, everything else → /pending.
  *
  * Redirects use a small FIXED set of error codes — ?error=domain |
@@ -199,9 +200,13 @@ export const GET: APIRoute = async ({ request }) => {
    * every officer to 'member' and UN-APPROVES every member the next time they
    * sign in. It presents as "the approval system randomly broke" — nobody
    * connects it to a login — so:
-   *   • missing row → insert { id, email, name } ONLY; the column DEFAULTS
-   *     supply role='member' and status='pending'.
+   *   • missing row → insert { id, email, name, status } — status decided
+   *     ONCE, at creation, by the same domain rule the DB trigger applies
+   *     (see the insert below); the column DEFAULT still owns role.
    *   • existing row → update email and name ONLY.
+   * Auto-approval (2026-08-12) did NOT change this rule. It is also what
+   * makes an officer decline STICK: a 'rejected' row stays rejected on every
+   * later sign-in precisely because this path never rewrites status.
    * ────────────────────────────────────────────────────────────────────────── */
   let profileExists = existingProfile !== null && !profileLookupError;
 
@@ -219,10 +224,24 @@ export const GET: APIRoute = async ({ request }) => {
   }
 
   if (!profileExists) {
-    // No role, no status — the DEFAULTS own those. See the block comment above.
+    // No role — the DEFAULT owns that. Status is explicit since auto-approval
+    // (2026-08-12): the DB trigger now creates school signups 'approved', but
+    // the column default is still 'pending', so this fallback must make the
+    // same decision or the two creation paths disagree. isSchoolEmail
+    // (lib/env.ts) is the one TypeScript home of the domain rule.
+    //
+    // The non-school branch is UNREACHABLE: a non-school address without a
+    // grandfathered profile was rejected and deleted above, and a
+    // grandfathered one HAS a profile row. Written defensively anyway —
+    // 'pending' fails closed. NEVER 'approved' here.
     const { error: insertError } = await supabaseAdmin
       .from('profiles')
-      .insert({ id: userId, email: userEmail, name: userName });
+      .insert({
+        id: userId,
+        email: userEmail,
+        name: userName,
+        status: isSchoolEmail(userEmail) ? 'approved' : 'pending',
+      });
 
     if (insertError) {
       if (insertError.code === '23505') {
@@ -259,9 +278,10 @@ export const GET: APIRoute = async ({ request }) => {
   }
 
   /* ──────────────────────────────────────────────────────────────────────────
-   * Route on approval status. Anything that is not exactly 'approved' —
-   * pending, rejected, or a status we could not read — goes to /pending, which
-   * owns the copy for each case.
+   * Route on approval status. Anything that is not exactly 'approved' goes to
+   * /pending, which owns the copy for each case. Since auto-approval that is
+   * mostly 'rejected' accounts and fail-closed DB blips — a school signup is
+   * created 'approved', so genuine 'pending' is now the rare case.
    * ────────────────────────────────────────────────────────────────────────── */
   const { data: freshProfile, error: statusError } = await supabaseAdmin
     .from('profiles')

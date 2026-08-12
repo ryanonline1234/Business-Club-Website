@@ -27,6 +27,14 @@ is still open:
   verifiable from outside**: STEP 6 indexes, STEP 7's `on delete cascade`, the
   STEP 10–11 trigger, STEP 13b. STEP 7 is the one worth confirming by hand — a
   rejected non-school signup leaves an orphan profile row without it.
+- **STEP 10 changed on 2026-08-12** (auto-approval — see
+  [the new entry below](#any-school-google-account-walks-straight-in)). A
+  database migrated before that date still runs the trigger that creates
+  school signups `pending`. Re-paste STEP 10 and STEP 19 of
+  `supabase-schema.sql` as one block (idempotent, safe any time, either order
+  relative to the code deploy); until that runs, new school signups keep
+  landing on `/pending` while the login copy promises instant access, and
+  STEP 19 is what clears anyone the old trigger already parked in the queue.
 
 ### STEPs 16–18 may not be applied yet
 
@@ -91,6 +99,25 @@ both pass the count. There is no transaction available through PostgREST — a
 DB-level constraint would be the real fix. For a club with a handful of
 officers clicking buttons, the window is not worth a migration. Do not read
 the guard as an airtight invariant; it exists to stop the *ordinary* lockout.
+
+### Any school Google account walks straight in
+
+**Severity: medium, accepted — an explicit owner decision (2026-08-12).**
+School-domain signups are auto-approved at creation ("security feels too
+strict" — the approve-first queue shipped, was used, and was deliberately
+relaxed). Consequence: the domain fence is the only gate, so a compromised,
+shared, or borrowed `@mittymonarch.com` / `@mitty.com` Google account gets a
+working member session the moment it signs in — no human looks first. The
+remedy is after-the-fact: an officer decline flips the account to `rejected`
+and locks it out, and the rejection sticks because the callback never
+rewrites status on a returning login. The queue UI on `/members` stays for
+exactly this. One operator rule follows: a manual suspension in the Supabase
+table editor must set `rejected`, **never** `pending` — STEP 19 of
+`supabase-schema.sql` approves every school row at `pending` on each
+re-paste, so a hand-parked `pending` account silently comes back. Reinstating the gate is a deliberate reversal, not a cleanup:
+STEP 10 back to writing `pending`, the callback insert in
+`api/auth/callback.ts` to match, the login/pending copy, and this entry —
+all in the same change.
 
 ### The grandfathered admin vs STEP 9
 

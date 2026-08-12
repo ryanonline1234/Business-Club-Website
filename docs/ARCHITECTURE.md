@@ -228,14 +228,23 @@ referrer headers. Detail goes to `console.error` (the Vercel function log).
 
 The `on_auth_user_created` trigger creates the `profiles` row, but it has
 proven unreliable, so the callback independently checks and creates it
-(`on conflict` handled). Both paths obey the same rule:
+(`on conflict` handled). Since **2026-08-12** both creation paths
+**auto-approve** school-domain signups — an explicit owner decision ("security
+feels too strict"); the officer queue no longer gates school accounts, and
+moderation is after-the-fact via decline (see
+[Roles and authorization](#roles-and-authorization)). Both paths obey the
+same rule:
 
 > **NEVER write `role` or `status` on a returning login.** An upsert with
 > `role: 'member', status: 'pending'` silently demotes every officer and
 > un-approves every member the next time they sign in, and presents as "the
-> approval system randomly broke". Missing row → insert `{id, email, name}`
-> only (column defaults own the rest). Existing row → update `email`/`name`
-> only, ever.
+> approval system randomly broke". Missing row → insert `{id, email, name,
+> status}` — `status` decided **once, at creation**, by the same domain rule
+> the trigger applies (school → `approved`; the column default owns `role`).
+> Existing row → update `email`/`name` only, ever. Auto-approval did **not**
+> loosen this rule — it is also what makes an officer decline stick: a
+> `rejected` row stays rejected on every later sign-in precisely because the
+> returning-login path never rewrites status.
 
 ### The `?next=` round trip
 
@@ -253,12 +262,15 @@ Pending users always land on `/pending` regardless of `next`.
 
 | Role | Granted by | Can |
 |---|---|---|
-| `member` | default on signup (after approval) | See everything approved members see; check in to events |
+| `member` | default on signup (school accounts are approved automatically) | See everything approved members see; check in to events |
 | `treasurer` | admin promotion | …plus create/cancel events, post/delete announcements, present QR codes, **approve/decline accounts** |
 | `admin` | first one by SQL, then promotion | …plus change member roles |
 
-Approval (`PATCH /api/members/:id/status`) is deliberately officer-wide —
-treasurers run meetings, and letting members in is part of running a meeting.
+Approve/decline (`PATCH /api/members/:id/status`) is deliberately officer-wide —
+treasurers run meetings, and ruling on accounts is part of running a meeting.
+Since auto-approval it is mostly the **decline** lever: school accounts are in
+at signup, so moderation is after-the-fact — a decline flips the account to
+`rejected`, locks it out, and sticks on every later sign-in.
 Role changes (`PATCH /api/members/:id`) are admin-only, so a treasurer cannot
 mint an admin. Both endpoints refuse the write that would leave zero approved
 admins (the last-admin guard), and an officer can never rule on their own

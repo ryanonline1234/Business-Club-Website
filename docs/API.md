@@ -99,10 +99,15 @@ Order of operations (load-bearing — see the file header before editing):
 3. Domain gate: non-school addresses are rejected — `signOut()` first, then
    `admin.deleteUser()` so a retry is clean — **unless** the existing profile
    is already `approved` (the grandfather clause).
-4. Profile fallback: missing row → insert `{id, email, name}` only; existing
-   row → update `email`/`name` only. **Never `role`, never `status`.**
+4. Profile fallback: missing row → insert `{id, email, name, status}`, with
+   `status` decided **at creation** by the domain rule (school → `approved` —
+   auto-approval, 2026-08-12); existing row → update `email`/`name` only.
+   **A returning login never writes `role` or `status`** — which is also what
+   makes an officer decline stick across sign-ins.
 5. Route: `approved` → the validated `next` path or `/`; anything else →
-   `/pending`.
+   `/pending`. Since auto-approval a school signup arrives already
+   `approved`, so `/pending` mostly catches `rejected` accounts and
+   fail-closed lookup blips — genuine `pending` is the rare case.
 
 **Responses** (all `302`, all with session cookies on the redirect):
 - → `SITE_URL` + (`next` path or `/`) on success for an approved account
@@ -278,7 +283,13 @@ skips the write) · `400` (missing id / invalid role) · `404` · `409`
 ### `PATCH /api/members/:id/status` — officer
 
 Approve or decline an account. Officer-wide **on purpose** — treasurers run
-meetings, and letting members in is part of running a meeting.
+meetings, and ruling on accounts is part of running a meeting.
+
+Since auto-approval (2026-08-12) school accounts are `approved` at signup, so
+moderation is **after-the-fact** and this endpoint is mostly the decline
+lever: `rejected` locks the account out and sticks on every later sign-in
+(the callback never rewrites status on a returning login). `approved` remains
+for reversing a decline or clearing a rare edge-case `pending` row.
 
 ```json
 { "status": "approved" | "rejected" }

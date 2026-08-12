@@ -8,8 +8,13 @@
  *   profileState 'error'  → transient DB failure. Say so; do NOT show
  *                           approval copy for a blip.
  *   status 'rejected'     → declined, talk to an officer.
- *   otherwise             → genuinely pending: who you are, when you asked
- *                           (profiles.created_at), and which officers to nudge.
+ *   otherwise             → genuinely pending — the UNUSUAL state since
+ *                           auto-approval (2026-08-12): school signups are
+ *                           created 'approved', so a real 'pending' row means
+ *                           an edge case, not a queue. The copy says "under
+ *                           review" and points at an officer; it must not
+ *                           promise an approval queue that no longer gates
+ *                           school accounts.
  */
 import '@fontsource/barlow-condensed/latin-500.css';
 import '@fontsource/barlow-condensed/latin-600.css';
@@ -66,7 +71,7 @@ if (!dbError && !rejected) {
       : null;
 }
 
-const title = dbError ? 'Something went wrong' : rejected ? 'Request declined' : 'Awaiting approval';
+const title = dbError ? 'Something went wrong' : rejected ? 'Request declined' : 'Under review';
 ---
 <!doctype html>
 <html lang="en">
@@ -120,14 +125,15 @@ const title = dbError ? 'Something went wrong' : rejected ? 'Request declined' :
       {!dbError && !rejected && (
         <div class="wait__block">
           <span class="seal seal--wait" aria-hidden="true">&hellip;</span>
-          <h1>Awaiting officer approval</h1>
+          <h1>Your account is under review</h1>
           <p class="wait__body">
-            You&rsquo;re signed in as <strong>{session.email}</strong>. An officer needs to
-            approve your account before you can see the club dashboard.
+            You&rsquo;re signed in as <strong>{session.email}</strong>, but your account
+            isn&rsquo;t active yet. School accounts normally get in right away, so if
+            you&rsquo;re seeing this, mention it to a club officer.
           </p>
-          {requestedOn && <p class="wait__meta">You requested access on {requestedOn}.</p>}
+          {requestedOn && <p class="wait__meta">You signed up on {requestedOn}.</p>}
           {officerList && (
-            <p class="wait__meta">At the next meeting, ask {officerList} to approve you.</p>
+            <p class="wait__meta">At the next meeting, {officerList} can sort it out.</p>
           )}
           <div class="wait__acts">
             <a class="btn btn--wide" href="/pending">Check again</a>

@@ -3,7 +3,7 @@
 -- Canonical Supabase schema + the member-approval migration.
 --
 -- HOW TO RUN THIS FILE
---   In the Supabase SQL Editor, in three passes:
+--   In the Supabase SQL Editor, in four passes:
 --     1. STEP 0 alone      — pre-flight. READ THE ROWS IT RETURNS. Its result
 --                            decides whether STEP 9 may be applied at all.
 --                            On a brand-new project this statement errors with
@@ -15,6 +15,14 @@
 --                            empty project builds everything from scratch.
 --     3. STEP 15 alone     — verification. READ THE ROWS IT RETURNS, before
 --                            deploying any code.
+--     4. STEPs 16-19       — paste as one block, safe any time, in either
+--                            order relative to the code deploy (see their
+--                            banners). One caveat: STEP 19 re-approves EVERY
+--                            school-domain row sitting at 'pending' — not
+--                            just pre-cutover queue residue — so an account
+--                            you want locked out must be parked at
+--                            'rejected', never 'pending', or the next
+--                            re-paste silently lets it back in.
 --
 --   Passes 1 and 3 are separate because the SQL Editor only shows the LAST
 --   result set: paste everything at once and you never see what STEP 0 said.
@@ -25,7 +33,9 @@
 --   As of this writing src/pages/pending.astro has never been written, and no
 --   page calls PATCH /api/members/:id/status. Run this migration against the
 --   current front end and the result is a closed loop with no exit:
---     • every new @mittymonarch.com signup is created 'pending' (STEP 3 + 10);
+--     • every new @mittymonarch.com signup is created 'pending' (STEP 3's
+--       default; STEP 10 wrote 'pending' too until the 2026-08-12
+--       auto-approval — see its banner);
 --     • the guards and the OAuth callback send them to /pending — a 404;
 --     • no officer screen can approve them, so the only way out is editing
 --       rows by hand in the Supabase table editor.
@@ -227,9 +237,12 @@ alter table public.audit_logs enable row level security;
 --     2. backfill NULL → 'approved'      → everyone who exists today keeps access
 --     3. NOW set default 'pending' + NOT NULL → only FUTURE signups are pending
 --
---   Step 2 keys off "status is null", so a second run of this file finds no
---   NULLs and therefore can never re-approve someone an officer has since
---   set to 'pending' or 'rejected'. That is what makes it safe to re-run.
+--   Step 2 keys off "status is null", so a second run finds no NULLs and
+--   this statement can never re-approve someone an officer has since set to
+--   'pending' or 'rejected'. That guarantee is STEP 2's alone, not the
+--   file's: STEP 19 (end of file) re-approves any school-domain row still
+--   at 'pending' on every run. 'rejected' survives everything — a manual
+--   suspension in the table editor must use 'rejected', never 'pending'.
 --
 --   Run STEP 1-3 together, then read STEP 15 before deploying any code.
 -- ═══════════════════════════════════════════════════════════════════════════
@@ -242,8 +255,9 @@ alter table public.profiles
 
 -- ── STEP 2: backfill existing members to 'approved' ────────────────────────
 -- This MUST run before the default is set. Every member who exists today keeps
--- their access. Re-running is a no-op (no NULLs left), so newly-pending users
--- are never silently approved by a second run of this file.
+-- their access. Re-running THIS statement is a no-op (no NULLs left) — but a
+-- re-run of the whole file also hits STEP 19, which approves school rows
+-- still at 'pending'. See its banner.
 update public.profiles
    set status = 'approved'
  where status is null;
@@ -329,8 +343,17 @@ $$ language sql immutable;
 
 
 -- ── STEP 10: replace the signup trigger ────────────────────────────────────
+-- AUTO-APPROVAL (2026-08-12): school-domain signups are created 'approved',
+-- not 'pending'. This was a deliberate owner decision — the approval queue
+-- felt too strict — not an accident; do not "fix" it back. Moderation is now
+-- AFTER the fact: an officer decline (PATCH /api/members/:id/status) flips
+-- the row to 'rejected' and locks the account out, and it STAYS rejected on
+-- every later sign-in because the callback never rewrites status on a
+-- returning login. Decline is the moderation lever; the queue is not a gate.
+--
 -- Changes vs the original:
---   * writes `status`, derived from the email domain
+--   * writes `status`, derived from the email domain: school → 'approved'
+--     (auto-approval, above), anything else → 'rejected'
 --   * does NOT raise on a bad domain — it marks the row 'rejected' and lets
 --     /api/auth/callback own the user-facing rejection, because a raise here
 --     surfaces as an opaque Supabase server_error with no message we control
@@ -338,6 +361,11 @@ $$ language sql immutable;
 --   * prefers raw_user_meta_data->>'full_name' first, matching the callback
 --     (the two paths previously produced different display names)
 --   * `set search_path = public` hardens the security definer function
+--
+-- RE-RUN NOTE: if STEPs 0-15 were applied BEFORE 2026-08-12, the live trigger
+-- still writes 'pending' for school signups. Re-paste STEP 10 and STEP 19
+-- (end of file) as one block — both are idempotent and safe at any time, in
+-- either order relative to the code deploy.
 create or replace function public.handle_new_user()
 returns trigger as $$
 begin
@@ -351,7 +379,7 @@ begin
       split_part(new.email, '@', 1)
     ),
     'member',
-    case when public.is_school_email(new.email) then 'pending' else 'rejected' end
+    case when public.is_school_email(new.email) then 'approved' else 'rejected' end
   )
   on conflict (id) do nothing;
   return new;
@@ -689,3 +717,35 @@ create policy "Officers can manage photos"
 revoke select on public.photos from anon, authenticated;
 grant select (id, event_id, storage_path, caption, created_at)
   on public.photos to anon, authenticated;
+
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- AUTO-APPROVAL BACKFILL — STEP 19
+--
+-- ✅ SAFE TO RUN ANY TIME, repeatedly, on a live database. Pairs with the
+--   2026-08-12 STEP 10 rewrite (see its banner and RE-RUN NOTE).
+-- ⚠️ "SAFE" MEANS "CANNOT LOCK ANYONE OUT" — NOT "CHANGES NOTHING". Every
+--   run approves EVERY school-domain row sitting at 'pending' at that
+--   moment, not just pre-cutover queue residue. An account parked at
+--   'pending' by hand in the table editor is un-parked by the next re-paste
+--   of this file — it will look like the account "came back on its own".
+--   To suspend an account manually, set it to 'rejected': 'rejected'
+--   survives this statement; 'pending' does not.
+-- ═══════════════════════════════════════════════════════════════════════════
+
+-- ── STEP 19: clear the pre-auto-approval queue ─────────────────────────────
+-- Backfill for databases migrated before 2026-08-12: any school account
+-- still parked at 'pending' — queue residue from the era when the trigger
+-- created school signups pending — is approved, matching what STEP 10 now
+-- does at signup. Keyed on status='pending' AND the school-domain predicate,
+-- so it can NEVER touch a 'rejected' row: officer declines survive this
+-- statement. The predicate has no memory of WHY a row is pending, though —
+-- the app never writes 'pending' (the status endpoint allows only
+-- approved/rejected), so the only pending rows should be queue residue, but
+-- a hand-edited 'pending' looks identical and gets approved too (banner
+-- above). approved_by / approved_at stay NULL — the same "approved by the
+-- rule, not by an officer" marker the STEP 2 backfill leaves.
+update public.profiles
+   set status = 'approved'
+ where status = 'pending'
+   and public.is_school_email(email);

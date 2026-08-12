@@ -7,6 +7,11 @@
  * submits forms, fetches the QR code, and reloads. Day bucketing and "today"
  * use Pacific-local date keys, never the server's UTC date.
  *
+ * Cancelled events never render on this page: they are filtered out right
+ * after the query (month grid, agenda, pips, selection — a ?event= id
+ * pointing at one behaves exactly like an unknown id). The rows stay in the
+ * database; un-cancelling is a table-editor operation.
+ *
  * Officer flows: New event (disclosure composer → POST /api/events/create),
  * Cancel event (inline confirm → DELETE /api/events/[id]/delete), Present
  * mode (full-bleed projected surface fed by GET /api/events/[id]/qr, silently
@@ -48,7 +53,12 @@ if (eventsError) {
     code: eventsError.code,
   });
 }
-const events: EventRow[] = (eventsData ?? []) as EventRow[];
+/* Soft-deleted rows are invisible here — every consumer below (byDay,
+   monthEvents, cells, the selection chain) reads this filtered list, so a
+   cancelled ?event= id falls through to the same state as an unknown id. */
+const events: EventRow[] = ((eventsData ?? []) as EventRow[]).filter(
+  (e) => e.status !== 'cancelled'
+);
 
 /* ── Pacific-local time helpers ─────────────────────────────────────────── */
 const TZ = 'America/Los_Angeles';
@@ -229,7 +239,7 @@ interface PhotoRow {
 
 let selectedRecap = '';
 let selectedPhotos: PhotoRow[] = [];
-if (selected && selectedIsPast && selected.status !== 'cancelled' && user.isOfficer) {
+if (selected && selectedIsPast && user.isOfficer) {
   const [recapRes, photosRes] = await Promise.all([
     supabaseAdmin.from('events').select('recap').eq('id', selected.id).maybeSingle(),
     supabaseAdmin
@@ -272,7 +282,6 @@ const photoUrl = (path: string) =>
     .join('/')}`;
 
 const selectedIsNow = selected ? isNow(selected) : false;
-const selectedCancelled = selected?.status === 'cancelled';
 const selectedWhen = selected
   ? `${fmtDayLong.format(new Date(selected.start_time))} · ${timeRange(selected)}`
   : '';
@@ -333,7 +342,6 @@ const canPresent =
         ) : (
           <ul class="rowlist">
             {monthEvents.map((e) => {
-              const cancelled = e.status === 'cancelled';
               const live = isNow(e);
               const d = new Date(e.start_time);
               return (
@@ -342,13 +350,12 @@ const canPresent =
                     class="rowlink"
                     href={`/calendar?month=${monthStr}&event=${e.id}`}
                     aria-current={selected && e.id === selected.id ? 'true' : undefined}
-                    style={cancelled ? 'opacity:.55;' : undefined}
                   >
                     <span class="datestamp datestamp--sm" aria-hidden="true"><b>{fmtDayNum.format(d)}</b><i>{fmtWeekday.format(d)}</i></span>
                     <span class="rowlink__main">
-                      <span class="rowlink__title" style={cancelled ? 'text-decoration:line-through;' : undefined}>{e.title}</span>
+                      <span class="rowlink__title">{e.title}</span>
                       <span class="rowlink__sub">
-                        {cancelled && 'Cancelled · '}{live && <><span class="hl">Now</span>{' · '}</>}{fmtTime(e.start_time)}{e.location ? ` · ${e.location}` : ''}
+                        {live && <><span class="hl">Now</span>{' · '}</>}{fmtTime(e.start_time)}{e.location ? ` · ${e.location}` : ''}
                       </span>
                     </span>
                     <span class="chev" aria-hidden="true">→</span>
@@ -365,18 +372,21 @@ const canPresent =
         </p>
       </section>
 
-      {user.isOfficer && (
-        <details class="composer">
-          <summary>New event</summary>
-          <form class="composer__form" id="event-form" novalidate>
-            <div class="composer__head">
-              <b>New event</b>
-              <span class="flag">Officer only</span>
-            </div>
-            <label class="field">
-              <span>Title</span>
-              <input class="input" type="text" name="title" required maxlength="200" autocomplete="off" />
-            </label>
+    </div>
+
+    {user.isOfficer && (
+      <details class="composer">
+        <summary>New event</summary>
+        <form class="composer__form" id="event-form" novalidate>
+          <div class="composer__head">
+            <b>New event</b>
+            <span class="flag">Officer only</span>
+          </div>
+          <label class="field">
+            <span>Title</span>
+            <input class="input" type="text" name="title" required maxlength="200" autocomplete="off" />
+          </label>
+          <div class="composer__duo">
             <label class="field">
               <span>Starts</span>
               <input class="input" type="datetime-local" name="start" required />
@@ -385,8 +395,10 @@ const canPresent =
             <label class="field">
               <span>Ends</span>
               <input class="input" type="datetime-local" name="end" />
-              <span class="field__hint">Optional.</span>
+              <span class="field__hint">Optional — leave blank for open-ended.</span>
             </label>
+          </div>
+          <div class="composer__duo">
             <label class="field">
               <span>Location</span>
               <input class="input" type="text" name="location" maxlength="300" autocomplete="off" />
@@ -396,6 +408,8 @@ const canPresent =
               <input class="input" type="number" name="capacity" min="1" step="1" inputmode="numeric" />
               <span class="field__hint">Optional. Leave blank for no cap.</span>
             </label>
+          </div>
+          <div class="composer__duo">
             <label class="field">
               <span>Category</span>
               <select class="select" name="category">
@@ -406,19 +420,19 @@ const canPresent =
                 <option value="deadline">Deadline</option>
               </select>
             </label>
-            <label class="field">
-              <span>Description</span>
-              <textarea class="textarea" name="description" maxlength="5000"></textarea>
-              <span class="field__hint">Optional. Plain text — members see it on the event page.</span>
-            </label>
-            <p id="event-form-error" class="small" role="alert" style="color:var(--clay); display:none;"></p>
-            <div class="composer__actions">
-              <button class="btn" type="submit">Create event</button>
-            </div>
-          </form>
-        </details>
-      )}
-    </div>
+          </div>
+          <label class="field">
+            <span>Description</span>
+            <textarea class="textarea" name="description" maxlength="5000"></textarea>
+            <span class="field__hint">Optional. Plain text — members see it on the event page.</span>
+          </label>
+          <p id="event-form-error" class="small" role="alert" style="color:var(--clay); display:none;"></p>
+          <div class="composer__actions">
+            <button class="btn" type="submit">Create event</button>
+          </div>
+        </form>
+      </details>
+    )}
 
     <div>
       {selected === null ? (
@@ -434,10 +448,9 @@ const canPresent =
         <article class="event-detail">
           <p class="event-detail__cat">
             {selectedIsNow && <span class="tag tag--now">Happening now</span>}
-            {selectedCancelled && <span class="tag tag--clay">Cancelled</span>}
             <span class="tag">{catLabel(selected.category)}</span>
           </p>
-          <h2 style={selectedCancelled ? 'text-decoration:line-through; opacity:.6;' : undefined}>{selected.title}</h2>
+          <h2>{selected.title}</h2>
           {selected.description && <p class="event-detail__desc">{selected.description}</p>}
 
           <dl class="facts">
@@ -474,9 +487,9 @@ const canPresent =
             </div>
           )}
 
-          {/* Not for cancelled events: /about never shows them, so the block's
-              "published on /about" promise would be false there. */}
-          {user.isOfficer && selectedIsPast && !selectedCancelled && (
+          {/* selected is never cancelled (filtered at the top), so the block's
+              "published on /about" promise always holds here. */}
+          {user.isOfficer && selectedIsPast && (
             <section class="recapblock owned" aria-labelledby="recap-h">
               <div class="recapblock__head">
                 <b id="recap-h">Recap &amp; photos</b>
@@ -618,6 +631,39 @@ const canPresent =
   /* ── New event (officers) ─────────────────────────────────────────────── */
   const form = document.getElementById('event-form') as HTMLFormElement | null;
   if (form) {
+    // An empty datetime-local shows a ghost of today's date (WebKit renders it
+    // exactly like a set value), which the owner once read as real and
+    // submitted. Make the visible value the real value: when the composer
+    // opens, prefill Starts with the next round hour in the officer's own
+    // clock — the same local clock the submit logic below reads. "Ends" stays
+    // genuinely empty; its hint says so.
+    const startInput = form.querySelector('input[name="start"]') as HTMLInputElement | null;
+    // Tracks the exact string the prefill last wrote. On reopen, an untouched
+    // prefill is refreshed (a long-lived tab would otherwise submit a stale —
+    // possibly past — start time as if it were real); anything the officer
+    // typed or edited differs from this string and is never clobbered.
+    let lastPrefill = '';
+    const prefillStart = () => {
+      if (!startInput) return;
+      if (startInput.value && startInput.value !== lastPrefill) return;
+      const d = new Date();
+      d.setMinutes(0, 0, 0);
+      d.setHours(d.getHours() + 1);
+      const p2 = (n: number) => String(n).padStart(2, '0');
+      lastPrefill =
+        `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}T${p2(d.getHours())}:${p2(d.getMinutes())}`;
+      startInput.value = lastPrefill;
+    };
+    const composerEl = form.closest('details');
+    if (composerEl) {
+      composerEl.addEventListener('toggle', () => {
+        if (composerEl.open) prefillStart();
+      });
+      if (composerEl.open) prefillStart();
+    } else {
+      prefillStart();
+    }
+
     const errEl = document.getElementById('event-form-error') as HTMLElement;
     const showErr = (msg: string) => {
       errEl.textContent = msg;
