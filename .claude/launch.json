@@ -2,17 +2,10 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "Astro (new)",
+      "name": "Mitty Business Club",
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev"],
       "cwd": "club-dashboard-astro",
-      "port": 3000
-    },
-    {
-      "name": "Next.js (legacy)",
-      "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev"],
-      "cwd": ".",
       "port": 3000
     }
   ]
