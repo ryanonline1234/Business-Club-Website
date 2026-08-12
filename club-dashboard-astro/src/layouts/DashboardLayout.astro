@@ -113,7 +113,11 @@ const canEnterPreview = user.actualIsOfficer && !previewing;
 
   <header class="topbar">
     <div class:list={['topbar__inner', canEnterPreview && 'topbar__inner--viewas']}>
-      <a class="mark" href="/">
+      {/* The brand mark is the portal's one route to the public /about page —
+          "Home" already lives in the nav, so the logo is free to be the front
+          door. Keep this href /about; without it /about is reachable only by
+          typing the URL. */}
+      <a class="mark" href="/about" title="About the club — our public page">
         <svg width="30" height="30" viewBox="0 0 40 40" aria-hidden="true"><use href="#monogram"/></svg>
         <span class="mark__word">Mitty Business Club<span>{subtitle}</span></span>
       </a>
