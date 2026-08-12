@@ -186,19 +186,6 @@ export async function requireOfficer(
   return user;
 }
 
-/**
- * @deprecated Compatibility shim for the pages that have not been rewritten
- * yet. Use requireApproved / requireOfficer / requireSession. Delete once no
- * .astro file imports it.
- */
-export async function requireAuth(
-  request: Request,
-  responseHeaders: Headers,
-  redirect: RedirectFn
-): Promise<SessionUser> {
-  return await requireApproved(request, responseHeaders, redirect);
-}
-
 /* ────────────────────────────────────────────────────────────────────────────
  * API GUARDS — these RETURN, never throw. First statement of every endpoint.
  * ──────────────────────────────────────────────────────────────────────────── */

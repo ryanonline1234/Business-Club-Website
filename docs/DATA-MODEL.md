@@ -1,25 +1,41 @@
 # Data Model
 
-Everything here comes from [`supabase-schema.sql`](../supabase-schema.sql) at the
-repo root. That file is the single source of truth — there are no migrations,
-no ORM, and no generated types. It is written to be **idempotent** (`create table
-if not exists`, `on conflict do nothing`), so re-running it against a live
-database is safe.
+Everything here comes from [`supabase-schema.sql`](../supabase-schema.sql) at
+the repo root — base schema **plus the member-approval migration** in one
+file. It is the single source of truth: no migration tooling, no ORM, no
+generated types. Every statement is idempotent, so re-running the file is a
+no-op and running it on an empty project builds everything from scratch.
 
-Apply it by pasting into the Supabase SQL Editor and running it.
+**How to run it — three passes, not one paste.** The SQL Editor only shows the
+*last* result set, so:
+
+1. **STEP 0 alone** — the pre-flight. Read the rows it returns; they decide
+   whether STEP 9 may ever be applied. (On a brand-new project it errors with
+   "relation does not exist" — that counts as zero rows.)
+2. **PART 1 → STEP 14** as one block.
+3. **STEP 15 alone** — verification. Read it before deploying any code.
+
+Deploy order is **SQL first, then code** — the wrong order strands every user
+on `/pending`. See [DEPLOYMENT.md](DEPLOYMENT.md#deploy-order-sql-first-then-code).
 
 ---
 
 ## Entity overview
 
 ```
-auth.users ──trigger──> profiles ──┬──> transactions ──> categories
-                                   │                        ↑
-                                   ├──> budgets ────────────┘
-                                   ├──> events ──> attendance
-                                   ├──> announcements
-                                   └──> audit_logs   (defined, never written)
+auth.users ──trigger──> profiles ──┬──> events ──> attendance
+  (on delete cascade)              ├──> announcements
+                                   ├──> transactions ──> categories   ┐
+                                   ├──> budgets ─────────┘            │ retained,
+                                   └──> audit_logs                    ┘ read by nothing
 ```
+
+The app touches **profiles, events, attendance, announcements**. The finance
+tables (`categories`, `transactions`, `budgets`, `audit_logs`) survive from
+the cut finance module: kept so the data is not lost and re-enabling treasury
+is a page, not a migration. Do not drop them — and note `transactions.user_id`
+/ `audit_logs.user_id` FK into `profiles`, so hand-deleting a profile row that
+has old finance data will fail on those keys.
 
 ---
 
@@ -27,83 +43,29 @@ auth.users ──trigger──> profiles ──┬──> transactions ──> c
 
 ### `profiles`
 
-Mirrors `auth.users` and carries the role. Created automatically on signup by the
-`on_auth_user_created` trigger, with the auth callback as a fallback.
+Mirrors `auth.users`; carries role **and approval status**. Created on signup
+by the `on_auth_user_created` trigger, with the OAuth callback as a fallback
+(either may win the race — both are `on conflict`-safe).
 
 | Column | Type | Notes |
 |---|---|---|
-| `id` | `uuid` PK | FK → `auth.users` |
-| `email` | `text` | not null |
-| `name` | `text` | from Google metadata, or the email local part |
-| `role` | `text` | `'treasurer' \| 'admin' \| 'member'`, default `'member'` |
+| `id` | `uuid` PK | FK → `auth.users` **`on delete cascade`** (STEP 7 — the callback's `deleteUser()` on domain rejection needs it) |
+| `email` | `text` | not null; refreshed on every login |
+| `name` | `text` | Google `full_name` → `name` → email local part; refreshed on login |
+| `role` | `text` | `'member' \| 'treasurer' \| 'admin'`, default `'member'` |
+| `status` | `text` | `'pending' \| 'approved' \| 'rejected'`, default `'pending'`, not null (STEPs 1–4) |
+| `approved_by` | `uuid` | FK → `profiles`; who **ruled** (declines stamped too). NULL = grandfathered, never explicitly decided |
+| `approved_at` | `timestamptz` | when they ruled |
 | `created_at` | `timestamptz` | default `now()` |
 
-The `role` check constraint is the only thing keeping roles well-formed —
-application code re-validates the same three values before writing.
+Indexes: `idx_profiles_status`, plus the partial `idx_profiles_pending_queue`
+on `created_at where status = 'pending'` for the officer queue.
 
-### `categories`
-
-Expense buckets. Seeded with four rows on schema apply: **Budget**,
-**Activities**, **Prizes**, **Snacks**.
-
-| Column | Type | Notes |
-|---|---|---|
-| `id` | `uuid` PK | `uuid_generate_v4()` |
-| `name` | `text` | not null |
-| `slug` | `text` | not null, **unique** — the seed's conflict target |
-| `description` | `text` | |
-| `icon` | `text` | default `'box'`; the seed sets `budget`/`activity`/`prize`/`snack` |
-| `is_active` | `boolean` | default `true`; `/api/finance` filters on it |
-| `created_at` | `timestamptz` | |
-
-No endpoint creates or edits categories — manage them in the Supabase table
-editor.
-
-### `transactions`
-
-A single expense record. Members submit; officers approve.
-
-| Column | Type | Notes |
-|---|---|---|
-| `id` | `uuid` PK | |
-| `amount` | `numeric(10,2)` | not null; API rejects values ≤ 0 |
-| `description` | `text` | not null |
-| `category_id` | `uuid` | FK → `categories`, not null |
-| `user_id` | `uuid` | FK → `profiles`, not null — always the submitter |
-| `status` | `text` | `'pending' \| 'approved' \| 'rejected'`, default `'pending'` |
-| `receipt_url` | `text` | **no code reads or writes this** |
-| `merchant` | `text` | |
-| `created_at` | `timestamptz` | |
-
-Indexed on `user_id`, `category_id`, `status`, `created_at`.
-
-There is no `updated_at` and no record of who approved what.
-
-### `budgets`
-
-A spending allowance for a category over a date range.
-
-| Column | Type | Notes |
-|---|---|---|
-| `id` | `uuid` PK | |
-| `name` | `text` | not null |
-| `amount` | `numeric(10,2)` | not null — the ceiling |
-| `spent` | `numeric(10,2)` | default `0` — **never incremented by any code** |
-| `category_id` | `uuid` | FK → `categories`, not null |
-| `starts_at` | `timestamptz` | not null |
-| `ends_at` | `timestamptz` | not null |
-| `created_at` | `timestamptz` | |
-
-Indexed on `category_id`.
-
-`/finance` renders a progress bar from `spent / amount`, so every budget shows 0%
-forever. See [KNOWN-GAPS.md](KNOWN-GAPS.md#budgetsspent-is-never-updated).
-
-Nothing prevents overlapping budgets for the same category and period.
+The check constraints keep role/status well-formed; application code
+re-validates the same values before writing (a check violation surfaces to
+clients as a 409 with fixed copy, never the raw Postgres message).
 
 ### `events`
-
-Club meetings, workshops, competitions.
 
 | Column | Type | Notes |
 |---|---|---|
@@ -113,17 +75,15 @@ Club meetings, workshops, competitions.
 | `start_time` | `timestamptz` | not null |
 | `end_time` | `timestamptz` | |
 | `location` | `text` | |
-| `password` | `text` | collected by the create form, **never checked** |
-| `capacity` | `integer` | stored, **never enforced** |
-| `category` | `text` | default `'meeting'`; free text, no constraint |
-| `status` | `text` | `'active' \| 'completed' \| 'cancelled'`, default `'active'` |
+| `password` | `text` | **DEAD.** Nothing reads or writes it; kept only because dropping a column is irreversible. If password check-in is ever built, hash it — the old app stored it in plaintext |
+| `capacity` | `integer` | validated positive on create, displayed, **never enforced** at check-in |
+| `category` | `text` | default `'meeting'`; free text |
+| `status` | `text` | `'active' \| 'completed' \| 'cancelled'`, default `'active'`. Nothing ever sets `'completed'` |
 | `created_by` | `uuid` | FK → `profiles`, not null |
 | `created_at` | `timestamptz` | |
 
-Indexed on `start_time`, `status`, `created_by`.
-
-Deletion is soft — `DELETE /api/events/:id/delete` sets `status = 'cancelled'`.
-Nothing marks an event `'completed'`; that transition is unimplemented.
+Indexed on `start_time`, `status`, `created_by`. Deletion is soft —
+`DELETE /api/events/:id/delete` sets `status = 'cancelled'`.
 
 ### `attendance`
 
@@ -133,21 +93,15 @@ One row per member per event.
 |---|---|---|
 | `id` | `uuid` PK | |
 | `event_id` | `uuid` | FK → `events`, not null |
-| `member_id` | `uuid` | FK → `profiles`, not null |
+| `member_id` | `uuid` | FK → `profiles`, not null — **always the session user**; the API never accepts a client-supplied id |
 | `checked_in_at` | `timestamptz` | default `now()` |
-| `method` | `text` | `'password' \| 'qr'`, default `'password'` |
-| `qr_data` | `text` | **never written** |
+| `method` | `text` | `'password' \| 'qr'`; the only writer hardcodes `'qr'` |
+| `qr_data` | `text` | never written |
 | `created_at` | `timestamptz` | |
 
-**Unique constraint** `attendance_event_member_unique` on `(event_id, member_id)`
-— the database-level backstop for duplicate check-ins. The API also checks
-explicitly and returns `409` first.
-
-Indexed on `event_id` and `member_id`.
-
-Every row written today has `method = 'qr'` (the API hardcodes it), even though
-the column defaults to `'password'` — the password path was designed but never
-built.
+**Unique constraint** `attendance_event_member_unique` on
+`(event_id, member_id)` — the race backstop behind the API's explicit
+duplicate check. Indexed on `event_id` and `member_id`.
 
 ### `announcements`
 
@@ -155,90 +109,107 @@ built.
 |---|---|---|
 | `id` | `uuid` PK | |
 | `title` | `text` | not null |
-| `body` | `text` | not null |
+| `body` | `text` | not null — **plain text**; rendered escaped, never `innerHTML` |
 | `author_id` | `uuid` | FK → `profiles`, nullable |
 | `author_name` | `text` | denormalised snapshot — survives author deletion, goes stale on rename |
 | `created_at` | `timestamptz` | |
 
-Not indexed. `GET /api/announcements` caps at 10 rows.
+### The finance tables
 
-### `audit_logs`
+`categories` (seeded with four rows), `transactions`, `budgets`, `audit_logs`
+— schemas unchanged from the old app, read and written by nothing. Their RLS
+policies were still rewritten onto the new helpers (see below) so they stay
+truthful.
 
-Defined in full — `action`, `table_name`, `record_id`, `user_id`, `old_data`
-jsonb, `new_data` jsonb, `created_at` — with an RLS read policy for officers.
+---
 
-**No application code ever writes to it.** Transaction deletions and role changes
-leave no trail. See [KNOWN-GAPS.md](KNOWN-GAPS.md#audit_logs-is-defined-but-never-written).
+## The approval migration (STEPs 0–15)
+
+The shape that matters, and the two ways it can lock you out:
+
+| Step | What | Why it's shaped that way |
+|---|---|---|
+| 0 | Pre-flight: list non-school accounts | Decides STEP 9. **Read it first** |
+| 1–3 | `status` added with **no default** → backfill NULL→`'approved'` → then default `'pending'` + NOT NULL | The one-liner `add column … not null default 'pending'` instantly un-approves every existing member including every officer. Three statements is the difference between a migration and a self-inflicted lockout |
+| 4 | Check constraint | |
+| 5 | `approved_by` / `approved_at` | NULL = grandfathered |
+| 6 | Status index + partial pending-queue index | |
+| 7 | `profiles_id_fkey` → `on delete cascade` | The callback's `deleteUser()` on a rejected domain otherwise fails on the FK |
+| 8 | `is_school_email(text)` | The SQL half of the domain rule; the TS half is `isSchoolEmail()` in `lib/env.ts`. Deliberately bug-compatible (`split_part` vs `.split('@')[1]`). These two places are the whole rule |
+| 9 | **CONDITIONAL, ships commented out** — DB-level domain check constraint | Only if STEP 0 returned zero rows. `NOT VALID` skips existing rows, but any later UPDATE to a grandfathered row would fail — the admin could never be changed again, by anyone |
+| 10–11 | `handle_new_user` rewritten; trigger recreated idempotently | See below |
+| 12 | `is_approved()` / `is_officer()` / `is_admin()` security-definer helpers | Break the self-referential-policy recursion; all three require `status='approved'` |
+| 13 | Approval-aware RLS on `profiles` | Adds the officer read the old policies never had |
+| 13b | `profiles_role_change_guard` trigger | See below |
+| 14 | Approval-aware RLS on the other tables | A pending account reads nothing |
+| 15 | Verification queries | Read before deploying code |
+
+STEP 2 keys off `status is null`, so a re-run can never re-approve someone an
+officer has since declined.
 
 ---
 
 ## Signup trigger
 
-```sql
-create function public.handle_new_user() returns trigger as $$
-begin
-  insert into public.profiles (id, email, name, role)
-  values (new.id, new.email,
-          coalesce(new.raw_user_meta_data->>'name', split_part(new.email, '@', 1)),
-          'member');
-  return new;
-end;
-$$ language plpgsql security definer;
+STEP 10's `handle_new_user()` differs from the old one in four ways:
 
-create trigger on_auth_user_created
-  after insert on auth.users
-  for each row execute function public.handle_new_user();
-```
+- Writes `status`, derived from the domain: school email → `'pending'`,
+  anything else → `'rejected'` (it does **not** raise — a raise surfaces as an
+  opaque Supabase `server_error`; the callback owns the user-facing rejection).
+- `on conflict (id) do nothing`, so it can never fight the callback fallback.
+- Prefers `raw_user_meta_data->>'full_name'` first, matching the callback (the
+  two paths used to produce different display names).
+- `security definer set search_path = public` — the search-path pin is
+  hardening, not decoration.
 
-`security definer` lets it write to `profiles` despite RLS.
-
-**This trigger is not trusted on its own.** `/api/auth/callback` independently
-checks for the profile and creates it if absent (commit `37e9246`) — the trigger
-was observed not to fire reliably. Note the trigger reads
-`raw_user_meta_data->>'name'` while the callback prefers `full_name`, so the two
-paths can produce different display names for the same user.
-
-Also note: `create trigger` is **not** guarded by `if not exists`, so re-running
-the whole schema file on a database that already has it will error on that one
-statement. Everything before it will have applied.
+**The trigger is not trusted on its own.** It has been observed not to fire
+(commit `37e9246`); `/api/auth/callback` independently creates the row. Both
+paths write `id`/`email`/`name` only on the insert and never touch
+`role`/`status` on an existing row — see
+[ARCHITECTURE.md](ARCHITECTURE.md#profile-creation--and-the-one-write-you-must-never-make).
 
 ---
 
 ## Row Level Security
 
-RLS is enabled on all eight tables, with policies roughly matching the role
-model: members read their own rows, officers read and manage everything,
-categories/budgets/events are world-readable.
+RLS is enabled on all eight tables and the policies are **approval-aware**:
+built on the STEP 12 helpers, so a pending or rejected account reads nothing,
+members read their own attendance/transactions, officers read and manage
+everything, and (new in the rebuild) treasurers can actually read other
+profiles.
 
-**These policies do not gate this application.** Every query in the app runs
-through the service-role client, which bypasses RLS entirely. Authorization is
-enforced in application code — see
-[ARCHITECTURE.md](ARCHITECTURE.md#rls-is-defined-but-not-enforced).
+**These policies still do not gate the application.** Every app query runs
+through the service-role client, which bypasses RLS entirely; authorization is
+the guard layer in `lib/auth.ts`. The policies are the second line of defence
+for anything that ever reaches Supabase with a user token — keep them
+truthful, because the day a query moves off the service role they are all
+that's left.
 
-Keep the policies correct anyway: they're the safety net for anything reaching
-Supabase with the anon key, and they document intent.
+### The role-change guard (STEP 13b)
 
-Two things to know if you ever do start relying on them:
+RLS cannot express "an officer may update this row but not this column", and
+the officer update policy would otherwise let a treasurer
+`update profiles set role='admin' where id = auth.uid()` under a user token.
+The `profiles_role_change_guard` trigger raises `insufficient_privilege` when
+`role` changes and the caller is not an approved admin.
 
-- Every officer policy re-queries `profiles` as a subselect
-  (`auth.uid() in (select id from profiles where role in (...))`). On `profiles`
-  itself that's self-referential, which is a classic source of recursion and
-  surprising empty results.
-- `profiles` has a self-select policy and an admin-manage policy, but **no policy
-  lets a treasurer read other profiles** — a fact currently masked by the service
-  role.
+It deliberately stands aside when `auth.uid()` is NULL — i.e. for the
+service-role client (the app's own `PATCH /api/members/:id`, which
+`apiRequireAdmin` already controls), the Supabase table editor, and psql.
+That is what keeps manual recovery possible.
 
 ---
 
 ## Conventions
 
-- UUID primary keys via `uuid_generate_v4()`; `uuid-ossp` is enabled at the top
-  of the file.
+- UUID primary keys via `uuid_generate_v4()`; `uuid-ossp` enabled at the top.
 - `timestamptz` everywhere, `default now()`.
-- `numeric(10,2)` for money — never floats. Note that `@supabase/supabase-js`
-  returns these as **strings**, which is why the finance page wraps them in
-  `Number(...)` before arithmetic.
-- Enum-ish columns are `text` + `check` constraint rather than Postgres enums, so
-  adding a value is an `alter table` rather than a type migration.
-- Foreign keys reference `public.profiles`, not `auth.users`, except for
-  `profiles.id` itself.
+- Enum-ish columns are `text` + `check` constraint rather than Postgres enums —
+  adding a value is an `alter table`, not a type migration.
+- Idempotency patterns: `create table if not exists`, drop-then-add for
+  constraints and policies, `drop trigger if exists` before `create trigger`,
+  `create or replace function`.
+- Foreign keys reference `public.profiles`, not `auth.users` — except
+  `profiles.id` itself, which cascades from `auth.users`.
+- `numeric(10,2)` for money in the retained finance tables;
+  `@supabase/supabase-js` returns those as **strings**.

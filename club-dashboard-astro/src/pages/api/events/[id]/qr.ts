@@ -16,15 +16,12 @@ import { apiJson, apiRequireOfficer } from '../../../../lib/auth';
  *   marked no-store — a cached QR is a token sitting in a shared cache.
  *
  * The token lives 15 minutes (QR_TOKEN_TTL_SECONDS, owned by lib/qrcode.ts).
- * `expires_at` / `expires_in` are returned so the QR modal CAN silently
- * re-fetch before the projected code goes stale.
- *
- * ⚠ IT DOES NOT DO SO YET. src/pages/calendar.astro fetches this route once per
- * modal open and ignores both fields, so a projected code dies mid-meeting.
- * That page is owned by the design rewrite; see the note on
- * QR_TOKEN_TTL_SECONDS in src/lib/qrcode.ts. The same handler also does
- * `if (!res.ok) return;`, so a non-officer clicking an event chip now gets a
- * completely silent dead click instead of the 403 message below.
+ * `expires_at` / `expires_in` are returned so the client can silently re-fetch
+ * before the projected code goes stale — and src/pages/calendar.astro's
+ * Present mode does exactly that: it re-fetches at `expires_in − 180s`,
+ * surfaces 4xx errors on screen, and retries 5xx/network failures. (An older
+ * warning here described a fetch-once client; that client is gone. The similar
+ * warning block in src/lib/qrcode.ts is likewise stale.)
  */
 
 /* ────────────────────────────────────────────────────────────────────────────

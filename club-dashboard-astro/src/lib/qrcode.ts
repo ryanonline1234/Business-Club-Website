@@ -17,16 +17,13 @@ const AUDIENCE = 'checkin';
  * photograph off a projector is the actual weakness, so the window is what
  * limits the blast radius.
  *
- * ⚠ THE CLIENT DOES NOT RE-FETCH YET. An earlier version of this comment
- * claimed "the QR modal re-fetches on a timer while it is open" — it does not.
- * src/pages/calendar.astro's openQRModal fetches /api/events/:id/qr exactly
- * once and discards the `expires_at` / `expires_in` it is handed, so a code
- * projected for a 45-minute meeting stops verifying 15 minutes in with no
- * visible change, and members scanning it are told the code has expired.
- * The endpoint returns both fields precisely so the modal can setTimeout a
- * silent re-fetch; wiring that up is outstanding page work (src/pages is owned
- * by the design rewrite). DO NOT lengthen this TTL to paper over that — the
- * short window is the security property; the missing refresh is the bug.
+ * The client half lives in src/pages/calendar.astro's present mode: it reads
+ * the `expires_in` this endpoint returns, silently re-fetches before expiry
+ * (with a 30s retry on failure), and shows a refresh countdown — so a code
+ * projected for a 45-minute meeting keeps verifying. If you change the TTL,
+ * nothing client-side needs touching; it keys off `expires_in`. DO NOT
+ * lengthen the TTL for convenience — the short window is the security
+ * property.
  */
 export const QR_TOKEN_TTL_SECONDS = 15 * 60;
 

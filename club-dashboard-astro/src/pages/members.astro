@@ -1,92 +1,457 @@
 ---
+/**
+ * /members — roster + the approval queue.
+ *
+ * Visibility rules (all enforced SERVER-SIDE, nothing is CSS-hidden):
+ *   • Everyone approved sees the roster: name, role tag, joined date.
+ *   • Emails render ONLY for officers (the old page leaked every address).
+ *   • The pending-approvals panel and the declined disclosure render ONLY
+ *     for officers.
+ *   • The role <select> renders ONLY for admins (role changes are the
+ *     admin-only verb — PATCH /api/members/:id).
+ *
+ * Mutations (client JS, fetch + location.reload() on success):
+ *   • PATCH /api/members/:id/status  { status: 'approved' | 'rejected' }
+ *     — approve / decline / restore. Officer-guarded server-side.
+ *   • PATCH /api/members/:id         { role }
+ *     — admin-guarded server-side. Last-admin 409 surfaced inline.
+ */
 import DashboardLayout from '../layouts/DashboardLayout.astro';
-import { requireAuth } from '../lib/auth';
+import { requireApproved } from '../lib/auth';
 import { supabaseAdmin } from '../lib/supabase';
+import { isSchoolEmail } from '../lib/env';
 
-const user = await requireAuth(Astro.request, Astro.response.headers, Astro.redirect);
-const isAdmin = user.role === 'admin';
+const session = await requireApproved(Astro.request, Astro.response.headers, Astro.redirect);
 
-const { data: members } = await supabaseAdmin
+/* ── Roster: approved members only ─────────────────────────────────────── */
+const { data: approvedData, error: rosterError } = await supabaseAdmin
   .from('profiles')
   .select('id, name, email, role, created_at')
-  .order('role', { ascending: true })
-  .order('name', { ascending: true });
+  .eq('status', 'approved');
 
-const avatarColors: Record<string, [string, string]> = {
-  admin:     ['#FFF3CC', '#7A5500'],
-  treasurer: ['#FAEEDA', '#854F0B'],
-  member:    ['#E6F1FB', '#185FA5'],
-};
+/* Officers first, then treasurers, then members; name-alphabetical within
+   each. (Plain `order by role` is alphabetical and puts treasurer last.) */
+const ROLE_RANK: Record<string, number> = { admin: 0, treasurer: 1, member: 2 };
+const roster = (approvedData ?? []).slice().sort((a, b) => {
+  const rank = (ROLE_RANK[a.role] ?? 3) - (ROLE_RANK[b.role] ?? 3);
+  if (rank !== 0) return rank;
+  const an = (a.name ?? a.email ?? '').toLowerCase();
+  const bn = (b.name ?? b.email ?? '').toLowerCase();
+  return an.localeCompare(bn);
+});
 
-function initials(name: string | null, email: string): string {
-  const src = name ?? email ?? '?';
-  return src.split(' ').map((w: string) => w[0]).slice(0, 2).join('').toUpperCase();
+/* ── Officer-only queues ───────────────────────────────────────────────── */
+let pendingRows: any[] = [];
+let declinedRows: any[] = [];
+if (session.isOfficer) {
+  const [pendingRes, declinedRes] = await Promise.all([
+    supabaseAdmin
+      .from('profiles')
+      .select('id, name, email, created_at')
+      .eq('status', 'pending')
+      .order('created_at', { ascending: true }),
+    supabaseAdmin
+      .from('profiles')
+      .select('id, name, email, created_at, approved_at')
+      .eq('status', 'rejected')
+      .order('approved_at', { ascending: false, nullsFirst: false }),
+  ]);
+  pendingRows = pendingRes.data ?? [];
+  declinedRows = declinedRes.data ?? [];
 }
----
-<DashboardLayout title="Members" user={user}>
 
-  <div class="members-header">
-    <div class="members-count">{(members ?? []).length} members · Spring 2026</div>
-  </div>
+/* ── Check-in counts (best-effort; roster renders without them if the
+      embedded aggregate is unavailable) ──────────────────────────────── */
+let checkinCounts: Map<string, number> | null = null;
+{
+  const { data: countRows, error: countError } = await supabaseAdmin
+    .from('profiles')
+    .select('id, attendance(count)')
+    .eq('status', 'approved');
+  if (!countError && countRows) {
+    checkinCounts = new Map(
+      countRows.map((r: any) => [r.id as string, r.attendance?.[0]?.count ?? 0])
+    );
+  }
+}
 
-  <div class="members-grid" id="members-grid">
-    {(members ?? []).length === 0 ? (
-      <div class="empty-state" style="grid-column:1/-1">No members found.</div>
-    ) : (members ?? []).map(m => {
-      const [bg, tc] = avatarColors[m.role] ?? avatarColors.member;
-      return (
-        <div class="member-card">
-          <div class="avatar" style={`background:${bg};color:${tc}`}>
-            {initials(m.name, m.email)}
-          </div>
-          <div style="flex:1;min-width:0">
-            <div class="member-name">{m.name ?? m.email}</div>
-            <div class="member-email">{m.email}</div>
-            {isAdmin ? (
-              <select class="role-select" data-member-id={m.id} data-current-role={m.role}>
-                <option value="member"    selected={m.role === 'member'}>Member</option>
-                <option value="treasurer" selected={m.role === 'treasurer'}>Treasurer</option>
-                <option value="admin"     selected={m.role === 'admin'}>Admin</option>
-              </select>
-            ) : (
-              <span class={`role-tag ${m.role}`}>{m.role}</span>
-            )}
-          </div>
-        </div>
-      );
-    })}
-  </div>
+/* ── Display helpers (all run server-side; Astro escapes on output) ────── */
+function initials(name: string | null, email: string): string {
+  const fromName = (name ?? '')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((w) => w[0]!.toUpperCase())
+    .slice(0, 2)
+    .join('');
+  return fromName || email.slice(0, 2).toUpperCase();
+}
 
-</DashboardLayout>
-
-<script define:vars={{ isAdmin }}>
-if (isAdmin) {
-  document.querySelectorAll('.role-select').forEach(sel => {
-    // Ensure correct initial value (SSR `selected` isn't always reflected)
-    sel.value = sel.dataset.currentRole;
-
-    sel.addEventListener('change', async () => {
-      const memberId = sel.dataset.memberId;
-      const newRole  = sel.value;
-      const prev     = sel.dataset.currentRole;
-
-      sel.disabled = true;
-      const res = await fetch(`/api/members/${memberId}`, {
-        method: 'PATCH',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ role: newRole }),
-      });
-      sel.disabled = false;
-
-      if (res.ok) {
-        sel.dataset.currentRole = newRole;
-        window.location.reload(); // reload to refresh avatar colours
-      } else {
-        const { error } = await res.json().catch(() => ({}));
-        alert(error ?? 'Failed to update role.');
-        sel.value = prev;
-      }
-    });
+/* Pacific-local date formatting — never the server's UTC day. */
+function fmtDay(iso: string | null): string {
+  if (!iso) return '';
+  return new Date(iso).toLocaleDateString('en-US', {
+    timeZone: 'America/Los_Angeles',
+    month: 'short',
+    day: 'numeric',
   });
 }
+function fmtMonthYear(iso: string | null): string {
+  if (!iso) return '';
+  return new Date(iso).toLocaleDateString('en-US', {
+    timeZone: 'America/Los_Angeles',
+    month: 'short',
+    year: 'numeric',
+  });
+}
+
+/** Clay-highlighted address note for a pending row, or null. */
+function addressNote(email: string): string | null {
+  const domain = (email ?? '').trim().toLowerCase().split('@')[1] ?? '';
+  if (domain === 'mitty.com') return 'faculty address';
+  if (!isSchoolEmail(email)) return 'not a school address';
+  return null;
+}
+
+function roleLabel(role: string): string {
+  return role === 'admin' ? 'Admin' : role === 'treasurer' ? 'Treasurer' : 'Member';
+}
+
+const total = roster.length;
+const adminCount = roster.filter((m) => m.role === 'admin').length;
+const treasurerCount = roster.filter((m) => m.role === 'treasurer').length;
+const memberCount = total - adminCount - treasurerCount;
+const plural = (n: number, one: string, many: string) => (n === 1 ? one : many);
+---
+<DashboardLayout title="Members" user={session}>
+  <h1 class="sr">Members</h1>
+
+  {session.isOfficer && pendingRows.length > 0 && (
+    <section class="pending" aria-labelledby="pend-h">
+      <div class="pending__head">
+        <h2 id="pend-h">Waiting on approval</h2>
+        <span class="tag tag--clay"><span class="num">{pendingRows.length}</span></span>
+        <span class="spacer"></span>
+        <span class="flag">Officer only</span>
+      </div>
+      <p class="pending__note">
+        Check the address before you approve — <strong>@mittymonarch.com</strong> is a
+        student, <strong>@mitty.com</strong> is faculty.
+      </p>
+      <ul>
+        {pendingRows.map((p) => {
+          const note = addressNote(p.email);
+          const displayName = p.name?.trim() || p.email;
+          const firstName = (p.name?.trim() || '').split(/\s+/)[0] || 'this account';
+          return (
+            <li data-member-id={p.id}>
+              <span class="avatar" aria-hidden="true">{initials(p.name, p.email)}</span>
+              <span class="pending__who">
+                <b>{displayName}</b>
+                <span>
+                  {p.email} · requested {fmtDay(p.created_at)}
+                  {note && <Fragment> · <em>{note}</em></Fragment>}
+                </span>
+                <span class="row-err" role="alert" style="display:none"></span>
+              </span>
+              <span class="pending__acts">
+                <button class="btn btn--sm btn--approve js-approve" type="button" data-member-id={p.id}>
+                  Approve
+                </button>
+                <details class="confirm">
+                  <summary class="btn btn--sm btn--decline">Decline</summary>
+                  <div class="confirm__row">
+                    <span class="confirm__q">Decline {firstName}?</span>
+                    <button class="btn btn--sm btn--danger-go js-decline" type="button" data-member-id={p.id}>
+                      Decline
+                    </button>
+                    <button class="btn btn--sm btn--ghost js-keep" type="button">Keep</button>
+                  </div>
+                </details>
+              </span>
+            </li>
+          );
+        })}
+      </ul>
+    </section>
+  )}
+
+  <div class="section-head">
+    <h2>Roster</h2>
+    <span class="spacer"></span>
+    <span class="count"><span class="num">{total}</span> {plural(total, 'member', 'members')}</span>
+  </div>
+
+  {rosterError ? (
+    <div class="state state--rule">
+      <b>Couldn't load the roster</b>
+      <p>Something went wrong reading the member list. Reload to try again.</p>
+      <button class="btn btn--sm btn--ghost" type="button" onclick="location.reload()">Reload</button>
+    </div>
+  ) : total === 0 ? (
+    <div class="state state--rule">
+      <b>No approved members yet</b>
+      <p>Once accounts are approved, the roster lands here.</p>
+    </div>
+  ) : (
+    <Fragment>
+      <div class="roster-tools">
+        <label class="field" style="flex:1 1 220px;">
+          <span class="sr">Search members</span>
+          <input class="input" type="search" id="roster-search" placeholder="Search by name" autocomplete="off" />
+        </label>
+        <label class="field" style="flex:0 1 180px;">
+          <span class="sr">Filter by role</span>
+          <select class="select" id="roster-role">
+            <option value="">All roles</option>
+            <option value="admin">Admin</option>
+            <option value="treasurer">Treasurer</option>
+            <option value="member">Member</option>
+          </select>
+        </label>
+      </div>
+
+      <p class="small muted roster-summary">
+        <span class="num">{adminCount}</span> {plural(adminCount, 'admin', 'admins')}
+        <span aria-hidden="true"> · </span>
+        <span class="num">{treasurerCount}</span> {plural(treasurerCount, 'treasurer', 'treasurers')}
+        <span aria-hidden="true"> · </span>
+        <span class="num">{memberCount}</span> {plural(memberCount, 'member', 'members')}
+      </p>
+
+      {session.isAdmin && (
+        <p class="roster-legend">
+          <i aria-hidden="true"></i> The gold rule marks officer controls. Members see this
+          list without it, and without the emails.
+        </p>
+      )}
+
+      <ul id="roster-list">
+        {roster.map((m) => {
+          const displayName =
+            m.name?.trim() || (session.isOfficer ? m.email : 'Unnamed member');
+          const checkins = checkinCounts?.get(m.id);
+          const search = (
+            (m.name ?? '') + (session.isOfficer ? ' ' + m.email : '')
+          ).toLowerCase();
+          return (
+            <li class="member" data-role={m.role} data-search={search}>
+              <span class="avatar avatar--lg" aria-hidden="true">{initials(m.name, m.email)}</span>
+              <span class="member__id">
+                <b>{displayName}</b>
+                {session.isOfficer && <span>{m.email}</span>}
+              </span>
+              <span class="member__meta">
+                <span class={m.role === 'admin' || m.role === 'treasurer' ? 'tag tag--gold' : 'tag'}>
+                  {roleLabel(m.role)}
+                </span>
+                <span>Joined {fmtMonthYear(m.created_at)}</span>
+                {typeof checkins === 'number' && (
+                  <span><span class="num">{checkins}</span> {plural(checkins, 'check-in', 'check-ins')}</span>
+                )}
+              </span>
+              {session.isAdmin && (
+                <span class="member__ctl">
+                  <label>
+                    <span class="sr">Role for {displayName}</span>
+                    <select class="select js-role" data-member-id={m.id} data-current-role={m.role}>
+                      <option value="admin" selected={m.role === 'admin'}>Admin</option>
+                      <option value="treasurer" selected={m.role === 'treasurer'}>Treasurer</option>
+                      <option value="member" selected={m.role === 'member'}>Member</option>
+                    </select>
+                  </label>
+                  <span class="row-err" role="alert" style="display:none"></span>
+                </span>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+
+      <p class="small muted roster-showing">
+        Showing <span class="num" id="roster-shown">{total}</span> of{' '}
+        <span class="num">{total}</span>
+      </p>
+
+      <div class="state" id="roster-nomatch" style="display:none">
+        <b>Nobody matches</b>
+        <p>Try a different name, or clear the role filter.</p>
+      </div>
+    </Fragment>
+  )}
+
+  {session.isOfficer && declinedRows.length > 0 && (
+    <details class="declined">
+      <summary>Declined ({declinedRows.length})</summary>
+      <ul>
+        {declinedRows.map((d) => {
+          const note = addressNote(d.email);
+          return (
+            <li data-member-id={d.id}>
+              <b>{d.name?.trim() || d.email}</b>
+              <span>
+                {d.email} · declined {fmtDay(d.approved_at ?? d.created_at)}
+                {note === 'not a school address' && <Fragment> · {note}</Fragment>}
+              </span>
+              <button class="btn btn--sm btn--ghost js-restore" type="button" data-member-id={d.id}>
+                Restore
+              </button>
+              <span class="row-err" role="alert" style="display:none"></span>
+            </li>
+          );
+        })}
+      </ul>
+    </details>
+  )}
+</DashboardLayout>
+
+<style>
+  /* Approximations with existing tokens — no error-line or summary-line class
+     exists in the design system (flagged in the report). */
+  .row-err {
+    display: block;
+    font-size: var(--t-14);
+    color: var(--clay-2);
+    margin-top: 6px;
+  }
+  .roster-summary {
+    padding: 12px 4px 0;
+  }
+  .roster-showing {
+    padding: 14px 4px 0;
+  }
+  .member__ctl .row-err {
+    margin-top: 4px;
+  }
+  .declined .row-err {
+    flex: 1 1 100%;
+    margin-top: 0;
+  }
+</style>
+
+<script>
+  /* All mutation plumbing. No HTML is ever built from data here — errors are
+     written with textContent into server-rendered elements, and success paths
+     location.reload() so the server re-renders everything. */
+
+  function rowError(el: Element | null, message: string) {
+    const err = el?.querySelector<HTMLElement>('.row-err') ?? null;
+    if (!err) return;
+    err.textContent = message;
+    err.style.display = 'block';
+  }
+
+  function clearRowError(el: Element | null) {
+    const err = el?.querySelector<HTMLElement>('.row-err') ?? null;
+    if (!err) return;
+    err.textContent = '';
+    err.style.display = 'none';
+  }
+
+  async function patchJSON(url: string, body: unknown): Promise<{ ok: boolean; error: string }> {
+    try {
+      const res = await fetch(url, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (res.ok) return { ok: true, error: '' };
+      const payload = await res.json().catch(() => null);
+      return {
+        ok: false,
+        error:
+          (payload && typeof payload.error === 'string' && payload.error) ||
+          'That change failed. Try again.',
+      };
+    } catch {
+      return { ok: false, error: 'Network error — nothing was changed. Try again.' };
+    }
+  }
+
+  function setRowBusy(row: Element | null, busy: boolean) {
+    row?.querySelectorAll<HTMLButtonElement>('button').forEach((b) => (b.disabled = busy));
+  }
+
+  /* ── Approve / decline (pending panel) + restore (declined list) ─────── */
+  async function decide(button: HTMLElement, status: 'approved' | 'rejected') {
+    const id = button.dataset.memberId;
+    if (!id) return;
+    const row = button.closest('li');
+    clearRowError(row);
+    setRowBusy(row, true);
+    const result = await patchJSON(`/api/members/${encodeURIComponent(id)}/status`, { status });
+    if (result.ok) {
+      location.reload();
+      return;
+    }
+    setRowBusy(row, false);
+    rowError(row, result.error);
+  }
+
+  document.querySelectorAll<HTMLElement>('.js-approve').forEach((btn) => {
+    btn.addEventListener('click', () => decide(btn, 'approved'));
+  });
+  document.querySelectorAll<HTMLElement>('.js-decline').forEach((btn) => {
+    btn.addEventListener('click', () => decide(btn, 'rejected'));
+  });
+  document.querySelectorAll<HTMLElement>('.js-restore').forEach((btn) => {
+    btn.addEventListener('click', () => decide(btn, 'approved'));
+  });
+  document.querySelectorAll<HTMLElement>('.js-keep').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const details = btn.closest('details');
+      if (details) details.open = false;
+    });
+  });
+
+  /* ── Role change (admin only — the select only exists for admins) ────── */
+  document.querySelectorAll<HTMLSelectElement>('.js-role').forEach((sel) => {
+    // SSR `selected` can be stale after back/forward cache; assert the truth.
+    sel.value = sel.dataset.currentRole ?? sel.value;
+
+    sel.addEventListener('change', async () => {
+      const id = sel.dataset.memberId;
+      const previous = sel.dataset.currentRole ?? 'member';
+      if (!id) return;
+      const ctl = sel.closest('.member__ctl');
+      clearRowError(ctl);
+      sel.disabled = true;
+      const result = await patchJSON(`/api/members/${encodeURIComponent(id)}`, {
+        role: sel.value,
+      });
+      if (result.ok) {
+        location.reload();
+        return;
+      }
+      sel.disabled = false;
+      sel.value = previous;
+      rowError(ctl, result.error);
+    });
+  });
+
+  /* ── Client-side roster filter (visibility toggles only) ─────────────── */
+  const searchInput = document.getElementById('roster-search') as HTMLInputElement | null;
+  const roleFilter = document.getElementById('roster-role') as HTMLSelectElement | null;
+  const shownEl = document.getElementById('roster-shown');
+  const noMatch = document.getElementById('roster-nomatch') as HTMLElement | null;
+  const memberRows = Array.from(document.querySelectorAll<HTMLElement>('#roster-list .member'));
+
+  function applyFilter() {
+    const q = (searchInput?.value ?? '').trim().toLowerCase();
+    const role = roleFilter?.value ?? '';
+    let shown = 0;
+    for (const row of memberRows) {
+      const matches =
+        (!q || (row.dataset.search ?? '').includes(q)) &&
+        (!role || row.dataset.role === role);
+      // Explicit display toggle: the [hidden] UA rule loses to .member{display:grid}.
+      row.style.display = matches ? '' : 'none';
+      if (matches) shown += 1;
+    }
+    if (shownEl) shownEl.textContent = String(shown);
+    if (noMatch) noMatch.style.display = shown === 0 ? '' : 'none';
+  }
+
+  searchInput?.addEventListener('input', applyFilter);
+  roleFilter?.addEventListener('change', applyFilter);
 </script>

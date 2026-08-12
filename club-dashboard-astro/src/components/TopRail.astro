@@ -1,0 +1,27 @@
+---
+/**
+ * TopRail — the desktop navigation rail that lives inside the topbar.
+ * Rendered by DashboardLayout; global.css removes it entirely under 700px
+ * (`.topbar .nav{ display:none }`) where ThumbBar takes over.
+ */
+interface Props {
+  currentPath: string;
+}
+const { currentPath } = Astro.props;
+
+const items = [
+  { href: '/', label: 'Home' },
+  { href: '/calendar', label: 'Calendar' },
+  { href: '/attendance', label: 'Attendance' },
+  { href: '/members', label: 'Members' },
+  { href: '/announcements', label: 'Announcements' },
+];
+
+const isActive = (href: string) =>
+  href === '/' ? currentPath === '/' : currentPath === href || currentPath.startsWith(href + '/');
+---
+<nav class="nav" aria-label="Portal">
+  {items.map((item) => (
+    <a href={item.href} aria-current={isActive(item.href) ? 'page' : undefined}>{item.label}</a>
+  ))}
+</nav>

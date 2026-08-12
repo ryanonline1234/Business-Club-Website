@@ -1,109 +1,327 @@
 ---
-// Public page — no auth required (members scan this on their phones)
+/**
+ * /checkin — the public phone page a member lands on after scanning the
+ * projected QR code. Deliberately public: the scan happens BEFORE sign-in.
+ *
+ * Server-side decides which single view renders:
+ *   invalid — no token, bad/expired token, missing or non-active event.
+ *             Shows NO event details: an invalid token is not permission to
+ *             learn what the meeting was.
+ *   error   — the event lookup itself failed (transient). No details either.
+ *   signin  — valid token but nobody signed in: hand off to Google with a
+ *             root-relative ?next= so they land right back here.
+ *   pending — signed in but not yet approved by an officer.
+ *   ready   — signed in + approved: the one big thumb-zone button. Client JS
+ *             POSTs { qr_token } to /api/attendance/checkin and swaps to the
+ *             pre-rendered done / already panels (textContent only — no HTML
+ *             is ever built from response data).
+ */
+import '@fontsource/barlow-condensed/latin-500.css';
+import '@fontsource/barlow-condensed/latin-600.css';
+import '@fontsource/libre-baskerville/latin-400.css';
+import '@fontsource/libre-baskerville/latin-600.css';
+import '@fontsource/libre-baskerville/latin-700.css';
 import { verifyQRToken } from '../lib/qrcode';
+import { getSession } from '../lib/auth';
 import { supabaseAdmin } from '../lib/supabase';
 
-const token = Astro.url.searchParams.get('token');
+/**
+ * Charset gate BEFORE anything touches the token. A verifying token is always
+ * a jose compact JWS (base64url segments joined by dots), so this rejects
+ * nothing legitimate — but it makes the safety of the define:vars inline
+ * script below EXPLICIT rather than an implicit consequence of verification:
+ * Astro's script-var serializer only escapes the literal `</script>` string,
+ * and the HTML tokenizer also closes a script on variants like `</script x>`.
+ * With this gate no `<` or `>` can ever reach that script.
+ */
+const rawToken = Astro.url.searchParams.get('token');
+const token = rawToken && /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(rawToken)
+  ? rawToken
+  : null;
+const session = await getSession(Astro.request, Astro.response.headers);
 
-let eventTitle = '';
-let eventId = '';
-let tokenError = '';
+type View = 'invalid' | 'error' | 'signin' | 'pending' | 'ready';
+let view: View = 'invalid';
+let event: {
+  id: string;
+  title: string;
+  start_time: string;
+  end_time: string | null;
+  location: string | null;
+} | null = null;
 
-if (!token) {
-  tokenError = 'No check-in token found. Please scan a valid QR code.';
-} else {
+if (token) {
   const payload = await verifyQRToken(token);
-  if (!payload) {
-    tokenError = 'This QR code has expired or is invalid. Ask an officer to generate a new one.';
-  } else {
-    eventId = payload.event_id;
-    const { data: event } = await supabaseAdmin
+  if (payload) {
+    const { data, error } = await supabaseAdmin
       .from('events')
-      .select('title')
-      .eq('id', eventId)
-      .single();
-    eventTitle = event?.title ?? 'Club Event';
+      .select('id, title, start_time, end_time, location, status')
+      .eq('id', payload.event_id)
+      .maybeSingle();
+
+    if (error) {
+      console.error('[checkin] event lookup failed', {
+        eventId: payload.event_id,
+        message: error.message,
+        code: error.code,
+      });
+      view = 'error';
+    } else if (data && data.status === 'active') {
+      event = data;
+      view = !session ? 'signin' : session.isApproved ? 'ready' : 'pending';
+    }
+    // data missing or event not active → stays 'invalid'; no details shown.
   }
 }
+
+// When/where line — Pacific-local, .hl only when the event is TODAY.
+const TZ = 'America/Los_Angeles';
+const dayKey = (value: string | Date): string =>
+  new Date(value).toLocaleDateString('en-CA', { timeZone: TZ });
+const fmtTime = (value: string): string =>
+  new Date(value).toLocaleTimeString('en-US', { timeZone: TZ, hour: 'numeric', minute: '2-digit' });
+
+let whenText = '';
+let isToday = false;
+if (event) {
+  isToday = dayKey(event.start_time) === dayKey(new Date());
+  const dayLabel = isToday
+    ? 'Today'
+    : new Date(event.start_time).toLocaleDateString('en-US', {
+        timeZone: TZ,
+        weekday: 'short',
+        month: 'short',
+        day: 'numeric',
+      });
+  const start = fmtTime(event.start_time);
+  const end = event.end_time ? fmtTime(event.end_time) : '';
+  whenText = `${dayLabel}, ${start}${end ? ` – ${end}` : ''}`;
+}
+
+const selfPath = token ? `/checkin?token=${encodeURIComponent(token)}` : '/checkin';
+const signinHref = `/api/auth/signin?next=${encodeURIComponent(selfPath)}`;
+const firstName = session?.name?.trim().split(/\s+/)[0] || null;
 ---
 <!doctype html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Check In — Mitty Business Club</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="color-scheme" content="light dark" />
+  <meta name="robots" content="noindex" />
+  <title>Check in — Mitty Business Club</title>
   <link rel="stylesheet" href="/styles/global.css" />
 </head>
 <body>
-  <div class="checkin-shell">
-    <div class="checkin-card">
-      {tokenError ? (
-        <>
-          <div class="checkin-icon">⚠️</div>
-          <div class="checkin-title">Invalid QR Code</div>
-          <div class="checkin-sub">{tokenError}</div>
-        </>
-      ) : (
-        <>
-          <div class="checkin-icon">📋</div>
-          <div class="checkin-title">{eventTitle}</div>
-          <div class="checkin-sub">Tap the button below to mark your attendance</div>
+  <svg width="0" height="0" class="svgdefs" aria-hidden="true" focusable="false">
+    <defs>
+      <g id="monogram" fill="none">
+        <circle cx="20" cy="20" r="18.25" stroke="#8E7B48" stroke-width="1.3"/>
+        <path d="M11 27.4h18M11 27.4V14.6l4.6 5.2L20 12l4.4 7.8 4.6-5.2v12.8" stroke="#8E7B48" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"/>
+        <path d="M20 6.4v3.4M18.4 8.1h3.2" stroke="#8E7B48" stroke-width="1.3" stroke-linecap="round"/>
+      </g>
+    </defs>
+  </svg>
 
-          <button class="btn-primary" id="checkin-btn" style="width:100%;justify-content:center;margin-top:8px;">
-            Check In
-          </button>
-
-          <div id="result-msg" style="display:none"></div>
-        </>
-      )}
+  <div class="sheet">
+    <div class="pmark">
+      <svg width="22" height="22" viewBox="0 0 40 40" aria-hidden="true"><use href="#monogram"/></svg>
+      <span>Mitty Business Club</span>
     </div>
+
+    {view === 'invalid' && (
+      <div class="pcheck">
+        <p class="seal seal--clay" aria-hidden="true">!</p>
+        <h1 style="margin-top:16px;">This code isn&rsquo;t valid anymore.</h1>
+        <p class="pcheck__meta">
+          Ask an officer to put a fresh one up — the projected code refreshes every few
+          minutes.
+        </p>
+        <div class="pcheck__spacer"></div>
+        <a class="btn btn--ghost btn--wide" href="/">Go to the portal</a>
+        <p class="pcheck__foot">No event details are shown here on purpose.</p>
+      </div>
+    )}
+
+    {view === 'error' && (
+      <div class="pcheck">
+        <p class="seal seal--clay" aria-hidden="true">↻</p>
+        <h1 style="margin-top:16px;">Couldn&rsquo;t load this check-in.</h1>
+        <p class="pcheck__meta">Something hiccuped on our end. Nothing was recorded.</p>
+        <div class="pcheck__spacer"></div>
+        <a class="btn btn--ghost btn--wide" href={selfPath}>Try again</a>
+        <p class="pcheck__foot">If it keeps happening, tell an officer.</p>
+      </div>
+    )}
+
+    {view === 'signin' && event && (
+      <div class="pcheck">
+        <span class="pcheck__kicker">Checking in to</span>
+        <h1>{event.title}</h1>
+        <p class="pcheck__meta">
+          {isToday ? <span class="hl">{whenText}</span> : whenText}
+          {event.location && <><br />{event.location}</>}
+        </p>
+        <div class="pcheck__spacer"></div>
+        <a class="btn btn--wide" href={signinHref}>Sign in with your school account</a>
+        <p class="pcheck__foot">School Google accounts only. You&rsquo;ll land right back here.</p>
+      </div>
+    )}
+
+    {view === 'pending' && event && session && (
+      <div class="pcheck">
+        <span class="pcheck__kicker">Checking in to</span>
+        <h1>{event.title}</h1>
+        <p class="pcheck__meta">
+          {isToday ? <span class="hl">{whenText}</span> : whenText}
+          {event.location && <><br />{event.location}</>}
+        </p>
+        <p class="pcheck__meta">
+          Your account is still waiting on officer approval, so check-in isn&rsquo;t open
+          to you yet. Once you&rsquo;re approved, scan the code again.
+        </p>
+        <div class="pcheck__spacer"></div>
+        <a class="btn btn--ghost btn--wide" href="/pending">Check your approval status</a>
+        <div class="pcheck__foot">
+          Signed in as {session.email} ·
+          <form method="post" action="/api/auth/signout" style="display:inline">
+            <button
+              type="submit"
+              style="background:none;border:0;margin:0;padding:14px 6px;display:inline-block;color:var(--gold-2);font:inherit;cursor:pointer;text-decoration:underline;text-underline-offset:2px;"
+            >Not you?</button>
+          </form>
+        </div>
+      </div>
+    )}
+
+    {view === 'ready' && event && session && (
+      <>
+        <div class="pcheck" id="panel-ready">
+          <span class="pcheck__kicker">Checking in to</span>
+          <h1>{event.title}</h1>
+          <p class="pcheck__meta">
+            {isToday ? <span class="hl">{whenText}</span> : whenText}
+            {event.location && <><br />{event.location}</>}
+          </p>
+          <div class="pcheck__spacer"></div>
+          <p
+            class="pcheck__meta"
+            id="checkin-error"
+            role="alert"
+            style="display:none;margin-bottom:12px;color:var(--clay);"
+          ></p>
+          <button class="btn btn--wide" id="checkin-btn" type="button">Check in</button>
+          <div class="pcheck__foot">
+            Signed in as {session.email} ·
+            <form method="post" action="/api/auth/signout" style="display:inline">
+              <button
+                type="submit"
+                style="background:none;border:0;margin:0;padding:14px 6px;display:inline-block;color:var(--gold-2);font:inherit;cursor:pointer;text-decoration:underline;text-underline-offset:2px;"
+              >Not you?</button>
+            </form>
+          </div>
+        </div>
+
+        <div class="pcheck" id="panel-done" style="display:none">
+          <p class="seal" aria-hidden="true">✓</p>
+          <h1 style="margin-top:16px;" tabindex="-1">
+            You&rsquo;re in{firstName ? `, ${firstName}` : ''}.
+          </h1>
+          <p class="pcheck__meta">
+            Checked in at <span class="hl" id="done-time">just now</span> — {event.title}{event.location ? `, ${event.location}` : ''}.
+          </p>
+          <div class="pcheck__spacer"></div>
+          <a class="btn btn--ghost btn--wide" href="/">Back to the portal</a>
+          <p class="pcheck__foot">Scan again and it&rsquo;ll just tell you you&rsquo;re already in.</p>
+        </div>
+
+        <div class="pcheck" id="panel-already" style="display:none">
+          <p class="seal" aria-hidden="true">✓</p>
+          <h1 style="margin-top:16px;" tabindex="-1">You&rsquo;re already in.</h1>
+          <p class="pcheck__meta">
+            Your check-in for {event.title} was already recorded<span id="already-time"></span>. You&rsquo;re all set.
+          </p>
+          <div class="pcheck__spacer"></div>
+          <a class="btn btn--ghost btn--wide" href="/">Back to the portal</a>
+          <p class="pcheck__foot">One check-in per member per meeting.</p>
+        </div>
+      </>
+    )}
   </div>
+
+  {view === 'ready' && (
+    <script is:inline define:vars={{ token, signinHref }}>
+      var btn = document.getElementById('checkin-btn');
+      var err = document.getElementById('checkin-error');
+      var panelReady = document.getElementById('panel-ready');
+      var panelDone = document.getElementById('panel-done');
+      var panelAlready = document.getElementById('panel-already');
+
+      function fmtTime(iso) {
+        if (typeof iso !== 'string') return null;
+        var d = new Date(iso);
+        if (isNaN(d.getTime())) return null;
+        // The phone's own timezone — the member is standing in the room.
+        return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+      }
+
+      function show(panel) {
+        panelReady.style.display = 'none';
+        panel.style.display = '';
+        var h = panel.querySelector('h1');
+        if (h) h.focus();
+      }
+
+      function fail(message) {
+        err.textContent = message;
+        err.style.display = '';
+        btn.disabled = false;
+        btn.textContent = 'Check in';
+      }
+
+      btn.addEventListener('click', async function () {
+        btn.disabled = true;
+        btn.textContent = 'Checking in…';
+        err.style.display = 'none';
+
+        var res;
+        var data = {};
+        try {
+          res = await fetch('/api/attendance/checkin', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ qr_token: token }),
+            credentials: 'same-origin',
+          });
+          try {
+            data = await res.json();
+          } catch (e) {
+            data = {};
+          }
+        } catch (e) {
+          fail('Network hiccup — nothing was recorded. Try again.');
+          return;
+        }
+
+        if (res.status === 201 || res.ok) {
+          var doneAt = fmtTime(data && data.checked_in_at);
+          if (doneAt) document.getElementById('done-time').textContent = doneAt;
+          show(panelDone);
+        } else if (res.status === 409) {
+          // Already checked in — a calm, success-adjacent state, not an error.
+          var alreadyAt = fmtTime(data && data.checked_in_at);
+          if (alreadyAt) {
+            document.getElementById('already-time').textContent = ' at ' + alreadyAt;
+          }
+          show(panelAlready);
+        } else if (res.status === 401) {
+          // Session evaporated between page load and tap — restart sign-in.
+          location.href = signinHref;
+        } else {
+          fail((data && data.error) || 'Something went wrong. Try again.');
+        }
+      });
+    </script>
+  )}
 </body>
 </html>
-
-{!tokenError && (
-  <script define:vars={{ token, eventId }}>
-    const btn = document.getElementById('checkin-btn');
-    const msg = document.getElementById('result-msg');
-
-    btn?.addEventListener('click', async () => {
-      btn.disabled = true;
-      btn.textContent = 'Checking in...';
-
-      try {
-        const res = await fetch('/api/attendance/checkin', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ qr_token: token }),
-          credentials: 'include',
-        });
-
-        const data = await res.json();
-
-        if (res.ok) {
-          btn.style.display = 'none';
-          msg.style.display = 'block';
-          msg.className = 'success-msg';
-          msg.textContent = `✓ Checked in${data.member_name ? ', ' + data.member_name : ''}!`;
-        } else if (res.status === 409) {
-          btn.style.display = 'none';
-          msg.style.display = 'block';
-          msg.className = 'success-msg';
-          msg.textContent = 'You\'re already checked in for this event.';
-        } else {
-          btn.disabled = false;
-          btn.textContent = 'Check In';
-          msg.style.display = 'block';
-          msg.className = 'error-msg';
-          msg.textContent = data.error ?? 'Something went wrong. Try again.';
-        }
-      } catch {
-        btn.disabled = false;
-        btn.textContent = 'Check In';
-        msg.style.display = 'block';
-        msg.className = 'error-msg';
-        msg.textContent = 'Network error. Please try again.';
-      }
-    });
-  </script>
-)}

@@ -4,7 +4,12 @@ The Mitty Business Club portal is being rebuilt on branch `rebuild/mbc-portal`.
 This is the spec. The machine-readable version — including per-page data shapes —
 is [`rebuild-plan.json`](rebuild-plan.json).
 
-**Status:** teardown done, design direction pending, implementation not started.
+**Status:** code-complete on `rebuild/mbc-portal` — teardown, backend (auth
+foundation, guards, endpoints), all pages in the approved "Warm & Mobile-First"
+design, and the doc rewrite (the [Documentation debt](#documentation-debt)
+below is paid). Remaining: apply the migration (STEP 0 pre-flight first), deploy,
+and the SITE_URL + Supabase allow-list cutover — see
+[DEPLOYMENT.md](DEPLOYMENT.md#deploy-order-sql-first-then-code).
 
 ---
 

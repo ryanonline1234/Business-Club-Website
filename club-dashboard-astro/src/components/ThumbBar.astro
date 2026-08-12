@@ -1,0 +1,41 @@
+---
+/**
+ * ThumbBar — the phone navigation. Under 700px the top rail is removed
+ * outright and this fixed bar (with env(safe-area-inset-bottom) clearance)
+ * IS the navigation. Hidden entirely at 701px and up. `.page` reserves
+ * bottom padding so content never hides behind it.
+ */
+interface Props {
+  currentPath: string;
+}
+const { currentPath } = Astro.props;
+
+const isActive = (href: string) =>
+  href === '/' ? currentPath === '/' : currentPath === href || currentPath.startsWith(href + '/');
+
+const current = (href: string) => (isActive(href) ? 'page' : undefined);
+---
+<nav class="pnav" aria-label="Portal">
+  <a href="/" aria-current={current('/')}>
+    <svg class="ic" viewBox="0 0 20 20" aria-hidden="true"><path d="M3 9l7-6 7 6v8H3z"/><path d="M8 17v-5h4v5"/></svg>
+    Home
+  </a>
+  <a href="/calendar" aria-current={current('/calendar')}>
+    <svg class="ic" viewBox="0 0 20 20" aria-hidden="true"><path d="M3.5 5h13v12h-13z"/><path d="M3.5 9h13M7 3v3M13 3v3"/></svg>
+    Calendar
+  </a>
+  <a href="/members" aria-current={current('/members')}>
+    <svg class="ic" viewBox="0 0 20 20" aria-hidden="true"><circle cx="8" cy="7.5" r="3"/><path d="M2.5 16.5c0-3 2.5-4.6 5.5-4.6s5.5 1.6 5.5 4.6"/><path d="M14 5.4a2.9 2.9 0 010 4.6"/></svg>
+    People
+  </a>
+  <a href="/announcements" aria-current={current('/announcements')}>
+    <svg class="ic" viewBox="0 0 20 20" aria-hidden="true"><path d="M3.5 4.5h13v11h-13z"/><path d="M6 8h9M6 11h9M6 14h6"/></svg>
+    Posts
+  </a>
+  <!-- Check-in stays at the RIGHT edge — the mockup put the primary action
+       where a thumb already rests. -->
+  <a href="/attendance" aria-current={current('/attendance')}>
+    <svg class="ic" viewBox="0 0 20 20" aria-hidden="true"><path d="M3.5 3.5h5v5h-5zM11.5 3.5h5v5h-5zM3.5 11.5h5v5h-5z"/><path d="M11.5 11.5h2v2M16.5 11.5v2M14.5 15.5h2v1"/></svg>
+    Check-in
+  </a>
+</nav>

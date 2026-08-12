@@ -1,172 +1,352 @@
 ---
+/**
+ * /announcements — the serif reading feed.
+ *
+ * Everything is rendered SERVER-SIDE in this template (Astro escapes by
+ * default). The previous version of this page rebuilt the feed client-side
+ * through innerHTML — that was a stored-XSS hole. Client JS below only
+ * submits forms, fetches, toggles <details>, and reloads; it never renders
+ * data strings into DOM HTML.
+ *
+ * Officers additionally get the composer disclosure (POST
+ * /api/announcements/create) and a per-post inline-confirm delete
+ * (DELETE /api/announcements/[id]). Both blocks are gated server-side on
+ * session.isOfficer — members never receive the markup.
+ */
 import DashboardLayout from '../layouts/DashboardLayout.astro';
-import { requireAuth } from '../lib/auth';
+import { requireApproved } from '../lib/auth';
 import { supabaseAdmin } from '../lib/supabase';
 
-const user = await requireAuth(Astro.request, Astro.response.headers, Astro.redirect);
-const isOfficer = ['admin', 'treasurer'].includes(user.role);
+const session = await requireApproved(Astro.request, Astro.response.headers, Astro.redirect);
 
-const { data: announcements, error } = await supabaseAdmin
+const { data: announcements, error: feedError } = await supabaseAdmin
   .from('announcements')
-  .select('id, title, body, created_at, author_name')
+  .select('id, title, body, created_at, author_id, author_name')
   .order('created_at', { ascending: false })
-  .limit(30);
+  .limit(50);
 
 const items = announcements ?? [];
-const announcementsJson = JSON.stringify(items);
----
-<DashboardLayout title="Announcements" user={user}>
 
-  <div class="page-header">
-    <div class="section-label">{items.length} announcement{items.length !== 1 ? 's' : ''}</div>
-    {isOfficer && (
-      <button class="add-btn" id="open-announce-modal">+ Post Announcement</button>
-    )}
-  </div>
-
-  <div class="announce-list" id="announce-list">
-    {error ? (
-      <div class="empty-state">Announcements table not set up yet — run the migration SQL in Supabase.</div>
-    ) : items.length === 0 ? (
-      <div class="empty-state">No announcements yet.</div>
-    ) : items.map(a => (
-      <div class="announce-card" data-id={a.id}>
-        <div style="display:flex;justify-content:space-between;align-items:flex-start">
-          <div class="announce-title">{a.title}</div>
-          {isOfficer && (
-            <button class="tx-btn delete" data-delete-id={a.id} style="flex-shrink:0;margin-left:8px">Delete</button>
-          )}
-        </div>
-        <div class="announce-body">{a.body}</div>
-        <div class="announce-meta">
-          Posted by {a.author_name ?? 'Officer'} ·{' '}
-          {new Date(a.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-        </div>
-      </div>
-    ))}
-  </div>
-
-  <!-- Post Announcement Modal -->
-  {isOfficer && (
-    <div class="form-modal hidden" id="announce-modal">
-      <div class="form-card">
-        <div class="form-card-title">Post Announcement</div>
-        <div class="form-row">
-          <label class="form-label">Title *</label>
-          <input class="form-input" id="ann-title" placeholder="e.g. Meeting this Friday" />
-        </div>
-        <div class="form-row">
-          <label class="form-label">Message *</label>
-          <textarea class="form-textarea" id="ann-body" placeholder="Write your announcement…" rows="5"></textarea>
-        </div>
-        <div class="form-error hidden" id="ann-error"></div>
-        <div class="form-actions">
-          <button class="form-cancel" id="close-announce-modal">Cancel</button>
-          <button class="form-submit" id="submit-announce">Post</button>
-        </div>
-      </div>
-    </div>
-  )}
-
-</DashboardLayout>
-
-<script define:vars={{ announcementsJson, isOfficer }}>
-let ALL = JSON.parse(announcementsJson);
-
-function renderList() {
-  const list = document.getElementById('announce-list');
-  if (!ALL.length) {
-    list.innerHTML = '<div class="empty-state">No announcements yet.</div>';
-    return;
-  }
-  list.innerHTML = ALL.map(a => {
-    const date = new Date(a.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-    const delBtn = isOfficer
-      ? `<button class="tx-btn delete" data-delete-id="${a.id}" style="flex-shrink:0;margin-left:8px">Delete</button>`
-      : '';
-    return `<div class="announce-card" data-id="${a.id}">
-      <div style="display:flex;justify-content:space-between;align-items:flex-start">
-        <div class="announce-title">${a.title}</div>
-        ${delBtn}
-      </div>
-      <div class="announce-body">${a.body}</div>
-      <div class="announce-meta">Posted by ${a.author_name ?? 'Officer'} · ${date}</div>
-    </div>`;
-  }).join('');
-
-  list.querySelectorAll('[data-delete-id]').forEach(btn => {
-    btn.addEventListener('click', async () => {
-      if (!confirm('Delete this announcement?')) return;
-      const id = btn.dataset.deleteId;
-      const res = await fetch(`/api/announcements/${id}`, { method: 'DELETE' });
-      if (res.ok) {
-        ALL = ALL.filter(a => a.id !== id);
-        renderList();
-      }
-    });
-  });
+// Current role of each author, for the byline tag. Announcements only come
+// from officers, so anyone unknown (or since demoted) reads as "Officer".
+const authorIds = [
+  ...new Set(items.map((a) => a.author_id).filter((v): v is string => typeof v === 'string')),
+];
+const roleById = new Map<string, string>();
+if (authorIds.length > 0) {
+  const { data: authors } = await supabaseAdmin
+    .from('profiles')
+    .select('id, role')
+    .in('id', authorIds);
+  for (const p of authors ?? []) roleById.set(p.id as string, p.role as string);
+}
+function authorRoleLabel(authorId: unknown): string {
+  const role = typeof authorId === 'string' ? roleById.get(authorId) : undefined;
+  return role === 'admin' ? 'Admin' : role === 'treasurer' ? 'Treasurer' : 'Officer';
 }
 
-// Wire initial delete buttons (SSR-rendered)
-document.querySelectorAll('[data-delete-id]').forEach(btn => {
-  btn.addEventListener('click', async () => {
-    if (!confirm('Delete this announcement?')) return;
-    const id = btn.dataset.deleteId;
-    const res = await fetch(`/api/announcements/${id}`, { method: 'DELETE' });
-    if (res.ok) {
-      ALL = ALL.filter(a => a.id !== id);
-      renderList();
-    }
-  });
+// Approved-member count, only to make the composer copy concrete
+// ("Post to 84 members"). Composer still works if the count fails.
+let approvedCount: number | null = null;
+if (session.isOfficer) {
+  const { count } = await supabaseAdmin
+    .from('profiles')
+    .select('id', { count: 'exact', head: true })
+    .eq('status', 'approved');
+  approvedCount = count ?? null;
+}
+
+// All human-facing dates are Pacific-local; the server runs in UTC.
+const TZ = 'America/Los_Angeles';
+const dayFmt = new Intl.DateTimeFormat('en-US', { timeZone: TZ, day: '2-digit' });
+const monFmt = new Intl.DateTimeFormat('en-US', { timeZone: TZ, month: 'short' });
+const fullFmt = new Intl.DateTimeFormat('en-US', {
+  timeZone: TZ,
+  month: 'long',
+  day: 'numeric',
+  year: 'numeric',
+});
+const monthKeyOf = (d: Date) =>
+  d.toLocaleDateString('en-CA', { timeZone: TZ }).slice(0, 7); // YYYY-MM, Pacific
+
+const nowMonthKey = monthKeyOf(new Date());
+
+const posts = items.map((a) => {
+  const posted = new Date(a.created_at as string);
+  return {
+    id: a.id as string,
+    title: (a.title as string) ?? '',
+    // Paragraph breaks (blank lines) become separate <p> elements here,
+    // server-side; single line breaks inside a paragraph are preserved by
+    // .ann__body's white-space:pre-line. Never innerHTML.
+    paragraphs: ((a.body as string) ?? '')
+      .replace(/\r\n/g, '\n')
+      .split(/\n{2,}/)
+      .map((s) => s.trim())
+      .filter(Boolean),
+    author: (a.author_name as string | null)?.trim() || 'Officer',
+    roleLabel: authorRoleLabel(a.author_id),
+    day: dayFmt.format(posted),
+    mon: monFmt.format(posted),
+    full: fullFmt.format(posted),
+    inThisMonth: monthKeyOf(posted) === nowMonthKey,
+  };
 });
 
-if (isOfficer) {
-  document.getElementById('open-announce-modal')?.addEventListener('click', () => {
-    document.getElementById('announce-modal').classList.remove('hidden');
-  });
-  document.getElementById('close-announce-modal')?.addEventListener('click', () => {
-    document.getElementById('announce-modal').classList.add('hidden');
-  });
-  document.getElementById('announce-modal')?.addEventListener('click', e => {
-    if (e.target === e.currentTarget) e.currentTarget.classList.add('hidden');
-  });
+const thisMonthCount = posts.filter((p) => p.inThisMonth).length;
+const countLine =
+  feedError || posts.length === 0
+    ? null
+    : thisMonthCount > 0
+      ? `${thisMonthCount} this month`
+      : `${posts.length} total`;
 
-  document.getElementById('submit-announce')?.addEventListener('click', async () => {
-    const errEl = document.getElementById('ann-error');
-    errEl.classList.add('hidden');
+const postAs = session.name?.trim() || session.email;
+const postLabel =
+  approvedCount !== null ? `Post to ${approvedCount} members` : 'Post announcement';
+const audienceLine =
+  approvedCount !== null ? `all ${approvedCount} approved members` : 'all approved members';
+---
+<DashboardLayout title="Announcements" user={session}>
+  <div class="feed">
+    <div class="section-head">
+      <h1>Announcements</h1>
+      <span class="spacer"></span>
+      {countLine && <span class="count">{countLine}</span>}
+    </div>
 
-    const title = document.getElementById('ann-title').value.trim();
-    const body  = document.getElementById('ann-body').value.trim();
-    if (!title || !body) {
-      errEl.textContent = 'Title and message are required.';
-      errEl.classList.remove('hidden');
-      return;
-    }
+    {session.isOfficer && (
+      <details class="composer" id="composer">
+        <summary>Post an announcement</summary>
+        <form class="composer__form" id="composer-form">
+          <div class="composer__head">
+            <b>New announcement</b>
+            <span class="flag">Officer only</span>
+          </div>
+          <label class="field">
+            <span>Title</span>
+            <input class="input" type="text" name="title" maxlength="200" required />
+            <span class="field__hint">
+              Keep it short. This is the line people read in the hallway.
+            </span>
+          </label>
+          <label class="field">
+            <span>Body</span>
+            <textarea class="textarea" name="body" maxlength="20000" required></textarea>
+            <span class="field__hint">
+              Say what happened, what you need, and by when. Line breaks are kept.
+            </span>
+          </label>
+          <p class="composer__help">
+            Goes to {audienceLine}. Posted as <strong>{postAs}</strong> — your name and
+            role come from your sign-in, so you can&rsquo;t post as someone else.
+          </p>
+          <p class="composer__error" id="composer-error" role="alert" hidden></p>
+          <div class="composer__actions">
+            <button class="btn" type="submit">{postLabel}</button>
+            <button class="btn btn--ghost" type="button" id="composer-discard">
+              Discard draft
+            </button>
+          </div>
+        </form>
+      </details>
+    )}
 
-    const btn = document.getElementById('submit-announce');
-    btn.disabled = true; btn.textContent = 'Posting…';
+    {feedError ? (
+      <div class="state state--rule">
+        <b>Couldn&rsquo;t load the feed</b>
+        <p>The club server didn&rsquo;t answer. Nothing was lost — reload to try again.</p>
+        <a class="btn btn--sm btn--ghost" href="/announcements">Try again</a>
+      </div>
+    ) : posts.length === 0 ? (
+      <div class="state state--rule">
+        <b>Nothing posted yet</b>
+        <p>
+          When officers post, it lands here.
+          {session.isOfficer && ' Start with what happens at the next meeting.'}
+        </p>
+        {session.isOfficer && (
+          <button class="btn btn--sm btn--ghost" type="button" id="empty-compose">
+            Post the first one
+          </button>
+        )}
+      </div>
+    ) : (
+      posts.map((p) => (
+        <article class="ann">
+          <span class="datestamp datestamp--sm" aria-hidden="true"><b>{p.day}</b><i>{p.mon}</i></span>
+          <div>
+            <div class="ann__top">
+              <h2>{p.title}</h2>
+              {session.isOfficer && (
+                <details class="confirm">
+                  <summary class="btn btn--sm btn--danger">Delete</summary>
+                  <div class="confirm__row">
+                    <span class="confirm__q">Delete this post?</span>
+                    <button
+                      class="btn btn--sm btn--danger-go"
+                      type="button"
+                      data-delete-id={p.id}
+                    >
+                      Delete
+                    </button>
+                    <button class="btn btn--sm btn--ghost" type="button" data-confirm-keep>
+                      Keep
+                    </button>
+                  </div>
+                </details>
+              )}
+            </div>
+            {p.paragraphs.map((par) => (
+              <p class="ann__body">{par}</p>
+            ))}
+            <p class="ann__byline">
+              <span class="sr">Posted {p.full}.</span>
+              Posted by <strong>{p.author}</strong>
+              <span class="dot" aria-hidden="true">·</span>
+              <span class="tag tag--gold">{p.roleLabel}</span>
+            </p>
+          </div>
+        </article>
+      ))
+    )}
+  </div>
+</DashboardLayout>
 
-    const res = await fetch('/api/announcements/create', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ title, body }),
+<style>
+  /* global.css styles .section-head h2/h3 only; this page's top heading is
+     its h1, so it borrows the identical treatment. (Flagged to the design
+     system rather than editing the shared stylesheet.) */
+  .section-head h1 {
+    font-family: var(--f-serif);
+    font-size: var(--t-19);
+    font-weight: 600;
+    color: var(--ink);
+    line-height: 1.2;
+  }
+  /* No inline error-text class exists in the system yet; clay tokens inline. */
+  .composer__error {
+    font-size: var(--t-14);
+    color: var(--clay-2);
+  }
+</style>
+
+<script>
+  /* Form submission and fetch only — no data ever rendered into DOM HTML.
+     Mutations end in location.reload() so the server re-renders the feed. */
+
+  const composer = document.getElementById('composer') as HTMLDetailsElement | null;
+  const form = document.getElementById('composer-form') as HTMLFormElement | null;
+  const errEl = document.getElementById('composer-error') as HTMLElement | null;
+
+  function showComposerError(message: string): void {
+    if (!errEl) return;
+    errEl.textContent = message;
+    errEl.hidden = false;
+  }
+
+  if (form) {
+    const submitBtn = form.querySelector<HTMLButtonElement>('button[type="submit"]');
+
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      if (errEl) errEl.hidden = true;
+
+      const data = new FormData(form);
+      const title = String(data.get('title') ?? '').trim();
+      const body = String(data.get('body') ?? '').trim();
+      if (!title || !body) {
+        showComposerError('Title and body are both required.');
+        return;
+      }
+
+      const restLabel = submitBtn?.textContent ?? '';
+      if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Posting…';
+      }
+
+      try {
+        const res = await fetch('/api/announcements/create', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ title, body }),
+        });
+        if (res.ok) {
+          location.reload();
+          return;
+        }
+        let message = 'Could not post the announcement.';
+        try {
+          const out = (await res.json()) as { error?: unknown };
+          if (typeof out.error === 'string') message = out.error;
+        } catch {
+          /* non-JSON error body — keep the fallback message */
+        }
+        showComposerError(message);
+      } catch {
+        showComposerError('Network error — nothing was posted. Your draft is still here.');
+      }
+      if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.textContent = restLabel;
+      }
     });
 
-    btn.disabled = false; btn.textContent = 'Post';
+    document.getElementById('composer-discard')?.addEventListener('click', () => {
+      form.reset();
+      if (errEl) errEl.hidden = true;
+      composer?.removeAttribute('open');
+    });
+  }
 
-    if (!res.ok) {
-      const { error } = await res.json();
-      errEl.textContent = error ?? 'Failed to post.';
-      errEl.classList.remove('hidden');
-      return;
-    }
-
-    const { data } = await res.json();
-    ALL.unshift(data);
-    document.getElementById('announce-modal').classList.add('hidden');
-    document.getElementById('ann-title').value = '';
-    document.getElementById('ann-body').value = '';
-    renderList();
+  // Empty state: "Post the first one" opens the composer.
+  document.getElementById('empty-compose')?.addEventListener('click', () => {
+    if (!composer) return;
+    composer.setAttribute('open', '');
+    composer.scrollIntoView({ block: 'start' });
+    composer.querySelector<HTMLInputElement>('input[name="title"]')?.focus();
   });
-}
+
+  // Inline-confirm delete. The row is already the question; the go-button fires.
+  for (const btn of document.querySelectorAll<HTMLButtonElement>('[data-delete-id]')) {
+    btn.addEventListener('click', async () => {
+      const id = btn.getAttribute('data-delete-id');
+      if (!id) return;
+
+      btn.disabled = true;
+      btn.textContent = 'Deleting…';
+
+      let message = 'Could not delete — try again.';
+      try {
+        const res = await fetch(`/api/announcements/${encodeURIComponent(id)}`, {
+          method: 'DELETE',
+        });
+        if (res.ok) {
+          location.reload();
+          return;
+        }
+        try {
+          const out = (await res.json()) as { error?: unknown };
+          if (typeof out.error === 'string') message = out.error;
+        } catch {
+          /* keep fallback */
+        }
+      } catch {
+        message = 'Network error — try again.';
+      }
+
+      const q = btn.closest('.confirm__row')?.querySelector('.confirm__q');
+      if (q) q.textContent = message;
+      btn.disabled = false;
+      btn.textContent = 'Delete';
+    });
+  }
+
+  // "Keep" collapses its confirm back to the single Delete button.
+  for (const btn of document.querySelectorAll<HTMLButtonElement>('[data-confirm-keep]')) {
+    btn.addEventListener('click', () => {
+      btn.closest('details')?.removeAttribute('open');
+    });
+  }
 </script>

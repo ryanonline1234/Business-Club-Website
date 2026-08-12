@@ -1,39 +1,44 @@
-# Treasury Club Dashboard
+# Mitty Business Club — Officer Portal
 
-Officer portal for the Mitty Business Club: club calendar, QR-code event
-check-in, member roster with roles, announcements, and treasury tracking
-(budgets, transactions, approvals).
+Member portal for the Mitty Business Club: home dashboard, event calendar with
+projected QR check-in, attendance history, member roster with an officer
+approval queue, and announcements.
 
-Built with **Astro 5** (SSR) + **Supabase** (Postgres, Auth, RLS), deployed on
-**Vercel**.
+Built with **Astro 5** (SSR, no client framework) + **Supabase** (Postgres,
+Google OAuth, RLS), deployed on **Vercel**. One app, at
+`club-dashboard-astro/` — the legacy Next.js app that used to sit at the repo
+root was deleted in the rebuild.
 
 ---
 
-## ⚠️ Read this first: there are two apps in this repo
+## ⚠️ Read this first: the migration ships before the code
 
-| Path | Stack | Status |
-|---|---|---|
-| `club-dashboard-astro/` | Astro 5 + Supabase | **This is the live app.** All current work happens here. |
-| `src/` (repo root) | Next.js 16 + NextAuth | **Legacy / not deployed.** Superseded by the Astro app. |
+The app selects `profiles.status` on every request. Deploying the code before
+[`supabase-schema.sql`](supabase-schema.sql) has been applied means that select
+errors, `getSession` fails closed by design, and **every user lands on
+`/pending` with no way out**. The other order is safe.
 
-`vercel.json` at the repo root makes this explicit — it skips the root install
-entirely and builds only the Astro app:
+The full sequence — including the STEP 0 pre-flight you must read before
+anything else — is in [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md#deploy-order-sql-first-then-code).
+Do not deploy from memory.
 
-```json
-{
-  "buildCommand": "cd club-dashboard-astro && npm install && npm run build && mv .vercel/output ../.vercel/output",
-  "installCommand": "echo 'skip root install'",
-  "framework": null
-}
-```
+---
 
-The root `package.json`, `next.config.ts`, `src/`, `public/`, `eslint.config.mjs`,
-and `postcss.config.mjs` all belong to the dead Next.js app. Changing them has no
-effect on production. See [Known gaps](docs/KNOWN-GAPS.md#the-dead-nextjs-app)
-for the cleanup decision that's still outstanding.
+## Access model
 
-`supabase-schema.sql` at the repo root **is** shared and current — it's the
-schema both apps were written against, and the Astro app is the one that uses it.
+Two gates, both enforced server-side:
+
+1. **School Google accounts only** — `@mittymonarch.com` (students) or
+   `@mitty.com` (faculty). Anything else is rejected in the OAuth callback and
+   the auth account is deleted so a retry with the right account is clean.
+   One exception: an *already-approved* profile on another domain keeps its
+   access (the grandfather clause — the club's admin uses a personal address).
+2. **Officer approval** — every new account lands on `/pending` until an
+   officer (admin *or* treasurer) approves it from `/members`.
+
+Three roles: `member`, `treasurer`, `admin`. "Officer" means an **approved**
+admin or treasurer. Role changes are admin-only; approvals are officer-wide.
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#roles-and-authorization).
 
 ---
 
@@ -50,17 +55,23 @@ Create `club-dashboard-astro/.env`:
 PUBLIC_SUPABASE_URL=https://<project-ref>.supabase.co
 PUBLIC_SUPABASE_ANON_KEY=<anon key>
 SUPABASE_SERVICE_ROLE_KEY=<service role key>
-AUTH_SECRET=<random 32+ char string>
+AUTH_SECRET=<openssl rand -base64 48>
 SITE_URL=http://localhost:3000
 ```
 
-Then:
+All five are **required** — the app validates them at boot
+(`src/lib/env.ts`) and refuses to start with any missing, rather than run
+with forgeable QR tokens or a broken OAuth flow.
 
 ```bash
 npm run dev
 ```
 
 Open http://localhost:3000 — you'll be redirected to `/login`.
+
+> **Local dev talks to the real Supabase project.** There is no local database
+> and no seed script; anything you create locally is production data. Use a
+> second Supabase project if that matters.
 
 Full setup (Supabase project, Google OAuth, Vercel) is in
 [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
@@ -71,29 +82,31 @@ Full setup (Supabase project, Google OAuth, Vercel) is in
 
 | Doc | What's in it |
 |---|---|
-| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | How a request flows, the auth model, why every query uses the service-role client, directory layout |
-| [docs/API.md](docs/API.md) | Every endpoint: method, auth requirement, request body, responses |
-| [docs/DATA-MODEL.md](docs/DATA-MODEL.md) | Tables, columns, constraints, RLS policies, the signup trigger |
-| [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | Env vars, Supabase + Google OAuth setup, Vercel config, and the auth bugs that have already bitten this project |
-| [docs/KNOWN-GAPS.md](docs/KNOWN-GAPS.md) | Unimplemented schema features, auth holes, and open decisions |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Request flow, the guard layer, env validation, the two Supabase clients, QR check-in, the design system |
+| [docs/API.md](docs/API.md) | Every endpoint: method, guard, request body, responses, CSRF behavior |
+| [docs/DATA-MODEL.md](docs/DATA-MODEL.md) | Tables, the approval migration, RLS policies, the signup trigger |
+| [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | Env vars, deploy order, the SITE_URL cutover, and the auth bugs that have already bitten this project |
+| [docs/KNOWN-GAPS.md](docs/KNOWN-GAPS.md) | What the rebuild fixed, what's still open, accepted trades |
+| [docs/REBUILD-PLAN.md](docs/REBUILD-PLAN.md) | The rebuild spec this code implements, with status |
 
 ---
 
 ## Pages
 
-| Route | Auth | Notes |
+| Route | Guard | Notes |
 |---|---|---|
-| `/` | — | Redirects to `/calendar` if signed in, else `/login` |
-| `/login` | public | Google OAuth sign-in |
-| `/calendar` | member+ | Event list; officers can create events and display a check-in QR |
-| `/attendance` | member+ | Check-in log with per-event and per-member rollups |
-| `/members` | member+ | Roster; **admins** can change roles inline |
-| `/announcements` | member+ | Feed; officers can post and delete |
-| `/finance` | member+ | Budgets and transactions; officers see all, members see only their own |
-| `/checkin?token=…` | public | QR landing page members hit from their phones |
+| `/` | approved | Home: greeting, next event, latest announcements, club figures; officers also see the approval-queue nudge |
+| `/login` | public | Google sign-in; fixed error copy keyed by `?error=` |
+| `/pending` | any session | Waiting room: pending / declined / server-error states |
+| `/calendar` | approved | Month grid + agenda; officers get event composer, cancel, and Present mode (projected QR, auto-refreshing) |
+| `/attendance` | approved | Officers see the club log and turnout; members see **only their own** history |
+| `/members` | approved | Roster; emails officer-only; approval queue officer-only; role select admin-only |
+| `/announcements` | approved | Server-rendered feed; officers compose and delete |
+| `/checkin?token=…` | public | QR landing page; sign-in round-trips back to the scan via `?next=` |
 
-"Officer" means role `admin` or `treasurer`. See
-[the role model](docs/ARCHITECTURE.md#roles-and-authorization).
+"approved" means `requireApproved` — signed in AND officer-approved. Officer
+and admin *controls* are rendered server-side only for those roles, never
+CSS-hidden.
 
 ## Scripts
 
@@ -105,8 +118,8 @@ npm run build    # astro build — emits .vercel/output
 npm run preview  # serve the production build locally
 ```
 
-There is no test suite and no lint script in the Astro app. The root
-`npm run lint` lints the dead Next.js app only.
+There is no test suite and no lint script; `npm run build` is the only
+pre-merge check. There is no root `package.json`.
 
 ## License
 

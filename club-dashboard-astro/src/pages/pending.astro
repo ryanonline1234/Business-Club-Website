@@ -1,0 +1,169 @@
+---
+/**
+ * /pending — the waiting room. requireSession (NOT requireApproved — that
+ * would redirect right back here in a loop); an approved user is bounced
+ * straight to the dashboard.
+ *
+ * Three states, branched on the session:
+ *   profileState 'error'  → transient DB failure. Say so; do NOT show
+ *                           approval copy for a blip.
+ *   status 'rejected'     → declined, talk to an officer.
+ *   otherwise             → genuinely pending: who you are, when you asked
+ *                           (profiles.created_at), and which officers to nudge.
+ */
+import '@fontsource/barlow-condensed/latin-500.css';
+import '@fontsource/barlow-condensed/latin-600.css';
+import '@fontsource/libre-baskerville/latin-400.css';
+import '@fontsource/libre-baskerville/latin-600.css';
+import '@fontsource/libre-baskerville/latin-700.css';
+import { requireSession } from '../lib/auth';
+import { supabaseAdmin } from '../lib/supabase';
+
+const session = await requireSession(Astro.request, Astro.response.headers, Astro.redirect);
+if (session.isApproved) return Astro.redirect('/');
+
+const dbError = session.profileState === 'error';
+const rejected = !dbError && session.status === 'rejected';
+
+let requestedOn: string | null = null;
+let officerList: string | null = null;
+
+if (!dbError && !rejected) {
+  const [meRes, officersRes] = await Promise.all([
+    supabaseAdmin.from('profiles').select('created_at').eq('id', session.id).maybeSingle(),
+    supabaseAdmin
+      .from('profiles')
+      .select('name')
+      .eq('status', 'approved')
+      .in('role', ['admin', 'treasurer'])
+      .order('name', { ascending: true }),
+  ]);
+
+  // When you asked. Pacific-local, never the server's UTC date.
+  const createdAt = meRes.data?.created_at;
+  if (typeof createdAt === 'string' && createdAt !== '') {
+    const d = new Date(createdAt);
+    if (!Number.isNaN(d.getTime())) {
+      requestedOn = d.toLocaleDateString('en-US', {
+        timeZone: 'America/Los_Angeles',
+        month: 'long',
+        day: 'numeric',
+      });
+    }
+  }
+
+  // First names of current officers, deduped: "Ada, Priya or Marcus".
+  const firstNames = Array.from(
+    new Set(
+      (officersRes.data ?? [])
+        .map((row) => (typeof row.name === 'string' ? (row.name.trim().split(/\s+/)[0] ?? '') : ''))
+        .filter((first) => first !== '')
+    )
+  );
+  officerList =
+    firstNames.length > 0
+      ? new Intl.ListFormat('en', { style: 'long', type: 'disjunction' }).format(firstNames)
+      : null;
+}
+
+const title = dbError ? 'Something went wrong' : rejected ? 'Request declined' : 'Awaiting approval';
+---
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="color-scheme" content="light dark" />
+  <title>{title} — Mitty Business Club</title>
+  <link rel="stylesheet" href="/styles/global.css" />
+</head>
+<body>
+  <!-- Club monogram, defined once for this standalone page. -->
+  <svg width="0" height="0" class="svgdefs" aria-hidden="true" focusable="false">
+    <defs>
+      <g id="monogram" fill="none">
+        <circle cx="20" cy="20" r="18.25" stroke="#8E7B48" stroke-width="1.3"/>
+        <path d="M11 27.4h18M11 27.4V14.6l4.6 5.2L20 12l4.4 7.8 4.6-5.2v12.8" stroke="#8E7B48" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"/>
+        <path d="M20 6.4v3.4M18.4 8.1h3.2" stroke="#8E7B48" stroke-width="1.3" stroke-linecap="round"/>
+      </g>
+    </defs>
+  </svg>
+
+  <div class="sheet">
+    <header class="pmark">
+      <svg width="22" height="22" viewBox="0 0 40 40" aria-hidden="true"><use href="#monogram"/></svg>
+      <span>Mitty Business Club</span>
+    </header>
+
+    <main class="wait">
+      {dbError && (
+        <div class="wait__block">
+          <span class="seal seal--clay" aria-hidden="true">!</span>
+          <h1>We couldn&rsquo;t reach the server</h1>
+          <p class="wait__body">Try reloading.</p>
+          <div class="wait__acts">
+            <a class="btn btn--wide" href="/pending">Reload</a>
+          </div>
+        </div>
+      )}
+
+      {rejected && (
+        <div class="wait__block">
+          <span class="seal seal--clay" aria-hidden="true">!</span>
+          <h1>Request declined</h1>
+          <p class="wait__body">
+            Your access request was declined. Talk to a club officer if you think this is a mistake.
+          </p>
+        </div>
+      )}
+
+      {!dbError && !rejected && (
+        <div class="wait__block">
+          <span class="seal seal--wait" aria-hidden="true">&hellip;</span>
+          <h1>Awaiting officer approval</h1>
+          <p class="wait__body">
+            You&rsquo;re signed in as <strong>{session.email}</strong>. An officer needs to
+            approve your account before you can see the club dashboard.
+          </p>
+          {requestedOn && <p class="wait__meta">You requested access on {requestedOn}.</p>}
+          {officerList && (
+            <p class="wait__meta">At the next meeting, ask {officerList} to approve you.</p>
+          )}
+          <div class="wait__acts">
+            <a class="btn btn--wide" href="/pending">Check again</a>
+          </div>
+        </div>
+      )}
+
+      <div class="wait__foot">
+        <form method="post" action="/api/auth/signout">
+          <button type="submit" class="btn btn--ghost btn--wide">Sign out</button>
+        </form>
+      </div>
+    </main>
+  </div>
+</body>
+</html>
+
+<style>
+  /* Page-local composition only — tokens and primitives come from global.css.
+     .seal--wait is a page-scoped variant (the design system ships moss ✓ and
+     clay ! seals only): neutral gold for "waiting", built from existing tokens. */
+  .wait{ flex:1; display:flex; flex-direction:column; }
+  .wait__block{ flex:1; display:flex; flex-direction:column; justify-content:center; padding:4vh 0; }
+  .wait h1{
+    margin-top:18px;
+    font-family:var(--f-serif); font-weight:600;
+    font-size:var(--t-24); line-height:1.2; color:var(--ink);
+  }
+  .wait__body{ margin-top:10px; font-size:var(--t-16); color:var(--ink-2); line-height:1.6; }
+  .wait__body strong{ color:var(--ink); font-weight:600; overflow-wrap:anywhere; }
+  .wait__meta{ margin-top:12px; font-size:var(--t-14); color:var(--ink-3); line-height:1.6; }
+  .wait__acts{ margin-top:26px; }
+  .wait__foot{ margin-top:12px; padding-top:16px; border-top:1px solid var(--rule); }
+  .seal--wait{
+    border-color:var(--gold-ink);
+    color:var(--gold-2);
+    background:light-dark(#F3ECD8, #2A2416);
+  }
+</style>

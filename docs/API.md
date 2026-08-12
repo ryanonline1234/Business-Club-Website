@@ -1,318 +1,289 @@
 # API Reference
 
-All endpoints live in `club-dashboard-astro/src/pages/api/` and are rendered
-on-demand by the Astro Vercel adapter. Every one of them queries Postgres through
-`supabaseAdmin` (service role), so **the auth column below is the only thing
-enforcing access** — RLS does not apply. See
-[ARCHITECTURE.md](ARCHITECTURE.md#rls-is-defined-but-not-enforced).
+All endpoints live in `club-dashboard-astro/src/pages/api/`. Every one queries
+Postgres through `supabaseAdmin` (service role), so **the guard on each
+endpoint is the only thing enforcing access** — RLS does not apply on this
+path. Guards come from `src/lib/auth.ts`; no endpoint hand-rolls its own
+check. See [ARCHITECTURE.md](ARCHITECTURE.md#the-guard-layer).
+
+The read surface is deliberately tiny: pages read Postgres directly in their
+frontmatter, so there are **no JSON list endpoints**. The old app's
+`GET /api/events`, `/api/announcements`, `/api/attendance`, `/api/members`
+(two of them unauthenticated) and the entire `/api/finance/**` module were
+deleted in the rebuild. If you need a new read, put it in page frontmatter.
 
 ## Conventions
 
 - Request and response bodies are JSON unless noted.
-- Success shapes vary by endpoint and are **not** consistent — some return
-  `{ data }`, some return a bare array, some return `{ success: true }`. Each is
-  documented below.
-- Errors are `{ "error": "<message>" }` with an appropriate status.
+- Errors are `{ "error": "<human-readable message>" }`. Some carry a machine
+  `reason` field, noted per endpoint. **Raw Postgres/Supabase messages are
+  never echoed to the client** — detail goes to the Vercel function log.
 - Sessions come from the Supabase auth cookie; there is no bearer-token path.
+- Every response is built with `apiJson(...)`, which preserves refreshed
+  session `Set-Cookie` headers even on rejections.
 
-| Status | Meaning |
-|---|---|
-| `400` | Malformed JSON or a missing/invalid required field |
-| `401` | No valid session |
-| `403` | Session is valid but the role is insufficient |
-| `404` | Referenced record not found |
-| `409` | Conflict (duplicate check-in) |
-| `500` | Supabase returned an error; the message is passed through verbatim |
+### Guard responses (identical on every guarded endpoint)
 
-**Auth levels used below:** `public` (no session), `member` (any signed-in user),
-`officer` (`admin` or `treasurer`), `admin`.
+| Status | Body | When |
+|---|---|---|
+| `403` | `{ "error": "Invalid origin" }` | Mutating method from a cross-site origin (CSRF check — `Origin` / `Sec-Fetch-Site` vs `SITE_URL` or the request's own origin) |
+| `401` | `{ "error": "Unauthorized" }` | No valid session |
+| `403` | `{ "error": "Account pending approval", "status": "pending" \| "rejected" }` | Signed in but not approved |
+| `403` | `{ "error": "Forbidden" }` | Approved but insufficient role (officer/admin endpoints) |
+
+Checks run in that order — the origin check fires before authentication.
+
+**Auth levels used below:** `public` (no session), `approved` (signed in AND
+`status='approved'`), `officer` (approved `admin` or `treasurer`), `admin`
+(approved `admin`).
 
 ---
 
 ## At a glance
 
-| Method | Path | Auth | Used by the UI? |
+| Method | Path | Guard | Called from |
 |---|---|---|---|
-| `GET` | `/api/auth/signin` | public | ✅ `/login` |
-| `GET` | `/api/auth/callback` | public | ✅ OAuth redirect |
-| `GET` | `/api/auth/signout` | public | ✅ Sidebar |
-| `GET` | `/api/events` | **public** | ❌ |
-| `POST` | `/api/events/create` | officer | ✅ `/calendar` |
-| `DELETE` | `/api/events/:id/delete` | officer | ❌ |
-| `GET` | `/api/events/:id/qr` | **public** | ✅ `/calendar` |
-| `GET` | `/api/attendance` | member | ❌ |
-| `POST` | `/api/attendance/checkin` | **public** | ✅ `/checkin` |
-| `GET` | `/api/members` | member | ❌ |
-| `PATCH` | `/api/members/:id` | admin | ✅ `/members` |
-| `GET` | `/api/announcements` | **public** | ❌ |
-| `POST` | `/api/announcements/create` | officer | ✅ `/announcements` |
-| `DELETE` | `/api/announcements/:id` | officer | ✅ `/announcements` |
-| `GET` | `/api/finance` | member | ❌ |
-| `POST` | `/api/finance/transactions` | member | ✅ `/finance` |
-| `PATCH` | `/api/finance/transactions/:id` | officer | ✅ `/finance` |
-| `DELETE` | `/api/finance/transactions/:id` | officer | ✅ `/finance` |
-| `POST` | `/api/finance/budgets` | officer | ✅ `/finance` |
-
-The ❌ rows are unused by pages in this repo — pages query Supabase directly in
-their frontmatter. The three bolded `public` reads are almost certainly
-unintentional; see [KNOWN-GAPS.md](KNOWN-GAPS.md#unauthenticated-read-endpoints).
+| `GET` | `/api/auth/signin` | public | `/login`, `/checkin` |
+| `GET` | `/api/auth/callback` | public | OAuth redirect |
+| `GET`/`POST` | `/api/auth/signout` | public + cross-site check | layout & `/pending` sign-out forms |
+| `POST` | `/api/events/create` | officer | `/calendar` composer |
+| `DELETE` | `/api/events/:id/delete` | officer | `/calendar` cancel |
+| `GET` | `/api/events/:id/qr` | **officer** | `/calendar` Present mode |
+| `POST` | `/api/attendance/checkin` | **approved** | `/checkin` |
+| `PATCH` | `/api/members/:id` | **admin** | `/members` role select |
+| `PATCH` | `/api/members/:id/status` | officer | `/members` approval queue |
+| `POST` | `/api/announcements/create` | officer | `/announcements` composer |
+| `DELETE` | `/api/announcements/:id` | officer | `/announcements` delete |
 
 ---
 
 ## Auth
 
-### `GET /api/auth/signin`
+### `GET /api/auth/signin` — public
 
-Starts the Google OAuth PKCE flow. Sets the code-verifier cookie and `302`s to
-Google. Requests `access_type=offline` and `prompt=consent`.
-
-**Responses:** `302` → Google, or `302` → `/login?error=auth-error`.
-
-### `GET /api/auth/callback`
-
-OAuth redirect target. Exchanges `?code=` for a session, creates the user's
-`profiles` row if the signup trigger didn't, then redirects into the app.
+Starts the Google OAuth PKCE flow: sets the code-verifier cookie and `302`s to
+Google. Sends `access_type=offline`, `prompt=consent`, and `hd: '*'` (a
+chooser hint only — never trusted; the callback enforces the domain).
 
 | Query | Required | Notes |
 |---|---|---|
-| `code` | yes | PKCE authorization code from Google |
+| `next` | no | Same-origin path to return to after sign-in. Validated by `safeNextPath()` (root-relative, non-auth paths only; rejected values silently dropped) and stashed in the 10-minute httpOnly `mbc-next` cookie for the callback. |
 
-**Responses**
-- `302` → `/calendar` with session cookies set.
-- `302` → `/login?error=auth-error&detail=<message>` on exchange failure. The
-  underlying Supabase error is also logged to the Vercel function log with the
-  cookie header redacted.
+**Responses:** `302` → Google, or `302` → `/login?error=auth-error`.
 
-Name resolution order: `user_metadata.full_name` → `user_metadata.name` → the
-local part of the email. New profiles always get `role: 'member'`.
+### `GET /api/auth/callback` — public
 
-### `GET /api/auth/signout`
+OAuth redirect target: exchanges `?code=` for a session, enforces the school
+domain, creates/refreshes the profile row, routes on approval status.
 
-Clears the Supabase session. **Responses:** `302` → `/login`.
+| Query | Required | Notes |
+|---|---|---|
+| `code` | yes | PKCE authorization code (absent when the user cancels at Google) |
+
+Order of operations (load-bearing — see the file header before editing):
+
+1. Exchange the code for a session.
+2. **Read** the existing profile (nothing is written before the domain call).
+3. Domain gate: non-school addresses are rejected — `signOut()` first, then
+   `admin.deleteUser()` so a retry is clean — **unless** the existing profile
+   is already `approved` (the grandfather clause).
+4. Profile fallback: missing row → insert `{id, email, name}` only; existing
+   row → update `email`/`name` only. **Never `role`, never `status`.**
+5. Route: `approved` → the validated `next` path or `/`; anything else →
+   `/pending`.
+
+**Responses** (all `302`, all with session cookies on the redirect):
+- → `SITE_URL` + (`next` path or `/`) on success for an approved account
+- → `/pending` for pending/rejected accounts, or when the profile could not
+  be read after an allowed-domain sign-in (fail-closed, no blind write)
+- → `/login?error=domain` — non-school address, account deleted
+- → `/login?error=auth-error` — exchange failure, missing code, or a profile
+  lookup failure during the domain check (session dropped, account NOT
+  deleted — a transient blip must not destroy the grandfathered admin)
+
+Error codes in URLs are a **fixed set** — `domain` and `auth-error` are the
+only values this route emits (`/login` also has copy for `pending`). Provider
+error text never reaches a URL; it goes to the function log.
+
+### `GET | POST /api/auth/signout` — public + cross-site check
+
+Clears the Supabase session, `302` → `/login`. Both methods run
+`checkSafeNavigation`, which rejects cross-site triggers (e.g. a hostile
+`<img src=…/signout>`) with `403 { "error": "Invalid origin" }` via
+`Sec-Fetch-Site` — such requests carry no `Origin` header. The UI signs out
+with POST forms; GET remains for direct navigation and old links.
 
 ---
 
 ## Events
 
-### `GET /api/events` — public
-
-Returns all events, newest `start_time` first. No pagination.
-
-```json
-[{ "id": "…", "title": "…", "description": "…", "start_time": "…",
-   "end_time": "…", "location": "…", "category": "…",
-   "status": "active", "created_by": "…" }]
-```
-
-`password` is **not** selected, so it never leaves the server here.
-
 ### `POST /api/events/create` — officer
 
-| Field | Type | Required |
-|---|---|---|
-| `title` | string | ✅ |
-| `start_time` | ISO timestamp | ✅ |
-| `end_time` | ISO timestamp | |
-| `description` | string | |
-| `location` | string | |
-| `category` | string | defaults to `'meeting'` |
-| `password` | string | stored but unused — see [KNOWN-GAPS](KNOWN-GAPS.md#eventspassword-is-collected-and-stored-but-never-checked) |
-| `capacity` | string/number | parsed with `parseInt`; **not enforced anywhere** |
+| Field | Type | Required | Limits |
+|---|---|---|---|
+| `title` | string | ✅ | ≤ 200 chars after trim |
+| `start_time` | ISO timestamp | ✅ | must parse |
+| `end_time` | ISO timestamp | | must parse and be after `start_time` |
+| `description` | string | | ≤ 5000 |
+| `location` | string | | ≤ 300 |
+| `category` | string | | ≤ 60; defaults to `'meeting'` |
+| `capacity` | number/string | | absent/`''`/`null` = no cap; otherwise a positive integer (stored, **not enforced** at check-in) |
 
-`status` is forced to `'active'` and `created_by` to the caller's id.
+`status` is forced to `'active'`, `created_by` to the caller. There is **no
+`password` field** — a `password` key in the body is silently ignored (the
+column is dead; the old app stored it in plaintext for a flow that never
+existed).
 
-**Responses:** `201 { data }` (the inserted row) · `400` · `401` · `403` · `500`.
+**Responses:** `201 { data }` (the inserted row) · `400` (validation, message
+names the field) · guard responses · `500 { "error": "Could not create the event" }`.
 
 ### `DELETE /api/events/:id/delete` — officer
 
-**Soft delete.** Sets `status = 'cancelled'`; the row and its attendance records
-are retained.
+**Soft delete**: flips `status` to `'cancelled'`. The row and its attendance
+records survive; a mistaken cancel is reversible from the table editor. Note
+the trailing `/delete` segment.
 
-**Responses:** `200 { "success": true }` · `401` · `403` · `500`.
+**Responses:** `200 { "success": true }` · `400 { "error": "Invalid event id" }`
+(non-UUID path segment — checked before Postgres can 500 on it) · guard
+responses · `500`.
 
-Note the trailing `/delete` segment — this is *not* `DELETE /api/events/:id`.
+### `GET /api/events/:id/qr` — officer
 
-### `GET /api/events/:id/qr` — public
-
-Mints a fresh signed check-in token for the event and renders it as a QR code.
+Mints a **bearer check-in token** (hence the officer gate — this endpoint had
+no auth at all in the old app) and renders it as a QR PNG. Response is
+`Cache-Control: no-store`; a cached QR is a token in a shared cache.
 
 ```json
-{ "qr": "data:image/png;base64,…", "event": { "id": "…", "title": "…" } }
+{
+  "qr": "data:image/png;base64,…",
+  "event": { "id": "…", "title": "…" },
+  "expires_at": "2026-08-11T21:00:00.000Z",
+  "expires_in": 900
+}
 ```
 
-The token is an HS256 JWT carrying `{ event_id }`, signed with `AUTH_SECRET`,
-valid for **4 hours**. Each call issues a new one; old tokens stay valid until
-they expire.
+The token lives **15 minutes** (`QR_TOKEN_TTL_SECONDS` in `lib/qrcode.ts` —
+the short window is the security property; do not lengthen it). `/calendar`'s
+Present mode re-fetches at `expires_in − 180s` so the projected code never
+goes stale on screen.
 
-**Responses:** `200` · `400` (missing id) · `404` (no such event).
+Minting is refused for events that can no longer accept check-ins:
+
+**Responses:** `200` · `400` (missing id) · `404` (no such event) ·
+`409 { reason: "event_not_active" }` (cancelled/completed) ·
+`409 { reason: "checkin_closed", closed_at }` (past `end_time + 2h`, or
+`start_time + 4h` with no end) · guard responses · `500`.
+
+There is deliberately no *lower* bound here (unlike check-in itself): an
+officer setting up a room early may open Present mode before the window opens.
 
 ---
 
 ## Attendance
 
-### `GET /api/attendance` — member
+### `POST /api/attendance/checkin` — approved
 
-Every check-in record, newest first, with the member and event joined in. Not
-scoped to the caller — any signed-in member sees the full log.
-
-```json
-[{ "id": "…", "checked_in_at": "…", "method": "qr",
-   "profiles": { "name": "…", "email": "…", "role": "…" },
-   "events":   { "title": "…", "start_time": "…" } }]
-```
-
-### `POST /api/attendance/checkin` — public
-
-The QR check-in endpoint, called from `/checkin`.
+Records **the caller's** attendance. The body carries `qr_token` and nothing
+else; the member written is always `session.id`. The old endpoint accepted
+`member_id` from the body — that was the impersonation hole, and a `member_id`
+key in the body is now logged as a probe and ignored. **Never reintroduce a
+client-supplied identity here.**
 
 | Field | Type | Required |
 |---|---|---|
 | `qr_token` | string | ✅ |
-| `member_id` | uuid | optional — falls back to the session user |
 
-Flow: verify the JWT signature and expiry → resolve the member (explicit
-`member_id` wins, otherwise the session) → reject duplicates → insert with
-`method: 'qr'`.
+Three independent checks before the insert: (1) caller signed in and approved,
+(2) token signature/expiry/issuer/audience valid, (3) the event exists, is
+`'active'`, and is inside its check-in window (`start_time − 30 min` →
+`end_time + 2 h`, or `start_time + 4 h` when there's no end time).
 
-```json
-{ "success": true, "member_name": "…", "checked_in_at": "…" }
-```
-
-**Responses:** `200` · `400` (bad JSON, missing/expired token, unresolvable
-member) · `409 Already checked in` · `500`.
-
-> ⚠️ `member_id` is accepted from the request body without any authorization
-> check. See [KNOWN-GAPS.md](KNOWN-GAPS.md#qr-check-in-can-be-done-on-anyones-behalf).
+**Responses:**
+- `201 { "success": true, "member_name": "…", "checked_in_at": "…", "event": { "id", "title" } }`
+- `400` — bad JSON, missing `qr_token`, or an invalid/expired token (friendly
+  message: ask an officer for a fresh code)
+- `403 { reason: "event_not_active" }` · `403 { reason: "checkin_not_open", opens_at }`
+  · `403 { reason: "checkin_closed", closed_at }`
+- `404` — validly-signed token for a deleted event
+- `409 { "error": "Already checked in", "checked_in_at": "…" }` — explicit
+  duplicate lookup; the unique constraint catches the race and returns the
+  same 409 without `checked_in_at`
+- guard responses · `500` (fixed message, detail in the log)
 
 ---
 
 ## Members
 
-### `GET /api/members` — member
-
-Full roster ordered by role (ascending alphabetical: `admin`, `member`,
-`treasurer`).
-
-```json
-[{ "id": "…", "name": "…", "email": "…", "role": "member", "created_at": "…" }]
-```
-
 ### `PATCH /api/members/:id` — **admin only**
 
-The one endpoint where `treasurer` is insufficient.
+Change a member's **role**. The one endpoint where `treasurer` is
+insufficient — a treasurer must not be able to mint an admin.
 
 ```json
 { "role": "admin" | "treasurer" | "member" }
 ```
 
-**Responses:** `200 { data }` · `400` (invalid role) · `401` ·
-`403 Only admins can change roles` · `500`.
+**The last-admin guard:** a write that would take the approved-admin count to
+zero is refused `409` — otherwise nobody can approve or promote anyone ever
+again, and recovery is hand-editing the database. If the admin *count query
+itself* fails, the endpoint fails closed with `503` and writes nothing.
+Self-demotion is allowed as long as another approved admin remains (the
+"I'm graduating" path). The count-then-write is not atomic — see
+[KNOWN-GAPS.md](KNOWN-GAPS.md#the-last-admin-guard-is-not-atomic).
 
-No guard prevents an admin from demoting themselves, or from demoting the last
-remaining admin.
+**Responses:** `200 { data }` (also for an idempotent same-role no-op, which
+skips the write) · `400` (missing id / invalid role) · `404` · `409`
+(last admin, or the STEP 9 domain check constraint if applied) · `503`
+(count failed) · guard responses · `500`.
+
+### `PATCH /api/members/:id/status` — officer
+
+Approve or decline an account. Officer-wide **on purpose** — treasurers run
+meetings, and letting members in is part of running a meeting.
+
+```json
+{ "status": "approved" | "rejected" }
+```
+
+`'pending'` is not settable: there is no reason to push a decided account back
+into the queue, and allowing it would let an officer erase a decision.
+Reversible in both directions (a declined account can be re-approved here).
+
+Four refusals, in order:
+
+1. **Self** — `403`: an officer may not rule on their own account.
+2. **Missing** — `404` for an unknown id.
+3. **Domain** — `409`: approving a non-school address is refused (declining
+   one is allowed — that's how you dispose of a bad row).
+4. **Last admin** — `409`: declining the only approved admin is refused; a
+   failed count query fails closed with `503`.
+
+On success the row is stamped with `approved_by` / `approved_at` — **who
+ruled**, not only who said yes; declines are stamped identically.
+
+**Responses:** `200 { data }` · `400` · `403` (self) · `404` · `409` · `503` ·
+guard responses · `500`.
 
 ---
 
 ## Announcements
 
-### `GET /api/announcements` — public
-
-The 10 most recent announcements, newest first.
-
-```json
-[{ "id": "…", "title": "…", "body": "…", "created_at": "…", "author_name": "…" }]
-```
-
 ### `POST /api/announcements/create` — officer
 
-| Field | Type | Required |
-|---|---|---|
-| `title` | string | ✅ non-empty after trim |
-| `body` | string | ✅ non-empty after trim |
+| Field | Type | Required | Limits |
+|---|---|---|---|
+| `title` | string | ✅ non-empty after trim | ≤ 200 |
+| `body` | string | ✅ non-empty after trim | ≤ 20000 |
 
-`author_id` and `author_name` are taken from the session.
+`author_id` and `author_name` come from the session, never the client. The
+stored body is plain text — pages render it server-side, escaped; never
+`innerHTML`.
 
-**Responses:** `201 { data }` · `400` · `401` · `403` · `500`.
+**Responses:** `201 { data }` · `400` · guard responses · `500`.
 
 ### `DELETE /api/announcements/:id` — officer
 
-Hard delete. **Responses:** `200 { "success": true }` · `401` · `403` · `500`.
+Hard delete (announcements have no dependent rows).
 
----
-
-## Finance
-
-### `GET /api/finance` — member
-
-One aggregate call returning everything the finance page needs.
-
-```json
-{
-  "categories":   [{ "id": "…", "name": "…", "slug": "…", "icon": "…" }],
-  "budgets":      [{ "id": "…", "name": "…", "amount": "…", "spent": "…",
-                     "category_id": "…", "starts_at": "…", "ends_at": "…",
-                     "created_at": "…" }],
-  "transactions": [{ "id": "…", "amount": "…", "description": "…",
-                     "merchant": "…", "status": "…", "created_at": "…",
-                     "category_id": "…", "user_id": "…",
-                     "categories": { "name": "…" },
-                     "profiles":   { "name": "…", "email": "…" } }]
-}
-```
-
-**Scoping:** officers get all transactions; members get only their own
-(`user_id = session.id`). Capped at 100 transactions, newest first. Categories
-are filtered to `is_active = true`. Budgets are **not** scoped or filtered by
-date — every budget ever created is returned to everyone.
-
-### `POST /api/finance/transactions` — member
-
-Any signed-in member can submit an expense. It lands as `pending`.
-
-| Field | Type | Required |
-|---|---|---|
-| `amount` | number/string | ✅ must parse to a positive number |
-| `description` | string | ✅ |
-| `category_id` | uuid | ✅ |
-| `merchant` | string | |
-
-`user_id` is taken from the session — a member cannot file on someone else's
-behalf. `status` is forced to `'pending'`.
-
-**Responses:** `201 { data }` · `400` · `401` · `500`.
-
-### `PATCH /api/finance/transactions/:id` — officer
-
-Approve or reject.
-
-```json
-{ "status": "approved" | "rejected" | "pending" }
-```
-
-**Responses:** `200 { data }` · `400` · `401` · `403` · `500`.
-
-> Approving a transaction does **not** update `budgets.spent`. See
-> [KNOWN-GAPS.md](KNOWN-GAPS.md#budgetsspent-is-never-updated).
-
-### `DELETE /api/finance/transactions/:id` — officer
-
-Hard delete, no soft-delete or audit trail.
-
-**Responses:** `200 { "success": true }` · `401` · `403` · `500`.
-
-### `POST /api/finance/budgets` — officer
-
-| Field | Type | Required |
-|---|---|---|
-| `name` | string | ✅ |
-| `amount` | number/string | ✅ parsed with `parseFloat` |
-| `category_id` | uuid | ✅ |
-| `starts_at` | ISO timestamp | ✅ |
-| `ends_at` | ISO timestamp | ✅ |
-
-`spent` is initialised to `0` and never changes after that.
-
-**Responses:** `201 { data }` · `400` · `401` · `403` · `500`.
-
-There is no `PATCH` or `DELETE` for budgets — editing one means going to the
-Supabase table editor.
+**Responses:** `200 { "success": true }` · `400 { "error": "Invalid announcement id" }`
+(non-UUID) · guard responses · `500`.

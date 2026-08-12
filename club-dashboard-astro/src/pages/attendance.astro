@@ -1,119 +1,436 @@
 ---
+/**
+ * /attendance — scoped by role.
+ *
+ * Officers see the full club log: per-event turnout for the recent five
+ * meetings, headline figures, and the member/event/time table.
+ * Members see ONLY their own check-in history and their own totals — no
+ * other members' rows, no emails. (The previous version showed the entire
+ * club-wide log to every member; that scoping bug is what this fixes.)
+ *
+ * All day-bucketing uses Pacific date keys — the club is in
+ * America/Los_Angeles and the server runs in UTC.
+ */
 import DashboardLayout from '../layouts/DashboardLayout.astro';
-import { requireAuth } from '../lib/auth';
+import { requireApproved } from '../lib/auth';
 import { supabaseAdmin } from '../lib/supabase';
 
-const user = await requireAuth(Astro.request, Astro.response.headers, Astro.redirect);
+const session = await requireApproved(Astro.request, Astro.response.headers, Astro.redirect);
 
-// Fetch attendance with member + event info
-const { data: records } = await supabaseAdmin
-  .from('attendance')
-  .select(`
-    id,
-    checked_in_at,
-    method,
-    member_id,
-    event_id,
-    profiles:member_id ( name, role ),
-    events:event_id ( title, start_time )
-  `)
-  .order('checked_in_at', { ascending: false });
+const TZ = 'America/Los_Angeles';
+const dayKey = (value: string | Date): string =>
+  new Date(value).toLocaleDateString('en-CA', { timeZone: TZ });
+const todayKey = dayKey(new Date());
+const fmtDay = (value: string): string =>
+  new Date(value).toLocaleDateString('en-US', { timeZone: TZ, month: 'short', day: 'numeric' });
+const fmtTime = (value: string): string =>
+  new Date(value).toLocaleTimeString('en-US', { timeZone: TZ, hour: 'numeric', minute: '2-digit' });
+const longToday = new Date().toLocaleDateString('en-US', {
+  timeZone: TZ,
+  weekday: 'long',
+  month: 'long',
+  day: 'numeric',
+});
 
-// Fetch events for filter dropdown
-const { data: events } = await supabaseAdmin
-  .from('events')
-  .select('id, title, start_time')
-  .order('start_time', { ascending: false });
-
-// Stats
-const { count: totalMembers } = await supabaseAdmin
-  .from('profiles')
-  .select('id', { count: 'exact', head: true });
-
-const { count: totalEvents } = await supabaseAdmin
-  .from('events')
-  .select('id', { count: 'exact', head: true })
-  .eq('status', 'completed');
-
-const avgAttendance = totalMembers && totalEvents && records
-  ? Math.round((records.length / Math.max(totalEvents * totalMembers, 1)) * 100)
-  : 0;
----
-<DashboardLayout title="Attendance Tracker" user={user}>
-  <div class="stats-row">
-    <div class="stat-box">
-      <div class="stat-num">{avgAttendance}%</div>
-      <div class="stat-lbl">Avg attendance</div>
-    </div>
-    <div class="stat-box">
-      <div class="stat-num">{totalMembers ?? 0}</div>
-      <div class="stat-lbl">Total members</div>
-    </div>
-    <div class="stat-box">
-      <div class="stat-num">{totalEvents ?? 0}</div>
-      <div class="stat-lbl">Meetings held</div>
-    </div>
-  </div>
-
-  <div class="att-controls">
-    <select id="event-filter">
-      <option value="">All events</option>
-      {(events ?? []).map(e => (
-        <option value={e.id}>
-          {e.title} — {new Date(e.start_time).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-        </option>
-      ))}
-    </select>
-    <input type="text" id="member-search" placeholder="Search member..." style="flex:1" />
-  </div>
-
-  {records && records.length > 0 ? (
-    <table class="att-table" id="att-table">
-      <thead>
-        <tr>
-          <th>Name</th>
-          <th>Event</th>
-          <th>Status</th>
-          <th>Time</th>
-        </tr>
-      </thead>
-      <tbody>
-        {records.map(r => {
-          const profile = Array.isArray(r.profiles) ? r.profiles[0] : r.profiles;
-          const event = Array.isArray(r.events) ? r.events[0] : r.events;
-          const checkinTime = r.checked_in_at
-            ? new Date(r.checked_in_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
-            : '—';
-          return (
-            <tr data-event={r.event_id} data-name={(profile?.name ?? '').toLowerCase()}>
-              <td>{profile?.name ?? 'Unknown'}</td>
-              <td>{event?.title ?? '—'}</td>
-              <td><span class="status-badge present">Present</span></td>
-              <td>{checkinTime}</td>
-            </tr>
-          );
-        })}
-      </tbody>
-    </table>
-  ) : (
-    <div class="empty-state">No attendance records yet</div>
-  )}
-</DashboardLayout>
-
-<script>
-const eventFilter = document.getElementById('event-filter') as HTMLSelectElement;
-const memberSearch = document.getElementById('member-search') as HTMLInputElement;
-
-function filterTable() {
-  const eventId = eventFilter.value;
-  const search = memberSearch.value.toLowerCase();
-  document.querySelectorAll<HTMLTableRowElement>('#att-table tbody tr').forEach(row => {
-    const matchEvent = !eventId || row.dataset.event === eventId;
-    const matchName  = !search || (row.dataset.name ?? '').includes(search);
-    row.style.display = matchEvent && matchName ? '' : 'none';
-  });
+/** Supabase embeds come back as object or single-element array depending on the FK metadata. */
+function one<T>(value: T | T[] | null | undefined): T | null {
+  if (value === null || value === undefined) return null;
+  return Array.isArray(value) ? (value[0] ?? null) : value;
 }
 
-eventFilter?.addEventListener('change', filterTable);
-memberSearch?.addEventListener('input', filterTable);
-</script>
+const clampPct = (n: number): number => Math.max(0, Math.min(100, Math.round(n)));
+
+const nowIso = new Date().toISOString();
+
+// Meetings held so far (both branches use this): non-cancelled events that
+// have already started.
+const { count: meetingsHeldCount } = await supabaseAdmin
+  .from('events')
+  .select('id', { count: 'exact', head: true })
+  .in('status', ['active', 'completed'])
+  .lte('start_time', nowIso);
+const meetingsHeld = meetingsHeldCount ?? 0;
+
+/* ── Officer data ─────────────────────────────────────────────────────── */
+
+const LOG_LIMIT = 400;
+
+interface LogRow {
+  name: string;
+  eventId: string;
+  eventTitle: string;
+  when: string;
+  method: string;
+}
+interface TurnoutRow {
+  label: string;
+  isToday: boolean;
+  count: number;
+  pct: number;
+}
+interface FilterEvent {
+  id: string;
+  label: string;
+}
+
+let logRows: LogRow[] = [];
+let filterEvents: FilterEvent[] = [];
+let turnout: TurnoutRow[] = [];
+let approvedCount = 0;
+let totalCheckins = 0;
+let avgTurnout = 0;
+
+if (session.isOfficer) {
+  const { data: log } = await supabaseAdmin
+    .from('attendance')
+    .select(
+      'id, checked_in_at, method, event_id, profiles:member_id ( name ), events:event_id ( title, start_time )'
+    )
+    .order('checked_in_at', { ascending: false })
+    .limit(LOG_LIMIT);
+
+  const { count: approved } = await supabaseAdmin
+    .from('profiles')
+    .select('id', { count: 'exact', head: true })
+    .eq('status', 'approved');
+  approvedCount = approved ?? 0;
+
+  const { count: checkins } = await supabaseAdmin
+    .from('attendance')
+    .select('id', { count: 'exact', head: true });
+  totalCheckins = checkins ?? 0;
+
+  // Recent five meetings for the turnout bars: fetch a generous window, then
+  // keep only events whose Pacific-local day is today or earlier.
+  const { data: recentEvents } = await supabaseAdmin
+    .from('events')
+    .select('id, title, start_time')
+    .in('status', ['active', 'completed'])
+    .order('start_time', { ascending: false })
+    .limit(25);
+
+  const turnoutEvents = (recentEvents ?? [])
+    .filter((e) => e.start_time && dayKey(e.start_time) <= todayKey)
+    .slice(0, 5)
+    .reverse();
+
+  const countsByEvent = new Map<string, number>();
+  if (turnoutEvents.length > 0) {
+    const { data: countRows } = await supabaseAdmin
+      .from('attendance')
+      .select('event_id')
+      .in(
+        'event_id',
+        turnoutEvents.map((e) => e.id)
+      );
+    for (const row of countRows ?? []) {
+      countsByEvent.set(row.event_id, (countsByEvent.get(row.event_id) ?? 0) + 1);
+    }
+  }
+
+  turnout = turnoutEvents.map((e) => {
+    const count = countsByEvent.get(e.id) ?? 0;
+    return {
+      label: fmtDay(e.start_time),
+      isToday: dayKey(e.start_time) === todayKey,
+      count,
+      pct: approvedCount > 0 ? clampPct((count / approvedCount) * 100) : 0,
+    };
+  });
+
+  avgTurnout =
+    meetingsHeld > 0 && approvedCount > 0
+      ? clampPct((totalCheckins / (meetingsHeld * approvedCount)) * 100)
+      : 0;
+
+  const seenEvents = new Map<string, { label: string; start: string }>();
+  logRows = (log ?? []).map((r) => {
+    const profile = one<{ name: string | null }>(r.profiles);
+    const event = one<{ title: string | null; start_time: string | null }>(r.events);
+    const title = event?.title ?? 'Unknown event';
+    if (r.event_id && !seenEvents.has(r.event_id)) {
+      seenEvents.set(r.event_id, {
+        label: event?.start_time ? `${title} — ${fmtDay(event.start_time)}` : title,
+        start: event?.start_time ?? '',
+      });
+    }
+    return {
+      name: profile?.name?.trim() || 'Unknown member',
+      eventId: r.event_id ?? '',
+      eventTitle: title,
+      when: r.checked_in_at ? `${fmtDay(r.checked_in_at)} · ${fmtTime(r.checked_in_at)}` : '—',
+      method: r.method === 'qr' ? 'QR' : 'Code',
+    };
+  });
+
+  filterEvents = [...seenEvents.entries()]
+    .sort((a, b) => (a[1].start < b[1].start ? 1 : -1))
+    .map(([id, v]) => ({ id, label: v.label }));
+}
+
+const logCapped = logRows.length === LOG_LIMIT;
+const turnoutHasToday = turnout.some((t) => t.isToday);
+
+/* ── Member data (own rows only) ──────────────────────────────────────── */
+
+interface MineRow {
+  isToday: boolean;
+  day: string;
+  time: string;
+  title: string;
+}
+
+let mineRows: MineRow[] = [];
+let mineCount = 0;
+let mineRate = 0;
+
+if (!session.isOfficer) {
+  const { data: mine } = await supabaseAdmin
+    .from('attendance')
+    .select('checked_in_at, events:event_id ( title )')
+    .eq('member_id', session.id)
+    .order('checked_in_at', { ascending: false });
+
+  mineRows = (mine ?? []).map((r) => {
+    const event = one<{ title: string | null }>(r.events);
+    return {
+      isToday: r.checked_in_at ? dayKey(r.checked_in_at) === todayKey : false,
+      day: r.checked_in_at ? fmtDay(r.checked_in_at) : '—',
+      time: r.checked_in_at ? fmtTime(r.checked_in_at) : '',
+      title: event?.title ?? 'Unknown event',
+    };
+  });
+  mineCount = mineRows.length;
+  mineRate = meetingsHeld > 0 ? clampPct((mineCount / meetingsHeld) * 100) : 0;
+}
+---
+<DashboardLayout title="Attendance" user={session}>
+  <header class="greet">
+    <span class="greet__date">{longToday}</span>
+    <h1>{session.isOfficer ? 'Attendance' : 'Your attendance'}</h1>
+    {session.isOfficer ? (
+      <p>Who showed up, meeting by meeting.</p>
+    ) : (
+      <p>Your own check-in history. Only you and the officers can see it.</p>
+    )}
+  </header>
+
+  {session.isOfficer ? (
+    <div class="home" style="margin-top:clamp(28px,3.6vw,42px)">
+      <div class="home__main">
+        <section aria-labelledby="log-h" class="owned">
+          <div class="section-head">
+            <h2 id="log-h">Check-in log</h2>
+            <span class="spacer"></span>
+            <span class="count"><span class="num">{totalCheckins}</span> check-ins</span>
+            <span class="flag">Officer only</span>
+          </div>
+
+          {logRows.length > 0 ? (
+            <>
+              <div class="roster-tools">
+                <label class="field" style="flex:1 1 200px">
+                  <span class="sr">Search by member name</span>
+                  <input
+                    class="input"
+                    type="search"
+                    id="att-search"
+                    placeholder="Search by name…"
+                    autocomplete="off"
+                  />
+                </label>
+                <label class="field" style="flex:0 1 280px;min-width:180px">
+                  <span class="sr">Filter by event</span>
+                  <select class="select" id="att-event">
+                    <option value="">All events</option>
+                    {filterEvents.map((e) => (
+                      <option value={e.id}>{e.label}</option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+
+              <div class="tablewrap">
+                <table class="rows" id="att-table">
+                  <thead>
+                    <tr>
+                      <th>Member</th>
+                      <th>Event</th>
+                      <th>When</th>
+                      <th>Method</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {logRows.map((r) => (
+                      <tr data-event={r.eventId} data-name={r.name.toLowerCase()}>
+                        <td data-label="Member">{r.name}</td>
+                        <td data-label="Event">{r.eventTitle}</td>
+                        <td data-label="When"><span class="num">{r.when}</span></td>
+                        <td data-label="Method">{r.method}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              <div class="state" id="att-none" style="display:none">
+                <b>No matches</b>
+                <p>No check-ins match that search. Clear it and try again.</p>
+              </div>
+
+              {logCapped && (
+                <p class="micro muted" style="margin-top:10px">
+                  Showing the <span class="num">{LOG_LIMIT}</span> most recent check-ins.
+                </p>
+              )}
+            </>
+          ) : (
+            <div class="state state--rule">
+              <b>No check-ins recorded yet</b>
+              <p>
+                Project a QR code at your next meeting and every scan lands here, newest
+                first.
+              </p>
+            </div>
+          )}
+        </section>
+      </div>
+
+      <aside class="home__rail">
+        <section aria-labelledby="fig-h">
+          <div class="section-head"><h2 id="fig-h">By the numbers</h2></div>
+          <div class="figures">
+            <div>
+              <b>{approvedCount}</b>
+              <span class="figures__cap">Approved<br />members</span>
+            </div>
+            <div>
+              <b>{meetingsHeld}</b>
+              <span class="figures__cap">Meetings<br />held</span>
+            </div>
+            <div>
+              <b>{totalCheckins}</b>
+              <span class="figures__cap">Check-ins<br />recorded</span>
+            </div>
+            <div>
+              <b>{avgTurnout}<span class="figures__unit">%</span></b>
+              <span class="figures__cap">Average<br />turnout</span>
+            </div>
+          </div>
+        </section>
+
+        <section aria-labelledby="turn-h">
+          <div class="section-head">
+            <h2 id="turn-h">Turnout, recent five</h2>
+            <span class="spacer"></span>
+            <span class="count">of {approvedCount}</span>
+            <span class="flag">Officer only</span>
+          </div>
+          {turnout.length > 0 ? (
+            <>
+              <ul class="turnout">
+                {turnout.map((t) => (
+                  <li class:list={[{ now: t.isToday }]}>
+                    <span class="lbl">{t.isToday ? <span class="hl">Today</span> : t.label}</span>
+                    <span class="bar" aria-hidden="true"><i style={`width:${t.pct}%`}></i></span>
+                    <span class="pct">
+                      {t.pct}%<span class="sr"> — {t.count} of {approvedCount} checked in</span>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+              {turnoutHasToday && (
+                <p class="small muted" style="margin-top:10px">
+                  Today is still counting.
+                </p>
+              )}
+            </>
+          ) : (
+            <div class="state">
+              <b>No meetings yet</b>
+              <p>Turnout bars show up after the first event.</p>
+            </div>
+          )}
+        </section>
+      </aside>
+    </div>
+  ) : (
+    <div class="home" style="margin-top:clamp(28px,3.6vw,42px)">
+      <div class="home__main">
+        <section aria-labelledby="tot-h">
+          <div class="section-head"><h2 id="tot-h">Your totals</h2></div>
+          <div class="figures">
+            <div>
+              <b>{mineCount}</b>
+              <span class="figures__cap">Meetings<br />attended</span>
+            </div>
+            <div>
+              <b>{mineRate}<span class="figures__unit">%</span></b>
+              <span class="figures__cap">Of {meetingsHeld} held<br />so far</span>
+            </div>
+          </div>
+        </section>
+
+        <section aria-labelledby="hist-h">
+          <div class="section-head">
+            <h2 id="hist-h">Your check-ins</h2>
+            <span class="spacer"></span>
+            <span class="count"><span class="num">{mineCount}</span> total</span>
+          </div>
+          {mineRows.length > 0 ? (
+            <ul class="minilist">
+              {mineRows.map((m) => (
+                <li>
+                  <span class="when">{m.isToday ? <span class="hl">Today</span> : m.day}</span>
+                  <span class="what">
+                    {m.title}
+                    {m.time && <span class="micro muted"> · {m.time}</span>}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <div class="state state--rule">
+              <b>No check-ins yet</b>
+              <p>
+                Scan the QR code an officer puts up at a meeting and your history lands
+                here.
+              </p>
+            </div>
+          )}
+        </section>
+      </div>
+    </div>
+  )}
+
+  {session.isOfficer && (
+    <script is:inline>
+      (function () {
+        var search = document.getElementById('att-search');
+        var eventSel = document.getElementById('att-event');
+        var table = document.getElementById('att-table');
+        var none = document.getElementById('att-none');
+        if (!search || !eventSel || !table) return;
+
+        function apply() {
+          var q = search.value.trim().toLowerCase();
+          var ev = eventSel.value;
+          var rows = table.querySelectorAll('tbody tr');
+          var visible = 0;
+          rows.forEach(function (row) {
+            var matchEvent = !ev || row.getAttribute('data-event') === ev;
+            var matchName = !q || (row.getAttribute('data-name') || '').indexOf(q) !== -1;
+            var show = matchEvent && matchName;
+            row.style.display = show ? '' : 'none';
+            if (show) visible++;
+          });
+          if (none) none.style.display = visible === 0 ? '' : 'none';
+          table.parentElement.style.display = visible === 0 ? 'none' : '';
+        }
+
+        search.addEventListener('input', apply);
+        eventSel.addEventListener('change', apply);
+      })();
+    </script>
+  )}
+</DashboardLayout>

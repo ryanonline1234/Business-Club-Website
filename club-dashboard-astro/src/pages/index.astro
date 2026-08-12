@@ -1,12 +1,301 @@
 ---
-import { getSession } from '../lib/auth';
+import DashboardLayout from '../layouts/DashboardLayout.astro';
+import { requireApproved } from '../lib/auth';
+import { supabaseAdmin } from '../lib/supabase';
 
-const user = await getSession(Astro.request, Astro.response.headers);
+const user = await requireApproved(Astro.request, Astro.response.headers, Astro.redirect);
 
-const siteUrl = import.meta.env.SITE_URL;
-if (user) {
-  return Astro.redirect(`${siteUrl}/calendar`);
+/* ── Pacific-local time helpers ──────────────────────────────────────────────
+   The club lives in America/Los_Angeles; the server runs in UTC. Every
+   "today" / day-bucketing decision below goes through these — never the
+   server's local date. */
+const TZ = 'America/Los_Angeles';
+
+/** YYYY-MM-DD in Pacific time — the day-bucketing key. */
+function dayKeyOf(d: Date): string {
+  return d.toLocaleDateString('en-CA', { timeZone: TZ });
+}
+
+/** Pacific-formatted piece of a date; '' for an invalid date. */
+function fmtDate(value: string | Date, opts: Intl.DateTimeFormatOptions): string {
+  const d = typeof value === 'string' ? new Date(value) : value;
+  if (Number.isNaN(d.getTime())) return '';
+  return new Intl.DateTimeFormat('en-US', { timeZone: TZ, ...opts }).format(d);
+}
+
+/** "3:30 – 4:45 PM" (shared meridiem dropped), or just "3:30 PM" without an end. */
+function timeRange(start: Date, end: Date | null): string {
+  const t = (d: Date) => fmtDate(d, { hour: 'numeric', minute: '2-digit' });
+  const s = t(start);
+  if (!end || Number.isNaN(end.getTime())) return s;
+  const e = t(end);
+  if (s.slice(-2) === e.slice(-2)) return `${s.slice(0, -3)} – ${e}`;
+  return `${s} – ${e}`;
+}
+
+/** One-line teaser: whitespace collapsed, cut at a word boundary. */
+function teaser(body: string, max = 180): string {
+  const flat = body.replace(/\s+/g, ' ').trim();
+  if (flat.length <= max) return flat;
+  return flat.slice(0, max).replace(/\s+\S*$/, '') + '…';
+}
+
+const now = new Date();
+const nowMs = now.getTime();
+const todayKey = dayKeyOf(now);
+
+/* ── Data ────────────────────────────────────────────────────────────────────
+   All reads via supabaseAdmin (codebase idiom); this page renders everything
+   server-side. The events cutoff is now-24h so every event whose PACIFIC day
+   is still today survives the SQL filter regardless of UTC offset; the real
+   "is it still upcoming" decision is the Pacific day-key compare below. */
+const cutoffIso = new Date(nowMs - 24 * 60 * 60 * 1000).toISOString();
+const nowIso = now.toISOString();
+
+const [upcomingRes, annRes, approvedRes, lastEventRes] = await Promise.all([
+  supabaseAdmin
+    .from('events')
+    .select('id, title, description, start_time, end_time, location, category, status')
+    .eq('status', 'active')
+    .gte('start_time', cutoffIso)
+    .order('start_time', { ascending: true })
+    .limit(8),
+  supabaseAdmin
+    .from('announcements')
+    .select('id, title, body, created_at, author_name')
+    .order('created_at', { ascending: false })
+    .limit(3),
+  supabaseAdmin
+    .from('profiles')
+    .select('id', { count: 'exact', head: true })
+    .eq('status', 'approved'),
+  supabaseAdmin
+    .from('events')
+    .select('id, title, start_time')
+    .eq('status', 'active')
+    .lte('start_time', nowIso)
+    .order('start_time', { ascending: false })
+    .limit(1),
+]);
+
+interface EventRow {
+  id: string;
+  title: string;
+  description: string | null;
+  start_time: string;
+  end_time: string | null;
+  location: string | null;
+  category: string | null;
+  status: string;
+}
+interface AnnRow {
+  id: string;
+  title: string;
+  body: string;
+  created_at: string;
+  author_name: string | null;
+}
+
+const upcoming = (upcomingRes.data ?? []) as EventRow[];
+const annList = (annRes.data ?? []) as AnnRow[];
+const approvedCount = approvedRes.count ?? 0;
+
+/* The hero: first active event whose Pacific day is today or later. An event
+   earlier today stays the day's headline even after it starts. */
+const heroEvent =
+  upcoming.find((e) => {
+    const t = Date.parse(e.start_time);
+    return !Number.isNaN(t) && dayKeyOf(new Date(t)) >= todayKey;
+  }) ?? null;
+
+/* Same 4-hour assumed length the check-in window uses for open-ended events. */
+const ASSUMED_LENGTH_MS = 4 * 60 * 60 * 1000;
+
+interface HeroView {
+  id: string;
+  day: string;
+  month: string;
+  title: string;
+  when: string;
+  isToday: boolean;
+  isNow: boolean;
+  location: string | null;
+  note: string | null;
+}
+let hero: HeroView | null = null;
+if (heroEvent) {
+  const start = new Date(heroEvent.start_time);
+  const endMs = heroEvent.end_time ? Date.parse(heroEvent.end_time) : Number.NaN;
+  const end = Number.isNaN(endMs) ? null : new Date(endMs);
+  const isToday = dayKeyOf(start) === todayKey;
+  const closesMs = end ? end.getTime() : start.getTime() + ASSUMED_LENGTH_MS;
+  hero = {
+    id: heroEvent.id,
+    day: fmtDate(start, { day: '2-digit' }),
+    month: fmtDate(start, { month: 'short' }),
+    title: heroEvent.title,
+    when: isToday
+      ? `Today, ${timeRange(start, end)}`
+      : `${fmtDate(start, { weekday: 'short' })}, ${fmtDate(start, { month: 'short', day: 'numeric' })} · ${timeRange(start, end)}`,
+    isToday,
+    isNow: start.getTime() <= nowMs && nowMs <= closesMs,
+    location: heroEvent.location,
+    note: heroEvent.description ? teaser(heroEvent.description, 160) : null,
+  };
+}
+
+/* Check-ins at the most recent past (or in-progress) event. */
+const lastEvent = ((lastEventRes.data ?? [])[0] ?? null) as
+  | { id: string; title: string; start_time: string }
+  | null;
+let lastEventCheckins = 0;
+if (lastEvent) {
+  const { count } = await supabaseAdmin
+    .from('attendance')
+    .select('id', { count: 'exact', head: true })
+    .eq('event_id', lastEvent.id);
+  lastEventCheckins = count ?? 0;
+}
+
+/* Officers only: how many accounts are waiting in the approval queue. */
+let pendingCount = 0;
+if (user.isOfficer) {
+  const { count } = await supabaseAdmin
+    .from('profiles')
+    .select('id', { count: 'exact', head: true })
+    .eq('status', 'pending');
+  pendingCount = count ?? 0;
+}
+
+/* ── Greeting (Pacific hour, Pacific date) ────────────────────────────────── */
+const hour = Number(
+  new Intl.DateTimeFormat('en-US', { timeZone: TZ, hour: 'numeric', hourCycle: 'h23' }).format(now)
+);
+const daypart = hour < 12 ? 'Morning' : hour < 18 ? 'Afternoon' : 'Evening';
+const firstName = user.name?.trim().split(/\s+/)[0] || null;
+const greeting = firstName ? `${daypart}, ${firstName}.` : `${daypart}.`;
+const greetDate = fmtDate(now, { weekday: 'long', month: 'long', day: 'numeric' });
+
+let greetNote: string;
+if (hero?.isToday && user.isOfficer && pendingCount > 0) {
+  greetNote = 'The approval queue needs you, and there’s an event on the calendar today.';
+} else if (hero?.isToday) {
+  greetNote = 'There’s an event on the calendar today.';
+} else if (heroEvent) {
+  const startMs = Date.parse(heroEvent.start_time);
+  const soon = startMs - nowMs < 6 * 24 * 60 * 60 * 1000;
+  greetNote = soon
+    ? `Nothing today — the next event is ${fmtDate(heroEvent.start_time, { weekday: 'long' })}.`
+    : `Nothing today — the next event is on ${fmtDate(heroEvent.start_time, { month: 'long', day: 'numeric' })}.`;
+} else if (user.isOfficer && pendingCount > 0) {
+  greetNote = 'The approval queue needs you.';
 } else {
-  return Astro.redirect(`${siteUrl}/login`);
+  greetNote = 'Here’s where the club stands.';
 }
 ---
+<DashboardLayout title="Home" user={user}>
+  <div class="home">
+    <div class="home__main">
+
+      <div class="greet">
+        <span class="greet__date">{greetDate}</span>
+        <h1>{greeting}</h1>
+        <p>{greetNote}</p>
+      </div>
+
+      {hero ? (
+        <section class="nextup" aria-labelledby="nextup-h">
+          <span class="nextup__kicker" id="nextup-h">Next up</span>
+          <div class="nextup__body">
+            <div class="datestamp datestamp--xl" aria-hidden="true"><b>{hero.day}</b><i>{hero.month}</i></div>
+            <div style="min-width:0;">
+              <h2 class="nextup__title">{hero.title}</h2>
+              <p class="nextup__meta">
+                {hero.isNow && <span class="tag tag--now">Happening now</span>}
+                {hero.isToday ? <span class="hl">{hero.when}</span> : <span>{hero.when}</span>}
+                {hero.location && <span>{hero.location}</span>}
+              </p>
+              {hero.note && <p class="nextup__note">{hero.note}</p>}
+            </div>
+          </div>
+          <div class="nextup__actions">
+            {/* Present mode lives on the calendar's event detail panel — not
+                /attendance, which is the after-the-fact log. */}
+            {user.isOfficer && (
+              <a class="btn" href={`/calendar?event=${encodeURIComponent(hero.id)}`}>Present check-in QR</a>
+            )}
+            <a class={user.isOfficer ? 'btn btn--ghost' : 'btn'} href="/calendar">Open calendar</a>
+          </div>
+        </section>
+      ) : (
+        <section aria-labelledby="nextup-h">
+          <div class="section-head"><h2 id="nextup-h">Next up</h2></div>
+          <div class="state">
+            <b>Nothing on the calendar yet</b>
+            <p>When officers schedule a meeting or event, it shows up here with its date and check-in details.</p>
+            {user.isOfficer && <a class="btn btn--sm btn--ghost" href="/calendar">Schedule the first event</a>}
+          </div>
+        </section>
+      )}
+
+      <section aria-labelledby="ann-h">
+        <div class="section-head"><h2 id="ann-h">Latest from officers</h2></div>
+        {annList.length === 0 ? (
+          <div class="state">
+            <b>Nothing posted yet</b>
+            <p>When officers post announcements, the three most recent land here.</p>
+            {user.isOfficer && <a class="btn btn--sm btn--ghost" href="/announcements">Post the first one</a>}
+          </div>
+        ) : (
+          <>
+            {annList.map((a) => (
+              <article class="ann-mini">
+                <span class="datestamp datestamp--sm" aria-hidden="true">
+                  <b>{fmtDate(a.created_at, { day: '2-digit' })}</b><i>{fmtDate(a.created_at, { month: 'short' })}</i>
+                </span>
+                <div>
+                  <h3>{a.title}</h3>
+                  <p>{teaser(a.body)}</p>
+                  <p class="byline">{a.author_name ?? 'Officer'}</p>
+                </div>
+              </article>
+            ))}
+            <a class="textlink" href="/announcements">All announcements</a>
+          </>
+        )}
+      </section>
+
+    </div>
+
+    <aside class="home__rail" aria-label="Club summary">
+
+      {user.isOfficer && pendingCount > 0 && (
+        <section class="nudge" aria-labelledby="nudge-h">
+          <b id="nudge-h">
+            {pendingCount === 1 ? 'One person is waiting on you' : `${pendingCount} people are waiting on you`}
+          </b>
+          <p>New accounts need an officer’s approval before they can get in.</p>
+          <a href="/members">Review requests</a>
+        </section>
+      )}
+
+      <section aria-labelledby="fig-h">
+        <div class="section-head"><h2 id="fig-h">By the numbers</h2></div>
+        <div class="figures">
+          <div><b>{approvedCount}</b><span class="figures__cap">Approved<br />members</span></div>
+          {lastEvent ? (
+            <div><b>{lastEventCheckins}</b><span class="figures__cap">Checked in<br />last event</span></div>
+          ) : (
+            <div><b>0</b><span class="figures__cap">Meetings<br />held so far</span></div>
+          )}
+        </div>
+        {lastEvent && (
+          <p class="small muted" style="margin-top:10px;">
+            Last event: {lastEvent.title}, {fmtDate(lastEvent.start_time, { month: 'short', day: 'numeric' })}.
+          </p>
+        )}
+      </section>
+
+    </aside>
+  </div>
+</DashboardLayout>

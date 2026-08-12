@@ -1,48 +1,117 @@
 ---
-import { createSupabaseServerClient } from '../lib/supabase';
+/**
+ * /login — the entry gate. Public, standalone (no DashboardLayout).
+ *
+ * Error copy is a FIXED map keyed by ?error= — the callback only ever emits
+ * 'domain' | 'auth-error' | 'pending' (see api/auth/callback.ts), and nothing
+ * from the query string is ever reflected into the page. A valid same-origin
+ * ?next= path is forwarded to /api/auth/signin, which stashes it in a cookie
+ * for the OAuth callback to consume.
+ */
+import '@fontsource/barlow-condensed/latin-500.css';
+import '@fontsource/barlow-condensed/latin-600.css';
+import '@fontsource/libre-baskerville/latin-400.css';
+import '@fontsource/libre-baskerville/latin-600.css';
+import '@fontsource/libre-baskerville/latin-700.css';
+import { getSession } from '../lib/auth';
+import { safeNextPath } from '../lib/next-redirect';
 
-const supabase = createSupabaseServerClient(Astro.request, Astro.response.headers);
-const { data: { user } } = await supabase.auth.getUser();
+const session = await getSession(Astro.request, Astro.response.headers);
+if (session) return Astro.redirect(session.isApproved ? '/' : '/pending');
 
-// Already logged in → go to calendar
-if (user) return Astro.redirect(`${import.meta.env.SITE_URL}/calendar`);
-
-const error = Astro.url.searchParams.get('error');
-const errorMessages: Record<string, string> = {
-  unauthorized: 'Your email is not on the member list. Please contact an officer.',
-  'auth-error': 'Authentication failed. Please try again.',
+/** The only strings this page may show for ?error=. Unknown keys render nothing. */
+const ERROR_COPY: Record<string, string> = {
+  domain:
+    'Use your school Google account — @mittymonarch.com for students, @mitty.com for faculty.',
+  'auth-error': 'Sign-in failed. Please try again.',
+  pending: 'Your account is awaiting officer approval.',
 };
+const errorKey = Astro.url.searchParams.get('error');
+const errorMessage = errorKey ? (ERROR_COPY[errorKey] ?? null) : null;
+
+// Forward "where was I going" through the OAuth round trip. safeNextPath is
+// the canonical open-redirect check (root-relative, same-origin, non-auth
+// paths only) — anything it rejects is simply dropped.
+const nextPath = safeNextPath(Astro.url.searchParams.get('next'));
+const signinHref = nextPath
+  ? `/api/auth/signin?next=${encodeURIComponent(nextPath)}`
+  : '/api/auth/signin';
 ---
 <!doctype html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Sign In — Mitty Business Club</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="color-scheme" content="light dark" />
+  <title>Sign in — Mitty Business Club</title>
   <link rel="stylesheet" href="/styles/global.css" />
 </head>
 <body>
-  <div class="login-shell">
-    <div class="login-card">
-      <div class="login-logo-title">Mitty Business Club</div>
-      <div class="login-logo-sub">Officer Portal · Sign In</div>
+  <!-- Club monogram, defined once for this standalone page. -->
+  <svg width="0" height="0" class="svgdefs" aria-hidden="true" focusable="false">
+    <defs>
+      <g id="monogram" fill="none">
+        <circle cx="20" cy="20" r="18.25" stroke="#8E7B48" stroke-width="1.3"/>
+        <path d="M11 27.4h18M11 27.4V14.6l4.6 5.2L20 12l4.4 7.8 4.6-5.2v12.8" stroke="#8E7B48" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"/>
+        <path d="M20 6.4v3.4M18.4 8.1h3.2" stroke="#8E7B48" stroke-width="1.3" stroke-linecap="round"/>
+      </g>
+    </defs>
+  </svg>
 
-      {error && (
-        <div class="error-msg">{errorMessages[error] ?? 'An error occurred.'}</div>
-      )}
+  <div class="sheet">
+    <header class="pmark">
+      <svg width="22" height="22" viewBox="0 0 40 40" aria-hidden="true"><use href="#monogram"/></svg>
+      <span>Mitty Business Club</span>
+    </header>
 
-      <a href="/api/auth/signin" class="btn-primary" style="width:100%;justify-content:center;">
-        <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
-          <path d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.717v2.258h2.908c1.702-1.567 2.684-3.874 2.684-6.615z" fill="#4285F4"/>
-          <path d="M9 18c2.43 0 4.467-.806 5.956-2.184l-2.908-2.258c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 009 18z" fill="#34A853"/>
-          <path d="M3.964 10.707A5.41 5.41 0 013.682 9c0-.593.102-1.17.282-1.707V4.961H.957A8.996 8.996 0 000 9c0 1.452.348 2.827.957 4.039l3.007-2.332z" fill="#FBBC05"/>
-          <path d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 00.957 4.961L3.964 7.293C4.672 5.163 6.656 3.58 9 3.58z" fill="#EA4335"/>
-        </svg>
-        Sign in with Google
-      </a>
+    <main class="gate">
+      <svg class="gate__mark" width="72" height="72" viewBox="0 0 40 40" aria-hidden="true"><use href="#monogram"/></svg>
+      <h1>Member sign in</h1>
+      <p class="gate__sub">Meetings, announcements and check-ins for members and officers.</p>
 
-      <div class="login-divider">Access restricted to registered members</div>
-    </div>
+      {errorMessage && <p class="gate__notice" role="alert">{errorMessage}</p>}
+
+      <a class="btn btn--wide gate__go" href={signinHref}>Sign in with Google</a>
+
+      <p class="gate__foot">
+        Use your school Google account. New accounts wait for officer approval.
+      </p>
+    </main>
   </div>
 </body>
 </html>
+
+<style>
+  /* Page-local composition only — tokens and primitives come from global.css. */
+  .gate{
+    flex:1;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    text-align:center;
+    padding:6vh 0 10vh;
+  }
+  .gate__mark{ flex:none; }
+  .gate h1{
+    margin-top:20px;
+    font-family:var(--f-serif); font-weight:600;
+    font-size:var(--t-34); line-height:1.1; color:var(--ink);
+  }
+  .gate__sub{
+    margin-top:10px;
+    font-size:var(--t-16); color:var(--ink-3); line-height:1.55;
+    max-width:32ch;
+  }
+  .gate__notice{
+    margin-top:24px; width:100%; text-align:left;
+    border:1px solid var(--clay); border-left-width:3px;
+    background:var(--clay-bg); color:var(--ink);
+    border-radius:0 var(--r) var(--r) 0;
+    padding:12px 14px;
+    font-size:var(--t-14); line-height:1.5;
+  }
+  .gate__go{ margin-top:24px; min-height:56px; }
+  .gate__foot{
+    margin-top:14px;
+    font-size:var(--t-12); color:var(--ink-3); line-height:1.6;
+    max-width:36ch;
+  }
+</style>

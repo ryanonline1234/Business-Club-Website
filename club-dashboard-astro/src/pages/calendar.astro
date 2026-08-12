@@ -1,300 +1,674 @@
 ---
+/**
+ * /calendar — the events view.
+ *
+ * Month grid ≥980px, agenda list below (CSS swaps them; both are rendered).
+ * All event data is rendered SERVER-SIDE in this template — client JS only
+ * submits forms, fetches the QR code, and reloads. Day bucketing and "today"
+ * use Pacific-local date keys, never the server's UTC date.
+ *
+ * Officer flows: New event (disclosure composer → POST /api/events/create),
+ * Cancel event (inline confirm → DELETE /api/events/[id]/delete), and Present
+ * mode (full-bleed projected surface fed by GET /api/events/[id]/qr, silently
+ * re-fetched before the 15-minute token expires).
+ */
 import DashboardLayout from '../layouts/DashboardLayout.astro';
-import { requireAuth } from '../lib/auth';
+import { requireApproved } from '../lib/auth';
 import { supabaseAdmin } from '../lib/supabase';
 
-const user = await requireAuth(Astro.request, Astro.response.headers, Astro.redirect);
-const isOfficer = ['admin', 'treasurer'].includes(user.role);
+const user = await requireApproved(Astro.request, Astro.response.headers, Astro.redirect);
 
-const { data: events } = await supabaseAdmin
+interface EventRow {
+  id: string;
+  title: string;
+  description: string | null;
+  start_time: string;
+  end_time: string | null;
+  location: string | null;
+  category: string | null;
+  capacity: number | null;
+  status: string;
+  created_by: string | null;
+}
+
+const { data: eventsData, error: eventsError } = await supabaseAdmin
   .from('events')
-  .select('id, title, start_time, end_time, location, category, status')
-  .eq('status', 'active')
+  .select('id, title, description, start_time, end_time, location, category, capacity, status, created_by')
   .order('start_time', { ascending: true });
 
-const eventsJson = JSON.stringify(events ?? []);
+if (eventsError) {
+  console.error('[pages/calendar] events query failed', {
+    message: eventsError.message,
+    code: eventsError.code,
+  });
+}
+const events: EventRow[] = (eventsData ?? []) as EventRow[];
+
+/* ── Pacific-local time helpers ─────────────────────────────────────────── */
+const TZ = 'America/Los_Angeles';
+const pacificDayKey = (d: Date) => d.toLocaleDateString('en-CA', { timeZone: TZ });
+
+const fmtDayLong = new Intl.DateTimeFormat('en-US', {
+  timeZone: TZ,
+  weekday: 'short',
+  month: 'short',
+  day: 'numeric',
+});
+const fmtWeekday = new Intl.DateTimeFormat('en-US', { timeZone: TZ, weekday: 'short' });
+const fmtDayNum = new Intl.DateTimeFormat('en-US', { timeZone: TZ, day: '2-digit' });
+const fmtTime = (iso: string) =>
+  new Date(iso).toLocaleTimeString('en-US', { timeZone: TZ, hour: 'numeric', minute: '2-digit' });
+
+const nowMs = Date.now();
+/** Display-only assumed length for "happening now" when end_time is absent. */
+const DISPLAY_LENGTH_MS = 90 * 60 * 1000;
+/** Mirror of the QR endpoint's close rule, so we don't render a Present button
+ *  that can only ever 409. */
+const CLOSES_AFTER_END_MS = 2 * 60 * 60 * 1000;
+const ASSUMED_LENGTH_MS = 4 * 60 * 60 * 1000;
+
+const startMsOf = (e: EventRow) => Date.parse(e.start_time);
+const endMsOf = (e: EventRow) => {
+  const s = startMsOf(e);
+  const en = e.end_time ? Date.parse(e.end_time) : Number.NaN;
+  return !Number.isNaN(en) && en > s ? en : Number.NaN;
+};
+const isNow = (e: EventRow) => {
+  const s = startMsOf(e);
+  if (Number.isNaN(s) || e.status !== 'active') return false;
+  const en = endMsOf(e);
+  const until = Number.isNaN(en) ? s + DISPLAY_LENGTH_MS : en;
+  return nowMs >= s && nowMs <= until;
+};
+const checkinClosesAt = (e: EventRow) => {
+  const s = startMsOf(e);
+  if (Number.isNaN(s)) return Number.NaN;
+  const en = endMsOf(e);
+  return Number.isNaN(en) ? s + ASSUMED_LENGTH_MS : en + CLOSES_AFTER_END_MS;
+};
+
+/** "3:30 – 4:45 PM" — drop the first meridiem when both sides share it. */
+function timeRange(e: EventRow): string {
+  const start = fmtTime(e.start_time);
+  const en = endMsOf(e);
+  if (Number.isNaN(en)) return start;
+  const end = fmtTime(e.end_time as string);
+  const sm = start.match(/ (AM|PM)$/)?.[1];
+  const em = end.match(/ (AM|PM)$/)?.[1];
+  const startShown = sm && sm === em ? start.replace(/ (AM|PM)$/, '') : start;
+  return `${startShown} – ${end}`;
+}
+
+const catLabel = (c: string | null) => {
+  const t = (c ?? '').trim() || 'meeting';
+  return t.charAt(0).toUpperCase() + t.slice(1);
+};
+
+/* ── Selected month + selected event (from query params) ────────────────── */
+const todayKey = pacificDayKey(new Date());
+const rawMonth = Astro.url.searchParams.get('month');
+const eventParam = Astro.url.searchParams.get('event');
+
+const selected: EventRow | null =
+  (eventParam ? events.find((e) => e.id === eventParam) : undefined) ??
+  events.find(isNow) ??
+  events.find((e) => e.status === 'active' && startMsOf(e) >= nowMs) ??
+  [...events].reverse().find((e) => e.status === 'active') ??
+  events[events.length - 1] ??
+  null;
+
+let monthStr: string | null = null;
+if (rawMonth && /^\d{4}-\d{2}$/.test(rawMonth)) {
+  const m = Number(rawMonth.slice(5));
+  if (m >= 1 && m <= 12) monthStr = rawMonth;
+}
+if (!monthStr && eventParam && selected && !Number.isNaN(startMsOf(selected))) {
+  monthStr = pacificDayKey(new Date(selected.start_time)).slice(0, 7);
+}
+if (!monthStr) monthStr = todayKey.slice(0, 7);
+
+/* ── Month grid (weekday math on UTC dates — timezone-independent) ──────── */
+const pad2 = (n: number) => String(n).padStart(2, '0');
+const [gy, gm] = monthStr.split('-').map(Number);
+const monthLabel = new Date(Date.UTC(gy, gm - 1, 1)).toLocaleDateString('en-US', {
+  timeZone: 'UTC',
+  month: 'long',
+  year: 'numeric',
+});
+const daysInMonth = new Date(Date.UTC(gy, gm, 0)).getUTCDate();
+const firstDow = new Date(Date.UTC(gy, gm - 1, 1)).getUTCDay();
+const prevMonthDays = new Date(Date.UTC(gy, gm - 1, 0)).getUTCDate();
+const prevMonthStr = gm === 1 ? `${gy - 1}-12` : `${gy}-${pad2(gm - 1)}`;
+const nextMonthStr = gm === 12 ? `${gy + 1}-01` : `${gy}-${pad2(gm + 1)}`;
+const shortMonthOf = (s: string) =>
+  new Date(Date.UTC(Number(s.slice(0, 4)), Number(s.slice(5)) - 1, 1)).toLocaleDateString('en-US', {
+    timeZone: 'UTC',
+    month: 'short',
+  });
+const prevLabel = shortMonthOf(prevMonthStr);
+const nextLabel = shortMonthOf(nextMonthStr);
+
+const byDay = new Map<string, EventRow[]>();
+for (const e of events) {
+  const s = startMsOf(e);
+  if (Number.isNaN(s)) continue;
+  const key = pacificDayKey(new Date(s));
+  const list = byDay.get(key);
+  if (list) list.push(e);
+  else byDay.set(key, [e]);
+}
+
+const monthEvents = events.filter(
+  (e) => !Number.isNaN(startMsOf(e)) && pacificDayKey(new Date(e.start_time)).slice(0, 7) === monthStr
+);
+const monthCount = `${monthEvents.length} event${monthEvents.length === 1 ? '' : 's'}`;
+
+type Cell =
+  | { kind: 'muted'; n: number }
+  | { kind: 'day'; n: number; key: string; events: EventRow[]; activeCount: number; isToday: boolean };
+const cells: Cell[] = [];
+for (let i = firstDow - 1; i >= 0; i--) cells.push({ kind: 'muted', n: prevMonthDays - i });
+for (let d = 1; d <= daysInMonth; d++) {
+  const key = `${monthStr}-${pad2(d)}`;
+  const dayEvents = byDay.get(key) ?? [];
+  cells.push({
+    kind: 'day',
+    n: d,
+    key,
+    events: dayEvents,
+    activeCount: dayEvents.filter((e) => e.status === 'active').length,
+    isToday: key === todayKey,
+  });
+}
+const trailing = (7 - (cells.length % 7)) % 7;
+for (let i = 1; i <= trailing; i++) cells.push({ kind: 'muted', n: i });
+
+/* ── Selected-event extras: check-in count + creator name ───────────────── */
+let checkinCount = 0;
+let creatorName: string | null = null;
+if (selected) {
+  const { count, error: countError } = await supabaseAdmin
+    .from('attendance')
+    .select('id', { count: 'exact', head: true })
+    .eq('event_id', selected.id);
+  if (countError) {
+    console.error('[pages/calendar] attendance count failed', { message: countError.message });
+  }
+  checkinCount = count ?? 0;
+
+  if (selected.created_by) {
+    const { data: creator } = await supabaseAdmin
+      .from('profiles')
+      .select('name')
+      .eq('id', selected.created_by)
+      .maybeSingle();
+    creatorName = (creator?.name as string | null) ?? null;
+  }
+}
+
+const selectedIsNow = selected ? isNow(selected) : false;
+const selectedCancelled = selected?.status === 'cancelled';
+const selectedWhen = selected
+  ? `${fmtDayLong.format(new Date(selected.start_time))} · ${timeRange(selected)}`
+  : '';
+const canPresent =
+  user.isOfficer &&
+  selected !== null &&
+  selected.status === 'active' &&
+  !Number.isNaN(checkinClosesAt(selected)) &&
+  nowMs <= checkinClosesAt(selected);
 ---
-<DashboardLayout title="Event Calendar" user={user}>
+<DashboardLayout title="Events" user={user}>
+  <h1 class="sr">Events</h1>
 
-  <div class="cal-header">
-    <div class="cal-month" id="cal-month-label"></div>
-    <div style="display:flex;gap:8px;align-items:center">
-      {isOfficer && (
-        <button class="add-btn" id="open-event-modal" style="margin-bottom:0">+ New Event</button>
+  <div class="eventgrid">
+    <div>
+      <!-- Desktop month grid (auto-hidden ≤979px) -->
+      <section class="month" aria-label={monthLabel}>
+        <div class="month__head">
+          <b>{monthLabel}</b>
+          <span>{monthCount}</span>
+        </div>
+        <div class="month__grid">
+          <span class="dow">S</span><span class="dow">M</span><span class="dow">T</span><span class="dow">W</span><span class="dow">T</span><span class="dow">F</span><span class="dow">S</span>
+          {cells.map((c) =>
+            c.kind === 'muted' ? (
+              <span class="day muted">{c.n}</span>
+            ) : c.events.length > 0 ? (
+              <a
+                class:list={['day', { today: c.isToday }]}
+                href={`/calendar?month=${monthStr}&event=${c.events[0].id}`}
+              >{c.n}{c.activeCount > 0 && <i class="pip"></i>}<span class="sr">
+                {c.isToday ? 'Today, ' : ''}{c.events.length} event{c.events.length === 1 ? '' : 's'}
+              </span></a>
+            ) : (
+              <span class:list={['day', { today: c.isToday }]}>{c.n}{c.isToday && <span class="sr">Today</span>}</span>
+            )
+          )}
+        </div>
+        <p style="margin-top:16px; display:flex; gap:12px;">
+          <a class="btn btn--ghost btn--sm" href={`/calendar?month=${prevMonthStr}`}>← {prevLabel}</a>
+          <span style="flex:1"></span>
+          <a class="btn btn--ghost btn--sm" href={`/calendar?month=${nextMonthStr}`}>{nextLabel} →</a>
+        </p>
+      </section>
+
+      <!-- Phone agenda list (auto-hidden ≥980px) -->
+      <section class="agenda" aria-label={`${monthLabel} agenda`}>
+        <div class="section-head">
+          <h2>{monthLabel}</h2>
+          <span class="spacer"></span>
+          <span class="count">{monthCount}</span>
+        </div>
+        {monthEvents.length === 0 ? (
+          <div class="state">
+            <b>Nothing in {monthLabel}</b>
+            <p>When an event lands on this month, it shows up here.</p>
+          </div>
+        ) : (
+          <ul class="rowlist">
+            {monthEvents.map((e) => {
+              const cancelled = e.status === 'cancelled';
+              const live = isNow(e);
+              const d = new Date(e.start_time);
+              return (
+                <li>
+                  <a
+                    class="rowlink"
+                    href={`/calendar?month=${monthStr}&event=${e.id}`}
+                    aria-current={selected && e.id === selected.id ? 'true' : undefined}
+                    style={cancelled ? 'opacity:.55;' : undefined}
+                  >
+                    <span class="datestamp datestamp--sm" aria-hidden="true"><b>{fmtDayNum.format(d)}</b><i>{fmtWeekday.format(d)}</i></span>
+                    <span class="rowlink__main">
+                      <span class="rowlink__title" style={cancelled ? 'text-decoration:line-through;' : undefined}>{e.title}</span>
+                      <span class="rowlink__sub">
+                        {cancelled && 'Cancelled · '}{live && <><span class="hl">Now</span>{' · '}</>}{fmtTime(e.start_time)}{e.location ? ` · ${e.location}` : ''}
+                      </span>
+                    </span>
+                    <span class="chev" aria-hidden="true">→</span>
+                  </a>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+        <p style="margin-top:16px; display:flex; gap:12px;">
+          <a class="btn btn--ghost btn--sm" href={`/calendar?month=${prevMonthStr}`}>← {prevLabel}</a>
+          <span style="flex:1"></span>
+          <a class="btn btn--ghost btn--sm" href={`/calendar?month=${nextMonthStr}`}>{nextLabel} →</a>
+        </p>
+      </section>
+
+      {user.isOfficer && (
+        <details class="composer">
+          <summary>New event</summary>
+          <form class="composer__form" id="event-form" novalidate>
+            <div class="composer__head">
+              <b>New event</b>
+              <span class="flag">Officer only</span>
+            </div>
+            <label class="field">
+              <span>Title</span>
+              <input class="input" type="text" name="title" required maxlength="200" autocomplete="off" />
+            </label>
+            <label class="field">
+              <span>Starts</span>
+              <input class="input" type="datetime-local" name="start" required />
+              <span class="field__hint">Times are your local (Pacific) time.</span>
+            </label>
+            <label class="field">
+              <span>Ends</span>
+              <input class="input" type="datetime-local" name="end" />
+              <span class="field__hint">Optional.</span>
+            </label>
+            <label class="field">
+              <span>Location</span>
+              <input class="input" type="text" name="location" maxlength="300" autocomplete="off" />
+            </label>
+            <label class="field">
+              <span>Capacity</span>
+              <input class="input" type="number" name="capacity" min="1" step="1" inputmode="numeric" />
+              <span class="field__hint">Optional. Leave blank for no cap.</span>
+            </label>
+            <label class="field">
+              <span>Category</span>
+              <select class="select" name="category">
+                <option value="meeting" selected>Meeting</option>
+                <option value="workshop">Workshop</option>
+                <option value="speaker">Speaker</option>
+                <option value="social">Social</option>
+                <option value="deadline">Deadline</option>
+              </select>
+            </label>
+            <label class="field">
+              <span>Description</span>
+              <textarea class="textarea" name="description" maxlength="5000"></textarea>
+              <span class="field__hint">Optional. Plain text — members see it on the event page.</span>
+            </label>
+            <p id="event-form-error" class="small" role="alert" style="color:var(--clay); display:none;"></p>
+            <div class="composer__actions">
+              <button class="btn" type="submit">Create event</button>
+            </div>
+          </form>
+        </details>
       )}
-      <div class="cal-nav">
-        <button class="cal-btn" id="prev-month">&#8249;</button>
-        <button class="cal-btn" id="next-month">&#8250;</button>
-      </div>
+    </div>
+
+    <div>
+      {selected === null ? (
+        <div class="state state--rule">
+          <b>Nothing on the calendar yet</b>
+          <p>
+            {user.isOfficer
+              ? 'Use “New event” to put the first one on the books.'
+              : 'When officers schedule an event, it lands here.'}
+          </p>
+        </div>
+      ) : (
+        <article class="event-detail">
+          <p class="event-detail__cat">
+            {selectedIsNow && <span class="tag tag--now">Happening now</span>}
+            {selectedCancelled && <span class="tag tag--clay">Cancelled</span>}
+            <span class="tag">{catLabel(selected.category)}</span>
+          </p>
+          <h2 style={selectedCancelled ? 'text-decoration:line-through; opacity:.6;' : undefined}>{selected.title}</h2>
+          {selected.description && <p class="event-detail__desc">{selected.description}</p>}
+
+          <dl class="facts">
+            <div><dt>When</dt><dd>{selectedWhen}</dd></div>
+            <div><dt>Where</dt><dd>{selected.location ?? 'To be announced'}</dd></div>
+            <div>
+              <dt>Checked in</dt>
+              <dd><span class="num">{checkinCount}</span>{selected.capacity !== null && <> of <span class="num">{selected.capacity}</span></>}</dd>
+            </div>
+            <div><dt>Created by</dt><dd>{creatorName ?? '—'}</dd></div>
+          </dl>
+
+          {user.isOfficer && selected.status === 'active' && (
+            <div class="event-actions owned">
+              <div class="event-actions__head"><span class="flag">Officer only</span></div>
+              <div class="event-actions__row">
+                {canPresent && (
+                  <button class="btn" type="button" id="present-open" data-event-id={selected.id} data-event-title={selected.title}>
+                    Present check-in code
+                  </button>
+                )}
+                <details class="confirm">
+                  <summary class="btn btn--danger">Cancel event</summary>
+                  <div class="confirm__row">
+                    <span class="confirm__q">
+                      Cancel this event?{checkinCount > 0 ? ` ${checkinCount} ${checkinCount === 1 ? 'person is' : 'people are'} already checked in.` : ''}
+                    </span>
+                    <button class="btn btn--sm btn--danger-go" type="button" id="cancel-event-go" data-event-id={selected.id}>Cancel it</button>
+                    <button class="btn btn--sm btn--ghost" type="button" id="cancel-event-keep">Keep it</button>
+                  </div>
+                </details>
+              </div>
+              <p id="event-actions-error" class="small" role="alert" style="color:var(--clay); display:none; margin-top:10px;"></p>
+            </div>
+          )}
+        </article>
+      )}
     </div>
   </div>
 
-  <div class="cal-grid" id="cal-grid"></div>
-
-  <div class="events-section">
-    <div class="section-label">Upcoming</div>
-    <div id="upcoming-list"></div>
-  </div>
-
-  <!-- QR Modal -->
-  <div class="modal-overlay hidden" id="qr-modal">
-    <div class="modal-card">
-      <div class="modal-title" id="modal-event-title"></div>
-      <div class="modal-sub">Scan to check in</div>
-      <img class="modal-qr" id="modal-qr-img" src="" alt="QR Code" />
-      <button class="modal-close" id="modal-close-btn">Close</button>
-    </div>
-  </div>
-
-  <!-- New Event Modal (officer only) -->
-  {isOfficer && (
-    <div class="form-modal hidden" id="event-modal">
-      <div class="form-card">
-        <div class="form-card-title">Create Event</div>
-        <div class="form-row">
-          <label class="form-label">Title *</label>
-          <input class="form-input" id="ev-title" placeholder="e.g. Weekly Meeting" />
+  <!-- Present mode: full-bleed projected surface. White in BOTH themes —
+       scanners need the contrast. No student names ever appear here. -->
+  {canPresent && selected && (
+    <div
+      id="present-layer"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Projected check-in code"
+      style="position:fixed; inset:0; z-index:60; background:var(--paper-3); display:none; place-items:center; padding:clamp(8px,2vw,24px);"
+    >
+      <div class="present" style="width:100%; max-width:calc((100vh - 64px) * 16 / 9); max-width:calc((100dvh - 64px) * 16 / 9);">
+        <div class="present__top">
+          <p class="present__name" id="present-name"></p>
+          <span class="present__live"><i></i>Live</span>
         </div>
-        <div class="form-row">
-          <label class="form-label">Description</label>
-          <textarea class="form-textarea" id="ev-desc" placeholder="Optional details…" rows="2"></textarea>
+        <div class="present__stage">
+          <img id="present-qr" alt="Check-in QR code" />
         </div>
-        <div class="form-row-2">
-          <div class="form-row" style="margin-bottom:0">
-            <label class="form-label">Start *</label>
-            <input class="form-input" id="ev-start" type="datetime-local" />
+        <div class="present__foot">
+          <div class="present__say">
+            <span class="present__saylabel">Scan to check in</span>
+            <span id="present-status" class="small" style="display:block; margin-top:4px; color:#6B5A2C;"></span>
           </div>
-          <div class="form-row" style="margin-bottom:0">
-            <label class="form-label">End</label>
-            <input class="form-input" id="ev-end" type="datetime-local" />
+          <div class="present__meta">
+            <span class="present__count" id="present-count"></span>
+            <button
+              type="button"
+              id="present-exit"
+              class="present__esc"
+              style="background:none; border:0; cursor:pointer; min-height:48px; min-width:48px; padding:6px 0 0; text-align:right;"
+            >Esc or tap here to exit</button>
           </div>
-        </div>
-        <div class="form-row-2">
-          <div class="form-row" style="margin-bottom:0">
-            <label class="form-label">Location</label>
-            <input class="form-input" id="ev-location" placeholder="e.g. Room 201" />
-          </div>
-          <div class="form-row" style="margin-bottom:0">
-            <label class="form-label">Type</label>
-            <select class="form-select" id="ev-category">
-              <option value="meeting">Meeting</option>
-              <option value="event">Event</option>
-              <option value="deadline">Deadline</option>
-            </select>
-          </div>
-        </div>
-        <div class="form-row">
-          <label class="form-label">Check-in Password (optional)</label>
-          <input class="form-input" id="ev-password" placeholder="Members enter this to check in" />
-        </div>
-        <div class="form-error hidden" id="ev-error"></div>
-        <div class="form-actions">
-          <button class="form-cancel" id="close-event-modal">Cancel</button>
-          <button class="form-submit" id="submit-event">Create</button>
         </div>
       </div>
     </div>
   )}
-
 </DashboardLayout>
 
-<script define:vars={{ eventsJson, isOfficer }}>
-let EVENTS = JSON.parse(eventsJson).map(e => ({
-  ...e,
-  date: e.start_time ? e.start_time.split('T')[0] : null,
-  time: e.start_time
-    ? new Date(e.start_time).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) +
-      (e.location ? ' · ' + e.location : '')
-    : '',
-  type: e.category || 'meeting',
-}));
+<script>
+  /* Client JS is wiring only — no data is ever rendered into DOM HTML here.
+     textContent + attribute assignment throughout. */
 
-const months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
-const dows = ['Su','Mo','Tu','We','Th','Fr','Sa'];
-const today = new Date();
-let viewYear = today.getFullYear();
-let viewMonth = today.getMonth();
-
-function renderCalendar() {
-  const firstDay = new Date(viewYear, viewMonth, 1).getDay();
-  const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
-  document.getElementById('cal-month-label').textContent = months[viewMonth] + ' ' + viewYear;
-
-  const grid = document.getElementById('cal-grid');
-  grid.innerHTML = '';
-
-  dows.forEach(d => {
-    const el = document.createElement('div');
-    el.className = 'cal-dow';
-    el.textContent = d;
-    grid.appendChild(el);
-  });
-
-  const prevDays = new Date(viewYear, viewMonth, 0).getDate();
-  for (let i = firstDay - 1; i >= 0; i--) {
-    const el = document.createElement('div');
-    el.className = 'cal-day other-month';
-    el.innerHTML = `<div class="day-num">${prevDays - i}</div>`;
-    grid.appendChild(el);
-  }
-
-  for (let d = 1; d <= daysInMonth; d++) {
-    const el = document.createElement('div');
-    el.className = 'cal-day';
-    const ds = `${viewYear}-${String(viewMonth + 1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
-    const isToday = d === today.getDate() && viewMonth === today.getMonth() && viewYear === today.getFullYear();
-    if (isToday) el.classList.add('today');
-
-    const dayEvents = EVENTS.filter(e => e.date === ds);
-    let html = `<div class="day-num">${d}</div>`;
-    dayEvents.forEach(e => {
-      const type = ['meeting','event','deadline'].includes(e.type) ? e.type : 'meeting';
-      html += `<div class="ev ${type}" data-id="${e.id}" data-title="${e.title}">${e.title}</div>`;
-    });
-    el.innerHTML = html;
-
-    el.querySelectorAll('.ev').forEach(chip => {
-      chip.addEventListener('click', async (ev) => {
-        ev.stopPropagation();
-        await openQRModal(chip.dataset.id, chip.dataset.title);
-      });
-    });
-
-    grid.appendChild(el);
-  }
-
-  const totalCells = Math.ceil((firstDay + daysInMonth) / 7) * 7;
-  for (let i = 1; i <= totalCells - firstDay - daysInMonth; i++) {
-    const el = document.createElement('div');
-    el.className = 'cal-day other-month';
-    el.innerHTML = `<div class="day-num">${i}</div>`;
-    grid.appendChild(el);
-  }
-
-  renderUpcoming();
-}
-
-function renderUpcoming() {
-  const now = new Date(); now.setHours(0,0,0,0);
-  const upcoming = EVENTS.filter(e => e.date && new Date(e.date) >= now).slice(0, 4);
-  const list = document.getElementById('upcoming-list');
-
-  if (!upcoming.length) {
-    list.innerHTML = '<div class="empty-state">No upcoming events</div>';
-    return;
-  }
-
-  list.innerHTML = upcoming.map(e => {
-    const d = new Date(e.date);
-    const typeColors = {
-      meeting:  ['#FFF3CC','#7A5500'],
-      event:    ['#E6F1FB','#185FA5'],
-      deadline: ['#FCEBEB','#A32D2D'],
+  /* ── New event (officers) ─────────────────────────────────────────────── */
+  const form = document.getElementById('event-form') as HTMLFormElement | null;
+  if (form) {
+    const errEl = document.getElementById('event-form-error') as HTMLElement;
+    const showErr = (msg: string) => {
+      errEl.textContent = msg;
+      errEl.style.display = 'block';
     };
-    const [bg, tc] = typeColors[e.type] ?? typeColors.meeting;
-    return `<div class="event-row">
-      <div class="event-date-box">
-        <div class="eday">${d.getDate()}</div>
-        <div class="emon">${months[d.getMonth()].slice(0,3)}</div>
-      </div>
-      <div class="event-info">
-        <div class="event-name">${e.title}</div>
-        <div class="event-meta">${e.time}</div>
-      </div>
-      <span class="ev-tag" style="background:${bg};color:${tc}">${e.type}</span>
-    </div>`;
-  }).join('');
-}
+    form.addEventListener('submit', async (ev) => {
+      ev.preventDefault();
+      errEl.style.display = 'none';
 
-async function openQRModal(eventId, title) {
-  const res = await fetch(`/api/events/${eventId}/qr`);
-  if (!res.ok) return;
-  const { qr } = await res.json();
-  document.getElementById('modal-event-title').textContent = title;
-  document.getElementById('modal-qr-img').src = qr;
-  document.getElementById('qr-modal').classList.remove('hidden');
-}
+      const fd = new FormData(form);
+      const title = String(fd.get('title') ?? '').trim();
+      const startRaw = String(fd.get('start') ?? '');
+      const endRaw = String(fd.get('end') ?? '');
 
-document.getElementById('prev-month').addEventListener('click', () => {
-  viewMonth--; if (viewMonth < 0) { viewMonth = 11; viewYear--; }
-  renderCalendar();
-});
-document.getElementById('next-month').addEventListener('click', () => {
-  viewMonth++; if (viewMonth > 11) { viewMonth = 0; viewYear++; }
-  renderCalendar();
-});
-document.getElementById('modal-close-btn').addEventListener('click', () => {
-  document.getElementById('qr-modal').classList.add('hidden');
-});
-document.getElementById('qr-modal').addEventListener('click', e => {
-  if (e.target === e.currentTarget) e.currentTarget.classList.add('hidden');
-});
+      if (!title || !startRaw) {
+        showErr('A title and a start time are required.');
+        return;
+      }
+      // datetime-local has no timezone — new Date() reads it in the officer's
+      // own zone, and toISOString() carries that to the server unambiguously.
+      const startDate = new Date(startRaw);
+      if (Number.isNaN(startDate.getTime())) {
+        showErr('The start time is not a valid date.');
+        return;
+      }
+      let endIso: string | null = null;
+      if (endRaw) {
+        const endDate = new Date(endRaw);
+        if (Number.isNaN(endDate.getTime())) {
+          showErr('The end time is not a valid date.');
+          return;
+        }
+        if (endDate.getTime() <= startDate.getTime()) {
+          showErr('The end time must be after the start.');
+          return;
+        }
+        endIso = endDate.toISOString();
+      }
 
-renderCalendar();
-
-// ── Event creation ────────────────────────────────────────────
-if (isOfficer) {
-  document.getElementById('open-event-modal')?.addEventListener('click', () => {
-    document.getElementById('event-modal').classList.remove('hidden');
-  });
-  document.getElementById('close-event-modal')?.addEventListener('click', () => {
-    document.getElementById('event-modal').classList.add('hidden');
-  });
-  document.getElementById('event-modal')?.addEventListener('click', e => {
-    if (e.target === e.currentTarget) e.currentTarget.classList.add('hidden');
-  });
-
-  document.getElementById('submit-event')?.addEventListener('click', async () => {
-    const errEl = document.getElementById('ev-error');
-    errEl.classList.add('hidden');
-
-    const title    = document.getElementById('ev-title').value.trim();
-    const start    = document.getElementById('ev-start').value;
-    const end      = document.getElementById('ev-end').value;
-    const desc     = document.getElementById('ev-desc').value.trim();
-    const location = document.getElementById('ev-location').value.trim();
-    const category = document.getElementById('ev-category').value;
-    const password = document.getElementById('ev-password').value.trim();
-
-    if (!title || !start) {
-      errEl.textContent = 'Title and start time are required.';
-      errEl.classList.remove('hidden');
-      return;
-    }
-
-    const btn = document.getElementById('submit-event');
-    btn.disabled = true; btn.textContent = 'Creating…';
-
-    const res = await fetch('/api/events/create', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ title, start_time: start, end_time: end || null, description: desc, location, category, password }),
+      const submitBtn = form.querySelector('button[type="submit"]') as HTMLButtonElement;
+      submitBtn.disabled = true;
+      try {
+        const res = await fetch('/api/events/create', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            title,
+            start_time: startDate.toISOString(),
+            end_time: endIso,
+            location: String(fd.get('location') ?? '').trim(),
+            description: String(fd.get('description') ?? '').trim(),
+            category: String(fd.get('category') ?? 'meeting'),
+            // '' means "no cap" to the endpoint; anything else must be a
+            // positive integer, which the endpoint validates.
+            capacity: String(fd.get('capacity') ?? '').trim(),
+          }),
+        });
+        if (!res.ok) {
+          let msg = 'Could not create the event.';
+          try {
+            const body = await res.json();
+            if (body && typeof body.error === 'string') msg = body.error;
+          } catch {
+            /* non-JSON error body — keep the fallback message */
+          }
+          showErr(msg);
+          return;
+        }
+        location.reload();
+      } catch {
+        showErr('Network error — check your connection and try again.');
+      } finally {
+        submitBtn.disabled = false;
+      }
     });
+  }
 
-    btn.disabled = false; btn.textContent = 'Create';
-
-    if (!res.ok) {
-      const { error } = await res.json();
-      errEl.textContent = error ?? 'Failed to create event.';
-      errEl.classList.remove('hidden');
-      return;
-    }
-
-    const { data } = await res.json();
-    EVENTS.push({
-      ...data,
-      date: data.start_time.split('T')[0],
-      time: new Date(data.start_time).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) +
-        (data.location ? ' · ' + data.location : ''),
-      type: data.category || 'meeting',
+  /* ── Cancel event (officers, inline confirm) ──────────────────────────── */
+  const cancelGo = document.getElementById('cancel-event-go') as HTMLButtonElement | null;
+  const cancelKeep = document.getElementById('cancel-event-keep');
+  if (cancelKeep) {
+    cancelKeep.addEventListener('click', () => {
+      cancelKeep.closest('details')?.removeAttribute('open');
     });
-
-    document.getElementById('event-modal').classList.add('hidden');
-    ['ev-title','ev-start','ev-end','ev-desc','ev-location','ev-password'].forEach(id => {
-      const el = document.getElementById(id); if (el) el.value = '';
+  }
+  if (cancelGo) {
+    const actionsErr = document.getElementById('event-actions-error') as HTMLElement;
+    cancelGo.addEventListener('click', async () => {
+      const id = cancelGo.dataset.eventId;
+      if (!id) return;
+      cancelGo.disabled = true;
+      actionsErr.style.display = 'none';
+      try {
+        const res = await fetch(`/api/events/${encodeURIComponent(id)}/delete`, { method: 'DELETE' });
+        if (!res.ok) {
+          let msg = 'Could not cancel the event.';
+          try {
+            const body = await res.json();
+            if (body && typeof body.error === 'string') msg = body.error;
+          } catch {
+            /* keep fallback */
+          }
+          actionsErr.textContent = msg;
+          actionsErr.style.display = 'block';
+          cancelGo.disabled = false;
+          return;
+        }
+        location.reload();
+      } catch {
+        actionsErr.textContent = 'Network error — check your connection and try again.';
+        actionsErr.style.display = 'block';
+        cancelGo.disabled = false;
+      }
     });
-    document.getElementById('ev-category').value = 'meeting';
-    renderCalendar();
-  });
-}
+  }
+
+  /* ── Present mode (officers) ──────────────────────────────────────────── */
+  const openBtn = document.getElementById('present-open') as HTMLButtonElement | null;
+  const layer = document.getElementById('present-layer');
+  if (openBtn && layer) {
+    const nameEl = document.getElementById('present-name') as HTMLElement;
+    const qrImg = document.getElementById('present-qr') as HTMLImageElement;
+    const countEl = document.getElementById('present-count') as HTMLElement;
+    const statusEl = document.getElementById('present-status') as HTMLElement;
+    const exitBtn = document.getElementById('present-exit') as HTMLButtonElement;
+
+    const eventId = openBtn.dataset.eventId ?? '';
+    const eventTitle = openBtn.dataset.eventTitle ?? '';
+
+    /** Re-fetch this long before the token actually expires (15 min TTL →
+     *  a fresh code roughly every 12 minutes). */
+    const REFRESH_MARGIN_S = 180;
+
+    let isOpen = false;
+    let refreshAtMs = 0;
+    let tickTimer = 0;
+    let fetchTimer = 0;
+
+    const fmtCountdown = (ms: number) => {
+      const s = Math.max(0, Math.ceil(ms / 1000));
+      return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+    };
+    const tick = () => {
+      if (!isOpen || refreshAtMs === 0) return;
+      countEl.textContent = `Refreshes in ${fmtCountdown(refreshAtMs - Date.now())}`;
+    };
+
+    const fetchCode = async () => {
+      try {
+        const res = await fetch(`/api/events/${encodeURIComponent(eventId)}/qr`, {
+          headers: { accept: 'application/json' },
+        });
+        if (!res.ok) {
+          let msg = 'Could not fetch a check-in code.';
+          try {
+            const body = await res.json();
+            if (body && typeof body.error === 'string') msg = body.error;
+          } catch {
+            /* keep fallback */
+          }
+          statusEl.textContent = msg;
+          countEl.textContent = '';
+          refreshAtMs = 0;
+          // 4xx = this event can no longer mint codes (over, cancelled, or
+          // no longer authorized) — stop. 5xx / network = retry shortly.
+          if (res.status >= 400 && res.status < 500) return;
+          fetchTimer = window.setTimeout(fetchCode, 30_000);
+          return;
+        }
+        const body = await res.json();
+        if (typeof body.qr === 'string') qrImg.src = body.qr;
+        statusEl.textContent = '';
+        const expiresInS = typeof body.expires_in === 'number' ? body.expires_in : 900;
+        const waitS = Math.max(expiresInS - REFRESH_MARGIN_S, 30);
+        refreshAtMs = Date.now() + waitS * 1000;
+        fetchTimer = window.setTimeout(fetchCode, waitS * 1000);
+        tick();
+      } catch {
+        statusEl.textContent = 'Network error — retrying shortly.';
+        countEl.textContent = '';
+        refreshAtMs = 0;
+        fetchTimer = window.setTimeout(fetchCode, 30_000);
+      }
+    };
+
+    const openLayer = () => {
+      isOpen = true;
+      nameEl.textContent = eventTitle;
+      statusEl.textContent = 'Fetching a fresh code…';
+      countEl.textContent = '';
+      layer.style.display = 'grid';
+      document.body.style.overflow = 'hidden';
+      exitBtn.focus();
+      void fetchCode();
+      tickTimer = window.setInterval(tick, 1000);
+    };
+    const closeLayer = () => {
+      isOpen = false;
+      layer.style.display = 'none';
+      document.body.style.overflow = '';
+      window.clearInterval(tickTimer);
+      window.clearTimeout(fetchTimer);
+      refreshAtMs = 0;
+      qrImg.removeAttribute('src');
+      openBtn.focus();
+    };
+
+    openBtn.addEventListener('click', openLayer);
+    exitBtn.addEventListener('click', closeLayer);
+    document.addEventListener('keydown', (e) => {
+      if (isOpen && e.key === 'Escape') closeLayer();
+    });
+  }
 </script>
