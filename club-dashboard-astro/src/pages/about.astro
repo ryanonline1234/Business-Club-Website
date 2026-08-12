@@ -27,6 +27,13 @@
  * heavy condensed uppercase display type, serif for reading text, dark
  * mode = same gold band with black type rather than inversion. Standalone:
  * no DashboardLayout, no global.css; everything it needs is in this file.
+ *
+ * MOTION: CSS + one small inline vanilla script, no libraries. Every
+ * hidden-until-revealed style is TRIPLE-GATED behind `html.js` (added by an
+ * inline head script) AND `prefers-reduced-motion: no-preference` AND
+ * `screen` — with JS off or reduced motion on the page is simply static and
+ * fully visible, and print always gets every section, revealed or not.
+ * Transform/opacity only; the one perpetual loop is the masthead tape.
  */
 import '@fontsource/barlow-condensed/latin-500.css';
 import '@fontsource/barlow-condensed/latin-600.css';
@@ -34,6 +41,12 @@ import '@fontsource/barlow-condensed/latin-700.css';
 import '@fontsource/barlow-condensed/latin-800.css';
 import '@fontsource/libre-baskerville/latin-400.css';
 import '@fontsource/libre-baskerville/latin-700.css';
+/* Hashed URLs for the two above-the-fold faces, preloaded in <head> so a slow
+   connection never rebuilds the masthead in Arial Narrow mid-choreography.
+   Vite content-hashes assets, so these dedupe to the exact URLs the
+   @fontsource CSS above already references. */
+import barlowDisplayWoff2 from '@fontsource/barlow-condensed/files/barlow-condensed-latin-800-normal.woff2?url';
+import baskervilleWoff2 from '@fontsource/libre-baskerville/files/libre-baskerville-latin-400-normal.woff2?url';
 import { supabaseAdmin } from '../lib/supabase';
 import { PUBLIC_SUPABASE_URL } from '../lib/env';
 
@@ -254,6 +267,11 @@ const initialsOf = (name: string | null): string => {
 };
 
 const numeral = String(heldCount).padStart(2, '0');
+
+/* The masthead tape — the page's one ambient loop. Repeated so each half of
+   the track is wider than any viewport; the CSS loops it seamlessly. */
+const tapeUnit = `Mitty Business Club ✱ Archbishop Mitty High School ✱ San Jose, California ✱ ${seasonLabel} ✱ `;
+const tape = tapeUnit.repeat(4);
 ---
 <!doctype html>
 <html lang="en">
@@ -261,28 +279,46 @@ const numeral = String(heldCount).padStart(2, '0');
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <meta name="color-scheme" content="light dark" />
+  <!-- Browser chrome joins the masthead plane — the poster runs edge to edge. -->
+  <meta name="theme-color" media="(prefers-color-scheme: light)" content="#0A0A0A" />
+  <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#000000" />
   <meta
     name="description"
     content="What the Mitty Business Club has done and who runs it — the student business club at Archbishop Mitty High School, San Jose."
   />
   <title>Mitty Business Club — What we do</title>
+  <link rel="preload" as="font" type="font/woff2" href={barlowDisplayWoff2} crossorigin />
+  <link rel="preload" as="font" type="font/woff2" href={baskervilleWoff2} crossorigin />
+  <!-- Motion gate: hidden-until-revealed styles apply ONLY under html.js.
+       With scripts off this never runs and every section renders visible. -->
+  <script is:inline>document.documentElement.classList.add('js');</script>
 </head>
 <body>
 
   <!-- ── MASTHEAD ──────────────────────────────────────────────────────── -->
   <header class="mast">
     <div class="wrap">
-      <div class="topline">
+      <div class="topline r r1">
         <svg class="crown" viewBox="0 0 64 64" aria-hidden="true"><path d="M6 46V16l14 12L32 8l12 20 14-12v30Z" fill="currentColor"/><rect x="6" y="51" width="52" height="7" fill="currentColor"/></svg>
         <span class="lab schooltop">Student club</span>
         <a class="btn gold signin" href="/login">Member sign in</a>
       </div>
-      <h1 class="dsp title">Mitty<br />Business<br />Club</h1>
-      <p class="lab school">Archbishop Mitty High School &nbsp;·&nbsp; San Jose, California</p>
-      <p class="stand">
+      <h1 class="dsp title">
+        <span class="tl"><span class="tw">Mitty</span></span>
+        <span class="tl"><span class="tw">Business</span></span>
+        <span class="tl"><span class="tw">Club<span class="dot" aria-hidden="true"></span></span></span>
+      </h1>
+      <p class="lab school r r2">Archbishop Mitty High School &nbsp;·&nbsp; San Jose, California</p>
+      <p class="stand r r3">
         The student-run business club at Archbishop Mitty. This page is the record —
-        what we've done, and who we are.
+        what we&rsquo;ve done, and who we are.
       </p>
+    </div>
+    <div class="marq r r4" aria-hidden="true">
+      <div class="tape">
+        <span class="lab">{tape}</span>
+        <span class="lab">{tape}</span>
+      </div>
     </div>
   </header>
 
@@ -292,33 +328,42 @@ const numeral = String(heldCount).padStart(2, '0');
     <section class="block" aria-labelledby="done-h">
 
       <div class="band">
-        <div class="strip"><div class="wrap"><span class="micro">The record &nbsp;·&nbsp; {seasonLabel}</span></div></div>
+        <div class="strip"><div class="wrap stripline io">
+          <span class="micro">Sec. 01 &nbsp;·&nbsp; The record &nbsp;·&nbsp; {seasonLabel}</span>
+          <svg class="reg" viewBox="0 0 20 20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="10" cy="10" r="5.5"/><path d="M10 1v18M1 10h18"/></svg>
+        </div></div>
         <div class="inner"><div class="wrap">
-          <div class="lockup">
-            <span class="hero-num" aria-hidden="true">{numeral}</span>
+          <div class="lockup io">
+            <span class="hero-num" aria-hidden="true"><span class="hn" data-n={heldCount}>{numeral}</span></span>
             <div class="rest">
-              <h2 class="dsp" id="done-h">What we've done</h2>
+              <h2 class="dsp" id="done-h">What we&rsquo;ve done</h2>
               <p class="micro sub2">
                 {shown.length === 0
-                  ? 'Season one starts now'
+                  ? 'The record opens with our first event'
                   : `${heldCount} ${heldCount === 1 ? 'event' : 'events'} held so far`}
               </p>
             </div>
           </div>
-          {shown.length === 0 && (
-            <p class="bandnote">
-              Our first meetings are coming — check back after the first event.
-            </p>
-          )}
         </div></div>
       </div>
+
+      {shown.length === 0 && (
+        <div class="wrap zero">
+          <p class="dsp zero-l io">Season one</p>
+          <p class="dsp zero-l io"><span class="zero-inv">Starts now</span><span class="zstar" aria-hidden="true">✱</span></p>
+          <p class="serifnote zeronote io">
+            Nothing on the record yet — our first meetings are coming. Check back
+            after the first event, and the story starts here.
+          </p>
+        </div>
+      )}
 
       {shownRecapped.length > 0 && (
         <div class="wrap feed">
           {shownRecapped.map((e) => {
             const eventPhotos = photosByEvent.get(e.id) ?? [];
             return (
-              <article class="post">
+              <article class="post io">
                 <div class="date">
                   <div class="d">{fmt(e.start_time, { day: '2-digit' })}</div>
                   <div class="m micro">
@@ -335,14 +380,16 @@ const numeral = String(heldCount).padStart(2, '0');
                   {eventPhotos.length > 0 && (
                     <div class="shots" role="group" aria-label={`Photos from ${e.title}`}>
                       {eventPhotos.map((p) => (
-                        <img
-                          src={photoUrl(p.storage_path)}
-                          alt={p.caption ?? ''}
-                          loading="lazy"
-                          decoding="async"
-                          width="800"
-                          height="600"
-                        />
+                        <div class="ph">
+                          <img
+                            src={photoUrl(p.storage_path)}
+                            alt={p.caption ?? ''}
+                            loading="lazy"
+                            decoding="async"
+                            width="800"
+                            height="600"
+                          />
+                        </div>
                       ))}
                     </div>
                   )}
@@ -353,12 +400,27 @@ const numeral = String(heldCount).padStart(2, '0');
         </div>
       )}
 
+      <!-- Below: when NO recap exists yet (the launch-week page), the zero
+           state's "Season one" lockup stays, scaled down, above the rows —
+           the page must not get WORSE the moment the club starts succeeding. -->
       {shownBrief.length > 0 && (
         <div class="wrap">
-          {shownRecapped.length > 0 && <p class="lab alsoh">More from the season</p>}
+          {shownRecapped.length > 0 ? (
+            <p class="lab alsoh">More from the season</p>
+          ) : (
+            <div class="opener io">
+              <p class="dsp open-l"><span class="zero-inv">Season one</span><span class="zstar" aria-hidden="true">✱</span></p>
+              <p class="serifnote opennote">
+                The record is open — {heldCount === 1
+                  ? 'the first event is in the book'
+                  : 'the first events are in the book'}, and the write-ups are
+                on their way. The story starts here.
+              </p>
+            </div>
+          )}
           <div class="rows">
             {shownBrief.map((e) => (
-              <div class="brief">
+              <div class="brief io">
                 <span class="dnum" aria-hidden="true">
                   {fmt(e.start_time, { day: '2-digit' })}
                   <small>{fmt(e.start_time, { month: 'short' })}</small>
@@ -376,18 +438,20 @@ const numeral = String(heldCount).padStart(2, '0');
       )}
 
       {unattached.length > 0 && (
-        <div class="wrap life">
+        <div class="wrap life io">
           <p class="lab alsoh">Around the club</p>
           <div class="shots">
             {unattached.map((p) => (
-              <img
-                src={photoUrl(p.storage_path)}
-                alt={p.caption ?? ''}
-                loading="lazy"
-                decoding="async"
-                width="800"
-                height="600"
-              />
+              <div class="ph">
+                <img
+                  src={photoUrl(p.storage_path)}
+                  alt={p.caption ?? ''}
+                  loading="lazy"
+                  decoding="async"
+                  width="800"
+                  height="600"
+                />
+              </div>
             ))}
           </div>
         </div>
@@ -398,20 +462,22 @@ const numeral = String(heldCount).padStart(2, '0');
     <!-- ── ABOUT US ────────────────────────────────────────────────────── -->
     <section class="block who" aria-labelledby="who-h">
       <div class="wrap">
-        <header class="sechead">
-          <p class="lab kick">About us &nbsp;·&nbsp; The officers</p>
+        <header class="sechead io">
+          <span class="tick" aria-hidden="true"></span>
+          <p class="lab kick">Sec. 02 &nbsp;·&nbsp; About us &nbsp;·&nbsp; The officers</p>
           <h2 class="dsp" id="who-h">Who we are</h2>
         </header>
 
         {officers.length === 0 ? (
-          <div class="state">
+          <div class="state io">
+            <span class="tick" aria-hidden="true"></span>
             <p class="dsp state-h">Officer profiles are coming.</p>
             <p class="serifnote">Check back soon to meet the team that runs the club.</p>
           </div>
         ) : (
           <ul class="officers">
             {officers.map((o) => (
-              <li class="off">
+              <li class="off io">
                 <div class="offhead">
                   <span class="ini2" aria-hidden="true">{initialsOf(o.name)}</span>
                   <div class="offid">
@@ -437,8 +503,9 @@ const numeral = String(heldCount).padStart(2, '0');
 
   <!-- ── FOOTER BAND ───────────────────────────────────────────────────── -->
   <footer class="night">
-    <div class="wrap">
-      <p class="lab k">Find us</p>
+    <div class="wrap io">
+      <span class="tick" aria-hidden="true"></span>
+      <p class="lab k">Sec. 03 &nbsp;·&nbsp; Find us</p>
       <h2 class="dsp fh">Come see for yourself.</h2>
       <div class="fx">
         <a
@@ -449,11 +516,80 @@ const numeral = String(heldCount).padStart(2, '0');
         >See us on the Mitty club page ↗</a>
         <a class="btn ghost" href="/login">Member sign in</a>
       </div>
-      <p class="micro tail">
-        Mitty Business Club &nbsp;·&nbsp; Archbishop Mitty High School &nbsp;·&nbsp; San Jose, California
-      </p>
+      <div class="tailrow">
+        <p class="micro tail">
+          Mitty Business Club &nbsp;·&nbsp; Archbishop Mitty High School &nbsp;·&nbsp; San Jose, California
+        </p>
+        <svg class="reg" viewBox="0 0 20 20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="10" cy="10" r="5.5"/><path d="M10 1v18M1 10h18"/></svg>
+      </div>
     </div>
   </footer>
+
+  <!-- Scroll choreography. is:inline so it ships in the document itself —
+       no separate module fetch to fail. Mutates classList + textContent
+       only; never builds HTML from data. -->
+  <script is:inline>
+    (function () {
+      var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      var items = Array.prototype.slice.call(document.querySelectorAll('.io'));
+      var hn = document.querySelector('.hn');
+
+      function settleAll() {
+        items.forEach(function (el) { el.classList.add('in'); });
+      }
+
+      /* The poster numeral counts 0 → N as its band reveals. Below 5 the
+         count is a two-frame flicker, not a payoff — the server-rendered
+         numeral simply rises in its slab. */
+      function countUp() {
+        if (!hn || reduce) return;
+        var target = parseInt(hn.getAttribute('data-n') || '0', 10);
+        if (!isFinite(target) || target < 5) return;
+        var t0 = null;
+        var dur = 700;
+        function step(t) {
+          if (t0 === null) t0 = t;
+          var p = Math.min((t - t0) / dur, 1);
+          var eased = 1 - Math.pow(1 - p, 3); /* ease-out cubic */
+          var v = String(Math.round(eased * target));
+          hn.textContent = v.length < 2 ? '0' + v : v;
+          if (p < 1) requestAnimationFrame(step);
+        }
+        requestAnimationFrame(step);
+      }
+
+      if (reduce || !('IntersectionObserver' in window)) {
+        settleAll();
+        return;
+      }
+      try {
+        var io = new IntersectionObserver(function (entries, obs) {
+          /* Stagger PER BATCH: whatever reveals together staggers together
+             (60ms, capped). An element arriving alone gets ZERO delay —
+             scrolled-to content must never lag the scroll. */
+          var k = 0;
+          entries.forEach(function (entry) {
+            if (!entry.isIntersecting) return;
+            entry.target.style.transitionDelay = (Math.min(k, 6) * 60) + 'ms';
+            k += 1;
+            entry.target.classList.add('in');
+            obs.unobserve(entry.target);
+            if (entry.target.classList.contains('lockup')) countUp();
+          });
+        }, { threshold: 0, rootMargin: '0px 0px -10% 0px' });
+
+        /* At the top of the page the masthead choreography (~950ms) is
+           playing; hold the first reveals until the title settles so two
+           entrances never compete. Arriving mid-page, start at once. */
+        var atTop = (window.scrollY || window.pageYOffset || 0) < 40;
+        setTimeout(function () {
+          items.forEach(function (el) { io.observe(el); });
+        }, atTop ? 700 : 0);
+      } catch (err) {
+        settleAll();
+      }
+    })();
+  </script>
 
 </body>
 </html>
@@ -513,17 +649,33 @@ const numeral = String(heldCount).padStart(2, '0');
   --f-num:calc(var(--f-base) * 5.0625);
   --f-mega:calc(var(--f-base) * 7.594);
 
-  /* TWO LABEL TOKENS. There is no third. */
-  --lab-size:.6875rem;   --lab-track:.17em;
-  --micro-size:.5625rem; --micro-track:.22em;
+  /* TWO LABEL TOKENS. There is no third. Micro sits at 10px — the mobile
+     legibility floor is 9px and this page doesn't ride the floor. */
+  --lab-size:.6875rem; --lab-track:.17em;
+  --micro-size:.625rem; --micro-track:.22em;
 
   /* THREE BORDER WEIGHTS, each with a job. */
   --w-hair:1px;
   --w-sec:3px;
   --w-plane:6px;
 
+  /* MOTION TOKENS — one exit-less grammar: things ARRIVE.
+     out = decelerate (entrances); rise = long settle for display type.
+     Four durations, each with a job: micro = hover/press, soft = image
+     glide, reveal = scroll fades, rise = display type. No magic numbers. */
+  --ease-out:cubic-bezier(0,0,.2,1);
+  --ease-rise:cubic-bezier(.16,1,.3,1);
+  --t-micro:150ms;
+  --t-soft:300ms;
+  --t-reveal:500ms;
+  --t-rise:650ms;
+
   --gut:clamp(16px,4vw,40px);
   --frame:1120px;
+
+  /* Print grain — inline SVG turbulence, tiled. Self-contained; reads as
+     gray speckle on every plane at low opacity. */
+  --grain:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='260' height='260'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
 }
 
 @media (prefers-color-scheme:dark){
@@ -561,6 +713,11 @@ ul,ol{list-style:none;padding:0}
 
 :focus-visible{outline:3px solid var(--goldtext);outline-offset:2px}
 .mast :focus-visible,.band :focus-visible,.night :focus-visible{outline-color:currentColor}
+/* The gold buttons compute BLACK text — currentColor would put a black ring
+   on a black plane. The primary actions get a bone ring on the dark planes;
+   the 2px offset shows the plane between fill and ring, so it reads even
+   when the hover state turns the fill bone. */
+.mast .btn.gold:focus-visible,.night .btn.gold:focus-visible{outline-color:var(--bone)}
 
 /* ---------- TYPE UTILITIES ---------- */
 .dsp{
@@ -579,6 +736,21 @@ ul,ol{list-style:none;padding:0}
 
 .wrap{max-width:var(--frame);margin:0 auto;padding-left:var(--gut);padding-right:var(--gut)}
 
+/* ---------- PRINT DETAILS (shared) ---------- */
+/* Grain sits between each plane's background and its content — loud enough
+   to SEE at arm's length (texture nobody can perceive is decoration serving
+   nobody). The gold plane carries the most; ink still wins on contrast. */
+.mast,.band,.night{position:relative;isolation:isolate}
+.mast::before,.band::before,.night::before{
+  content:"";position:absolute;inset:0;z-index:-1;
+  background-image:var(--grain);opacity:.08;pointer-events:none;
+}
+.band::before{opacity:.12}
+/* Registration mark — the pressman's crosshair. Rewards a second look. */
+.reg{width:14px;height:14px;flex:none;opacity:.75}
+/* Signal-red tick — punctuation that wipes in as a section arrives. */
+.tick{display:block;width:34px;height:8px;background:var(--signal)}
+
 /* ---------- BUTTONS ---------- */
 .btn{
   display:inline-flex;align-items:center;justify-content:center;gap:8px;
@@ -587,7 +759,8 @@ ul,ol{list-style:none;padding:0}
   font-family:var(--ui);font-weight:800;font-size:var(--lab-size);
   letter-spacing:var(--lab-track);text-transform:uppercase;
   cursor:pointer;text-decoration:none;text-align:center;
-  transition:transform 90ms ease,background-color 110ms linear,color 110ms linear,border-color 110ms linear;
+  touch-action:manipulation;
+  transition:transform var(--t-micro) var(--ease-out),background-color var(--t-micro) var(--ease-out),color var(--t-micro) var(--ease-out),border-color var(--t-micro) var(--ease-out);
 }
 .btn:hover{background:var(--gold);border-color:var(--black);color:var(--black)}
 .btn:active{transform:translateY(2px)}
@@ -601,7 +774,7 @@ ul,ol{list-style:none;padding:0}
 .mast{
   background:var(--mast-bg);color:var(--mast-fg);
   border-bottom:var(--w-plane) solid var(--gold);
-  padding:18px 0 clamp(28px,4vw,48px);
+  padding:18px 0 0;
 }
 .topline{
   display:flex;align-items:center;gap:14px;flex-wrap:wrap;
@@ -611,6 +784,11 @@ ul,ol{list-style:none;padding:0}
 .crown{width:32px;height:32px;color:var(--gold);flex:none}
 .schooltop{color:var(--mast-dim);margin-right:auto}
 .title{font-size:clamp(3.2rem,1.4rem + 8.8vw,8.75rem);line-height:.84}
+/* Each masthead line is its own clip window; the word rises up into it. */
+.tl{display:block;overflow:hidden}
+.tw{display:inline-block}
+/* The red full stop after CLUB — punctuation, set in the third ink. */
+.dot{display:inline-block;width:.13em;height:.13em;background:var(--signal);margin-left:.07em}
 .school{margin-top:18px;color:var(--mast-dim)}
 .stand{
   margin-top:16px;
@@ -620,10 +798,19 @@ ul,ol{list-style:none;padding:0}
   max-width:44ch;
 }
 
+/* The tape — the page's ONE perpetual element. Decorative, aria-hidden. */
+.marq{
+  overflow:hidden;
+  margin-top:clamp(26px,4vw,48px);
+  border-top:var(--w-hair) solid rgba(251,250,248,.28);
+}
+.tape{display:flex;width:max-content;color:var(--gold);padding:10px 0}
+.tape .lab{white-space:nowrap;padding-right:2.5em}
+
 /* ---------- SECTIONS ---------- */
 .block{padding:0 0 clamp(44px,7vw,84px)}
 .sechead{border-bottom:var(--w-sec) solid var(--rule);padding-bottom:12px}
-.sechead .kick{color:var(--muted);margin-bottom:10px}
+.sechead .kick{color:var(--muted);margin:12px 0 10px}
 .sechead h2{font-size:var(--f-h1)}
 .who{padding-top:clamp(36px,6vw,64px)}
 
@@ -635,6 +822,7 @@ ul,ol{list-style:none;padding:0}
   margin-bottom:clamp(10px,2vw,20px);
 }
 .band .strip{border-bottom:var(--w-hair) solid currentColor;padding:9px 0}
+.stripline{display:flex;align-items:center;justify-content:space-between;gap:14px}
 .band .inner{padding:clamp(22px,3.2vw,40px) 0}
 .lockup{display:flex;align-items:flex-end;gap:clamp(14px,2.4vw,26px);flex-wrap:wrap}
 .hero-num{
@@ -642,18 +830,32 @@ ul,ol{list-style:none;padding:0}
   font-size:var(--f-mega);line-height:.78;letter-spacing:-.02em;
   padding:.06em .09em .1em;
   background:var(--band-fg);color:var(--band-bg);
-  flex:none;
+  flex:none;overflow:hidden;
 }
+.hn{display:inline-block;font-variant-numeric:tabular-nums}
 .lockup .rest{min-width:0;flex:1 1 220px;padding-bottom:.3em}
 .lockup h2{font-size:var(--f-h1)}
 .sub2{margin-top:10px;color:var(--band-dim)}
-.bandnote{
-  margin-top:20px;
-  font-family:var(--editorial);
-  font-size:calc(var(--f-base) * 1.02);
-  line-height:1.6;
-  max-width:44ch;
+
+/* ---------- SEASON ONE — the designed empty state ---------- */
+.zero{padding-top:clamp(28px,5vw,56px)}
+.zero-l{font-size:clamp(2.6rem,1rem + 7.2vw,7rem);line-height:.92}
+.zero-inv{
+  display:inline-block;background:var(--black);color:var(--gold);
+  padding:.03em .14em .09em;margin-top:.08em;
 }
+.zstar{
+  display:inline-block;color:var(--signal);
+  font-size:.55em;margin-left:.14em;vertical-align:.34em;
+}
+.zeronote{margin-top:20px}
+
+/* ---------- SEASON ONE, UNDERWAY — events on the record, no recaps yet.
+   The zero state's inverted lockup at reduced scale, sitting above the
+   rows until the first write-up replaces it. ---------- */
+.opener{padding:clamp(26px,4.5vw,52px) 0 clamp(14px,2.5vw,24px)}
+.open-l{font-size:clamp(2.2rem,1rem + 5vw,4.75rem);line-height:.92}
+.opennote{margin-top:16px}
 
 /* ---------- BROADSHEET FEED ---------- */
 .feed{padding-top:clamp(8px,1.6vw,16px)}
@@ -690,7 +892,8 @@ ul,ol{list-style:none;padding:0}
   gap:3px;padding:3px;background:var(--black);
   margin-top:18px;
 }
-.shots img{width:100%;height:100%;aspect-ratio:4/3;object-fit:cover}
+.ph{overflow:hidden;background:var(--black)}
+.ph img{width:100%;height:100%;aspect-ratio:4/3;object-fit:cover}
 
 @media (max-width:640px){
   .post{flex-direction:column;gap:12px}
@@ -757,6 +960,7 @@ ul,ol{list-style:none;padding:0}
 
 /* ---------- EMPTY STATE (about us) ---------- */
 .state{border:var(--w-sec) solid var(--rule);padding:clamp(20px,3vw,32px);margin-top:24px}
+.state .tick{margin-bottom:16px}
 .state-h{font-size:var(--f-h2)}
 .serifnote{
   margin-top:12px;font-family:var(--editorial);font-size:1rem;line-height:1.6;
@@ -769,16 +973,88 @@ ul,ol{list-style:none;padding:0}
   border-top:var(--w-plane) solid var(--gold);
   padding:clamp(30px,5vw,56px) 0 clamp(24px,4vw,40px);
 }
-.night .k{color:var(--gold)}
+.night .k{color:var(--gold);margin-top:14px}
 .night .fh{font-size:var(--f-h1);margin-top:12px}
 .fx{display:flex;gap:12px;flex-wrap:wrap;margin-top:22px}
 .night .btn.gold{border-color:var(--gold)}
 .night .btn.gold:hover{background:var(--night-fg);border-color:var(--night-fg)}
-.tail{margin-top:clamp(24px,4vw,40px);color:var(--night-dim)}
+.tailrow{
+  display:flex;align-items:center;justify-content:space-between;gap:14px;
+  margin-top:clamp(24px,4vw,40px);
+}
+.tail{color:var(--night-dim)}
 
 @media (max-width:640px){
   .fx .btn{flex:1 1 100%}
 }
+
+/* ---------- MICRO-INTERACTIONS (hover/press) ----------
+   150ms decelerate. box-shadow on .ini2 is paint, not composite — accepted
+   on a 52px tile for the offset-print misregistration effect. */
+.off .ini2{transition:transform var(--t-micro) var(--ease-out),box-shadow var(--t-micro) var(--ease-out)}
+.off:hover .ini2{transform:translate(-3px,-3px);box-shadow:3px 3px 0 var(--signal)}
+.brief .ttl{transition:transform var(--t-micro) var(--ease-out)}
+.brief .dnum{transition:color var(--t-micro) linear}
+.brief:hover .ttl{transform:translateX(6px)}
+.brief:hover .dnum{color:var(--signal-ink)}
+.ph img{transition:transform var(--t-soft) var(--ease-out)}
+.ph:hover img{transform:scale(1.04)}
+
+/* ═══════════════════ MOTION ═══════════════════
+   TRIPLE-GATED. Every hidden-until-revealed state requires `html.js`
+   (scripts actually ran) AND motion-OK AND an actual screen — print gets
+   the whole page, revealed or not. No JS → this block's .js selectors
+   never match → page fully visible, static. Reduced motion → block never
+   applies → same. Transform/opacity only. */
+@media screen and (prefers-reduced-motion:no-preference){
+
+  /* Masthead load choreography (time-driven; above the fold).
+     1. topline fades up            60ms
+     2. title lines rise, staggered 120/210/300ms, 650ms settle
+     3. red full stop pops          780ms
+     4. school + standfirst fade up 480/560ms
+     5. tape fades in               640ms, then loops ambiently
+     The script holds the first scroll reveals ~700ms when the page opens
+     at the top, so nothing below competes with this. */
+  html.js .r{opacity:0;animation:fadeup var(--t-reveal) var(--ease-out) forwards}
+  html.js .r1{animation-delay:60ms}
+  html.js .r2{animation-delay:480ms}
+  html.js .r3{animation-delay:560ms}
+  html.js .r4{animation-delay:640ms}
+  html.js .tw{transform:translateY(108%);animation:rise var(--t-rise) var(--ease-rise) forwards}
+  html.js .tl:nth-of-type(1) .tw{animation-delay:120ms}
+  html.js .tl:nth-of-type(2) .tw{animation-delay:210ms}
+  html.js .tl:nth-of-type(3) .tw{animation-delay:300ms}
+  html.js .dot{transform:scale(0);animation:pop var(--t-soft) var(--ease-out) 780ms forwards}
+
+  /* The one perpetual loop. Linear is correct for a constant-speed tape. */
+  .tape{animation:marq 38s linear infinite}
+
+  /* Scroll entrances: fade-up, 500ms decelerate / 650ms settle. The 60ms
+     stagger is assigned PER IO BATCH by the script — whatever reveals
+     together staggers together; an item arriving alone starts instantly. */
+  html.js .io{
+    opacity:0;transform:translateY(16px);
+    transition:opacity var(--t-reveal) var(--ease-out),transform var(--t-rise) var(--ease-rise);
+  }
+  /* …except the brief rows, which arrive along their READING axis — the
+     row's hover glide, spoken at entrance scale. (Before .in so the
+     settled state still wins.) */
+  html.js .brief.io{transform:translateX(-18px)}
+  html.js .io.in{opacity:1;transform:none}
+
+  /* Red ticks wipe in with their section — punctuation in motion. */
+  html.js .io .tick{transform:scaleX(0);transform-origin:0 50%;transition:transform var(--t-reveal) var(--ease-rise) 120ms}
+  html.js .io.in .tick{transform:scaleX(1)}
+
+  /* The poster numeral rises inside its black slab while JS counts it up. */
+  html.js .hn{transform:translateY(112%);transition:transform var(--t-rise) var(--ease-rise) 80ms}
+  html.js .lockup.in .hn{transform:none}
+}
+@keyframes fadeup{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+@keyframes rise{to{transform:none}}
+@keyframes pop{from{transform:scale(0)}to{transform:scale(1)}}
+@keyframes marq{to{transform:translateX(-50%)}}
 
 @media (prefers-reduced-motion:reduce){
   *,*::before,*::after{animation:none!important;transition:none!important}
