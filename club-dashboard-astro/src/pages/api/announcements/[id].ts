@@ -1,26 +1,33 @@
 import type { APIRoute } from 'astro';
 import { supabaseAdmin } from '../../../lib/supabase';
-import { getSession } from '../../../lib/auth';
+import { apiJson, apiRequireOfficer } from '../../../lib/auth';
+
+/**
+ * DELETE /api/announcements/[id] — officers only.
+ *
+ * Hard delete, unchanged: announcements carry no dependent rows.
+ */
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export const DELETE: APIRoute = async ({ request, params }) => {
-  const responseHeaders = new Headers({ 'content-type': 'application/json' });
-  const session = await getSession(request, responseHeaders);
+  const responseHeaders = new Headers();
+  const guard = await apiRequireOfficer(request, responseHeaders);
+  if (!guard.ok) return guard.response;
 
-  if (!session) {
-    return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: responseHeaders });
-  }
-  if (!['admin', 'treasurer'].includes(session.role)) {
-    return new Response(JSON.stringify({ error: 'Forbidden' }), { status: 403, headers: responseHeaders });
+  const id = params.id;
+  if (!id || !UUID_RE.test(id)) {
+    // Without this, a non-uuid path segment reaches Postgres and comes back as
+    // a 500 "invalid input syntax for type uuid".
+    return apiJson(400, { error: 'Invalid announcement id' }, responseHeaders);
   }
 
-  const { error } = await supabaseAdmin
-    .from('announcements')
-    .delete()
-    .eq('id', params.id);
+  const { error } = await supabaseAdmin.from('announcements').delete().eq('id', id);
 
   if (error) {
-    return new Response(JSON.stringify({ error: error.message }), { status: 500, headers: responseHeaders });
+    console.error('[api/announcements/[id]]', error);
+    return apiJson(500, { error: 'Could not delete the announcement' }, responseHeaders);
   }
 
-  return new Response(JSON.stringify({ success: true }), { status: 200, headers: responseHeaders });
+  return apiJson(200, { success: true }, responseHeaders);
 };

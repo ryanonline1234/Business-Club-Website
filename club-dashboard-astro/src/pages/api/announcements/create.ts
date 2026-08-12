@@ -1,35 +1,53 @@
 import type { APIRoute } from 'astro';
 import { supabaseAdmin } from '../../../lib/supabase';
-import { getSession } from '../../../lib/auth';
+import { apiJson, apiRequireOfficer } from '../../../lib/auth';
+
+/**
+ * POST /api/announcements/create — officers only.
+ *
+ * author_id and author_name come from the session, never from the client.
+ * The stored body is plain text: /announcements must render it with
+ * textContent, never innerHTML.
+ */
+
+/** Generous ceilings — a guard against absurd payloads, not a content policy. */
+const MAX_TITLE = 200;
+const MAX_BODY = 20000;
 
 export const POST: APIRoute = async ({ request }) => {
-  const responseHeaders = new Headers({ 'content-type': 'application/json' });
-  const session = await getSession(request, responseHeaders);
+  const responseHeaders = new Headers();
+  const guard = await apiRequireOfficer(request, responseHeaders);
+  if (!guard.ok) return guard.response;
+  const session = guard.session;
 
-  if (!session) {
-    return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: responseHeaders });
-  }
-  if (!['admin', 'treasurer'].includes(session.role)) {
-    return new Response(JSON.stringify({ error: 'Forbidden' }), { status: 403, headers: responseHeaders });
-  }
-
-  let body: { title?: string; body?: string };
+  let payload: Record<string, unknown>;
   try {
-    body = await request.json();
+    payload = (await request.json()) as Record<string, unknown>;
   } catch {
-    return new Response(JSON.stringify({ error: 'Invalid JSON' }), { status: 400, headers: responseHeaders });
+    return apiJson(400, { error: 'Invalid JSON' }, responseHeaders);
+  }
+  if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) {
+    return apiJson(400, { error: 'Invalid JSON' }, responseHeaders);
   }
 
-  const { title, body: bodyText } = body;
-  if (!title?.trim() || !bodyText?.trim()) {
-    return new Response(JSON.stringify({ error: 'title and body are required' }), { status: 400, headers: responseHeaders });
+  const title = typeof payload.title === 'string' ? payload.title.trim() : '';
+  const bodyText = typeof payload.body === 'string' ? payload.body.trim() : '';
+
+  if (!title || !bodyText) {
+    return apiJson(400, { error: 'title and body are required' }, responseHeaders);
+  }
+  if (title.length > MAX_TITLE) {
+    return apiJson(400, { error: `title must be ${MAX_TITLE} characters or fewer` }, responseHeaders);
+  }
+  if (bodyText.length > MAX_BODY) {
+    return apiJson(400, { error: `body must be ${MAX_BODY} characters or fewer` }, responseHeaders);
   }
 
   const { data, error } = await supabaseAdmin
     .from('announcements')
     .insert({
-      title: title.trim(),
-      body: bodyText.trim(),
+      title,
+      body: bodyText,
       author_id: session.id,
       author_name: session.name,
     })
@@ -37,9 +55,11 @@ export const POST: APIRoute = async ({ request }) => {
     .single();
 
   if (error) {
+    // Detail stays in the Vercel function log; the client gets a fixed string
+    // rather than a Postgres message.
     console.error('[api/announcements/create]', error);
-    return new Response(JSON.stringify({ error: error.message }), { status: 500, headers: responseHeaders });
+    return apiJson(500, { error: 'Could not post the announcement' }, responseHeaders);
   }
 
-  return new Response(JSON.stringify({ data }), { status: 201, headers: responseHeaders });
+  return apiJson(201, { data }, responseHeaders);
 };

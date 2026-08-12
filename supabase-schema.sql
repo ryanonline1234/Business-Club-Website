@@ -1,10 +1,77 @@
--- Supabase Database Schema for Treasury Club Dashboard
--- Run this in your Supabase SQL Editor to create the tables
+-- ═══════════════════════════════════════════════════════════════════════════
+-- The Mitty Business Club — officer portal
+-- Canonical Supabase schema + the member-approval migration.
+--
+-- HOW TO RUN THIS FILE
+--   In the Supabase SQL Editor, in three passes:
+--     1. STEP 0 alone      — pre-flight. READ THE ROWS IT RETURNS. Its result
+--                            decides whether STEP 9 may be applied at all.
+--                            On a brand-new project this statement errors with
+--                            'relation "public.profiles" does not exist'; that
+--                            counts as zero rows, so just skip to pass 2.
+--     2. PART 1 → STEP 14  — the schema and the migration. Safe to paste as
+--                            one block; every statement is idempotent, so
+--                            running it twice is a no-op and running it on an
+--                            empty project builds everything from scratch.
+--     3. STEP 15 alone     — verification. READ THE ROWS IT RETURNS, before
+--                            deploying any code.
+--
+--   Passes 1 and 3 are separate because the SQL Editor only shows the LAST
+--   result set: paste everything at once and you never see what STEP 0 said.
+--
+--   STEP 9 ships COMMENTED OUT on purpose. It is CONDITIONAL — see its banner.
+--
+-- ⛔ DO NOT DEPLOY THIS YET — /pending AND THE APPROVAL UI DO NOT EXIST ⛔
+--   As of this writing src/pages/pending.astro has never been written, and no
+--   page calls PATCH /api/members/:id/status. Run this migration against the
+--   current front end and the result is a closed loop with no exit:
+--     • every new @mittymonarch.com signup is created 'pending' (STEP 3 + 10);
+--     • the guards and the OAuth callback send them to /pending — a 404;
+--     • no officer screen can approve them, so the only way out is editing
+--       rows by hand in the Supabase table editor.
+--   Existing members are safe (STEP 2 backfills them to 'approved'), so this is
+--   a lockout for NEW members only — but that is the entire feature.
+--   SHIP THE /pending PAGE AND THE OFFICER APPROVAL QUEUE FIRST.
+--
+-- DEPLOY ORDER: THIS FILE FIRST, THEN THE CODE.
+--   The app selects profiles.status. If the new build ships before this
+--   migration runs, that select errors, getSession fails closed by design,
+--   and 100% of users land on /pending with no way out. The other order is
+--   safe: this migration against the OLD code only means brand-new signups
+--   carry a status the old app ignores.
+--
+-- TABLES IN PLAY for the app: profiles, events, attendance, announcements.
+-- The finance tables (categories, transactions, budgets, audit_logs) are
+-- deliberately RETAINED but read by nothing. Do not drop them.
+-- ═══════════════════════════════════════════════════════════════════════════
 
--- Enable UUID extension
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- STEP 0: PRE-FLIGHT  ── RUN THIS ALONE, BEFORE ANYTHING ELSE, AND READ IT ──
+-- ═══════════════════════════════════════════════════════════════════════════
+-- Every row this returns is an existing account on a non-school domain.
+-- If your own admin row is here, DO NOT add the domain CHECK constraint in
+-- STEP 9 and make sure the callback grandfathers already-approved profiles.
+--
+-- On a brand-new project this errors with 'relation "public.profiles" does
+-- not exist'. That counts as zero rows — carry on.
+
+select id, email, role, created_at from public.profiles
+where lower(split_part(email, '@', 2)) not in ('mittymonarch.com', 'mitty.com')
+order by created_at;
+
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- PART 1 — BASE SCHEMA (tables, indexes, RLS switched on)
+-- Unchanged from the original schema. Policies for profiles / events /
+-- attendance / announcements are NOT defined here — STEP 13 and STEP 14 own
+-- them, so there is exactly one definition of each policy in this file.
+-- ═══════════════════════════════════════════════════════════════════════════
+
 create extension if not exists "uuid-ossp";
 
--- Users table (synced with auth.users via Supabase Auth)
+-- Members. One row per auth.users row; `status` is added by STEP 1-4 rather
+-- than declared here, because existing databases need the backfill.
 create table if not exists public.profiles (
   id uuid references auth.users not null primary key,
   email text not null,
@@ -13,151 +80,10 @@ create table if not exists public.profiles (
   created_at timestamptz default now()
 );
 
--- Categories table (for Budget, Activities, Prizes, Snacks)
-create table if not exists public.categories (
-  id uuid default uuid_generate_v4() primary key,
-  name text not null,
-  slug text not null unique,
-  description text,
-  icon text default 'box',
-  is_active boolean default true,
-  created_at timestamptz default now()
-);
-
--- Insert default categories
-insert into public.categories (name, slug, description, icon) values
-  ('Budget', 'budget', 'General budget expenses', 'budget'),
-  ('Activities', 'activities', 'Club activities and events', 'activity'),
-  ('Prizes', 'prizes', 'Prizes and rewards', 'prize'),
-  ('Snacks', 'snacks', 'Snacks and refreshments', 'snack')
-on conflict (slug) do nothing;
-
--- Transactions table
-create table if not exists public.transactions (
-  id uuid default uuid_generate_v4() primary key,
-  amount numeric(10, 2) not null,
-  description text not null,
-  category_id uuid references public.categories not null,
-  user_id uuid references public.profiles not null,
-  status text default 'pending' check (status in ('pending', 'approved', 'rejected')),
-  receipt_url text,
-  merchant text,
-  created_at timestamptz default now()
-);
-
--- Budgets table (track budget limits per category)
-create table if not exists public.budgets (
-  id uuid default uuid_generate_v4() primary key,
-  name text not null,
-  amount numeric(10, 2) not null,
-  spent numeric(10, 2) default 0,
-  category_id uuid references public.categories not null,
-  starts_at timestamptz not null,
-  ends_at timestamptz not null,
-  created_at timestamptz default now()
-);
-
--- Audit logs for compliance
-create table if not exists public.audit_logs (
-  id uuid default uuid_generate_v4() primary key,
-  action text not null,
-  table_name text not null,
-  record_id uuid,
-  user_id uuid references public.profiles,
-  old_data jsonb,
-  new_data jsonb,
-  created_at timestamptz default now()
-);
-
--- Enable Row Level Security (RLS)
-alter table public.profiles enable row level security;
-alter table public.categories enable row level security;
-alter table public.transactions enable row level security;
-alter table public.budgets enable row level security;
-alter table public.audit_logs enable row level security;
-
--- RLS Policies for profiles
-create policy "Users can view own profile"
-  on public.profiles for select
-  using (auth.uid() = id);
-
-create policy "Admin can manage all profiles"
-  on public.profiles for all
-  using (auth.uid() in (
-    select id from public.profiles where role = 'admin'
-  ));
-
--- RLS Policies for categories (all authenticated users can read)
-create policy "Public can read categories"
-  on public.categories for select
-  using (true);
-
-create policy "Admin/Treasurer can manage categories"
-  on public.categories for all
-  using (auth.uid() in (
-    select id from public.profiles where role in ('admin', 'treasurer')
-  ));
-
--- RLS Policies for transactions
-create policy "Users can read own transactions"
-  on public.transactions for select
-  using (auth.uid() = user_id);
-
-create policy "Admin/Treasurer can read all transactions"
-  on public.transactions for select
-  using (auth.uid() in (
-    select id from public.profiles where role in ('admin', 'treasurer')
-  ));
-
-create policy "Users can insert own transactions"
-  on public.transactions for insert
-  with check (auth.uid() = user_id);
-
-create policy "Admin/Treasurer can manage all transactions"
-  on public.transactions for all
-  using (auth.uid() in (
-    select id from public.profiles where role in ('admin', 'treasurer')
-  ));
-
--- RLS Policies for budgets
-create policy "Public can read budgets"
-  on public.budgets for select
-  using (true);
-
-create policy "Admin/Treasurer can manage budgets"
-  on public.budgets for all
-  using (auth.uid() in (
-    select id from public.profiles where role in ('admin', 'treasurer')
-  ));
-
--- RLS Policies for audit logs
-create policy "Admin/Treasurer can read audit logs"
-  on public.audit_logs for select
-  using (auth.uid() in (
-    select id from public.profiles where role in ('admin', 'treasurer')
-  ));
-
--- Function to handle new user creation
-create or replace function public.handle_new_user()
-returns trigger as $$
-begin
-  insert into public.profiles (id, email, name, role)
-  values (
-    new.id,
-    new.email,
-    coalesce(new.raw_user_meta_data->>'name', split_part(new.email, '@', 1)),
-    'member'
-  );
-  return new;
-end;
-$$ language plpgsql security definer;
-
--- Trigger on auth.users
-create trigger on_auth_user_created
-  after insert on auth.users
-  for each row execute function public.handle_new_user();
-
--- Events table (for club meetings, workshops, competitions)
+-- Events (club meetings, workshops, competitions).
+-- NOTE: `password` is DEAD. Nothing reads or writes it; the column is kept
+-- only because dropping columns is irreversible. If password check-in is ever
+-- built, hash the value — never store it in plaintext as the old code did.
 create table if not exists public.events (
   id uuid default uuid_generate_v4() primary key,
   title text not null,
@@ -173,7 +99,7 @@ create table if not exists public.events (
   created_at timestamptz default now()
 );
 
--- Attendance table (for event check-ins)
+-- Event check-ins.
 create table if not exists public.attendance (
   id uuid default uuid_generate_v4() primary key,
   event_id uuid references public.events not null,
@@ -184,50 +110,15 @@ create table if not exists public.attendance (
   created_at timestamptz default now()
 );
 
--- Indexes for events
-create index if not exists idx_events_start_time on public.events(start_time);
-create index if not exists idx_events_status on public.events(status);
-create index if not exists idx_events_created_by on public.events(created_by);
-create index if not exists idx_attendance_event_id on public.attendance(event_id);
-create index if not exists idx_attendance_member_id on public.attendance(member_id);
+-- One check-in per member per event. drop-then-add keeps the file re-runnable
+-- (the original bare `add constraint` errored on every second run).
+alter table public.attendance
+  drop constraint if exists attendance_event_member_unique;
 
--- Enable RLS for events and attendance
-alter table public.events enable row level security;
-alter table public.attendance enable row level security;
+alter table public.attendance
+  add constraint attendance_event_member_unique unique (event_id, member_id);
 
--- RLS Policies for events
-create policy "Public can read events"
-  on public.events for select
-  using (true);
-
-create policy "Admin/Treasurer can manage events"
-  on public.events for all
-  using (auth.uid() in (
-    select id from public.profiles where role in ('admin', 'treasurer')
-  ));
-
--- RLS Policies for attendance
-create policy "Users can view own attendance"
-  on public.attendance for select
-  using (auth.uid() = member_id);
-
-create policy "Admin/Treasurer can view all attendance"
-  on public.attendance for select
-  using (auth.uid() in (
-    select id from public.profiles where role in ('admin', 'treasurer')
-  ));
-
-create policy "Users can insert own attendance"
-  on public.attendance for insert
-  with check (auth.uid() = member_id);
-
-create policy "Admin/Treasurer can manage all attendance"
-  on public.attendance for all
-  using (auth.uid() in (
-    select id from public.profiles where role in ('admin', 'treasurer')
-  ));
-
--- Announcements table
+-- Announcements.
 create table if not exists public.announcements (
   id uuid default uuid_generate_v4() primary key,
   title text not null,
@@ -237,25 +128,475 @@ create table if not exists public.announcements (
   created_at timestamptz default now()
 );
 
-alter table public.announcements enable row level security;
+-- ── Finance tables: RETAINED, READ BY NOTHING ──────────────────────────────
+-- The finance module was deleted from the app. These tables stay so the data
+-- is not lost and the decision stays reversible. Note that transactions.user_id
+-- and audit_logs.user_id reference public.profiles, so hard-deleting a profile
+-- row by hand will fail on these foreign keys.
+create table if not exists public.categories (
+  id uuid default uuid_generate_v4() primary key,
+  name text not null,
+  slug text not null unique,
+  description text,
+  icon text default 'box',
+  is_active boolean default true,
+  created_at timestamptz default now()
+);
 
-create policy "Anyone authenticated can read announcements"
-  on public.announcements for select
-  using (auth.uid() is not null);
+insert into public.categories (name, slug, description, icon) values
+  ('Budget', 'budget', 'General budget expenses', 'budget'),
+  ('Activities', 'activities', 'Club activities and events', 'activity'),
+  ('Prizes', 'prizes', 'Prizes and rewards', 'prize'),
+  ('Snacks', 'snacks', 'Snacks and refreshments', 'snack')
+on conflict (slug) do nothing;
 
-create policy "Admin/Treasurer can manage announcements"
-  on public.announcements for all
-  using (auth.uid() in (
-    select id from public.profiles where role in ('admin', 'treasurer')
-  ));
+create table if not exists public.transactions (
+  id uuid default uuid_generate_v4() primary key,
+  amount numeric(10, 2) not null,
+  description text not null,
+  category_id uuid references public.categories not null,
+  user_id uuid references public.profiles not null,
+  status text default 'pending' check (status in ('pending', 'approved', 'rejected')),
+  receipt_url text,
+  merchant text,
+  created_at timestamptz default now()
+);
 
--- Unique constraint on attendance to prevent duplicate check-ins
-alter table public.attendance
-  add constraint attendance_event_member_unique unique (event_id, member_id);
+create table if not exists public.budgets (
+  id uuid default uuid_generate_v4() primary key,
+  name text not null,
+  amount numeric(10, 2) not null,
+  spent numeric(10, 2) default 0,
+  category_id uuid references public.categories not null,
+  starts_at timestamptz not null,
+  ends_at timestamptz not null,
+  created_at timestamptz default now()
+);
 
--- Indexes for performance
+create table if not exists public.audit_logs (
+  id uuid default uuid_generate_v4() primary key,
+  action text not null,
+  table_name text not null,
+  record_id uuid,
+  user_id uuid references public.profiles,
+  old_data jsonb,
+  new_data jsonb,
+  created_at timestamptz default now()
+);
+
+-- ── Indexes ────────────────────────────────────────────────────────────────
+create index if not exists idx_events_start_time on public.events(start_time);
+create index if not exists idx_events_status on public.events(status);
+create index if not exists idx_events_created_by on public.events(created_by);
+create index if not exists idx_attendance_event_id on public.attendance(event_id);
+create index if not exists idx_attendance_member_id on public.attendance(member_id);
 create index if not exists idx_transactions_user_id on public.transactions(user_id);
 create index if not exists idx_transactions_category_id on public.transactions(category_id);
 create index if not exists idx_transactions_status on public.transactions(status);
 create index if not exists idx_transactions_created_at on public.transactions(created_at);
 create index if not exists idx_budgets_category_id on public.budgets(category_id);
+
+-- ── Row Level Security: on for every table ─────────────────────────────────
+-- Every application query currently runs through the service-role client, so
+-- these policies do not gate the app today. They must still be TRUTHFUL: they
+-- are the second line of defence the day any query moves off the service role.
+alter table public.profiles enable row level security;
+alter table public.events enable row level security;
+alter table public.attendance enable row level security;
+alter table public.announcements enable row level security;
+alter table public.categories enable row level security;
+alter table public.transactions enable row level security;
+alter table public.budgets enable row level security;
+alter table public.audit_logs enable row level security;
+
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- THE APPROVAL MIGRATION — STEPS 1 THROUGH 15
+--
+-- ⚠ WHY STEPS 1-2-3 ARE THREE SEPARATE STATEMENTS, IN THAT ORDER ⚠
+--
+--   The obvious one-liner —
+--       alter table public.profiles
+--         add column status text not null default 'pending';
+--   — instantly flips EVERY existing member, including every officer, to
+--   'pending'. The roster empties, the approval queue fills with people who
+--   were already approved, and nobody with the power to fix it can log in.
+--
+--   The three-step dance avoids that:
+--     1. add the column with NO default  → existing rows get NULL
+--     2. backfill NULL → 'approved'      → everyone who exists today keeps access
+--     3. NOW set default 'pending' + NOT NULL → only FUTURE signups are pending
+--
+--   Step 2 keys off "status is null", so a second run of this file finds no
+--   NULLs and therefore can never re-approve someone an officer has since
+--   set to 'pending' or 'rejected'. That is what makes it safe to re-run.
+--
+--   Run STEP 1-3 together, then read STEP 15 before deploying any code.
+-- ═══════════════════════════════════════════════════════════════════════════
+
+-- ── STEP 1: add the approval column WITHOUT a default ──────────────────────
+-- No default here on purpose: existing rows come back NULL rather than
+-- 'pending', which is what makes the backfill in step 2 possible.
+alter table public.profiles
+  add column if not exists status text;
+
+-- ── STEP 2: backfill existing members to 'approved' ────────────────────────
+-- This MUST run before the default is set. Every member who exists today keeps
+-- their access. Re-running is a no-op (no NULLs left), so newly-pending users
+-- are never silently approved by a second run of this file.
+update public.profiles
+   set status = 'approved'
+ where status is null;
+
+-- ── STEP 3: new signups default to 'pending', column becomes non-null ──────
+alter table public.profiles
+  alter column status set default 'pending';
+
+alter table public.profiles
+  alter column status set not null;
+
+-- ── STEP 4: constrain the allowed values (drop-then-add keeps it re-runnable)
+alter table public.profiles
+  drop constraint if exists profiles_status_check;
+
+alter table public.profiles
+  add constraint profiles_status_check
+  check (status in ('pending', 'approved', 'rejected'));
+
+-- ── STEP 5: approval provenance ────────────────────────────────────────────
+-- Null on backfilled rows — that is the marker for 'grandfathered, never
+-- explicitly approved by anyone'.
+alter table public.profiles
+  add column if not exists approved_by uuid references public.profiles(id);
+
+alter table public.profiles
+  add column if not exists approved_at timestamptz;
+
+-- ── STEP 6: indexes ────────────────────────────────────────────────────────
+-- idx_profiles_status serves the roster (status = 'approved') on every page;
+-- the partial index serves the officer approval queue ordered by signup time.
+create index if not exists idx_profiles_status
+  on public.profiles(status);
+
+create index if not exists idx_profiles_pending_queue
+  on public.profiles(created_at)
+  where status = 'pending';
+
+-- ── STEP 7: make profiles.id cascade from auth.users ───────────────────────
+-- The original inline `references auth.users` has ON DELETE NO ACTION, so
+-- supabaseAdmin.auth.admin.deleteUser() fails with an FK violation. The
+-- rejected-domain path in /api/auth/callback needs this delete to succeed.
+alter table public.profiles
+  drop constraint if exists profiles_id_fkey;
+
+alter table public.profiles
+  add constraint profiles_id_fkey
+  foreign key (id) references auth.users(id) on delete cascade;
+
+-- ── STEP 8: the school-domain predicate, in one place ──────────────────────
+-- Mirrored in TypeScript by isSchoolEmail() in src/lib/env.ts. If the club
+-- ever changes domains, these two are the only places to edit.
+create or replace function public.is_school_email(addr text)
+returns boolean as $$
+  select lower(split_part(coalesce(addr, ''), '@', 2))
+         in ('mittymonarch.com', 'mitty.com');
+$$ language sql immutable;
+
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- ⚠⚠ STEP 9 — CONDITIONAL. DO NOT RUN IT UNLESS STEP 0 RETURNED ZERO ROWS ⚠⚠
+--
+--   It ships COMMENTED OUT so that pasting this whole file is safe by default.
+--   Skipping it costs nothing (the domain rule is enforced in the OAuth
+--   callback and by the signup trigger); applying it wrongly is a lockout.
+--
+--   Hard DB-level domain enforcement. NOT VALID skips existing rows, but any
+--   future UPDATE to a violating row still fails — so a grandfathered gmail
+--   admin could never have their role or status changed again, by anyone,
+--   including through the Supabase table editor.
+--
+--   IF AND ONLY IF STEP 0 RETURNED NO ROWS: uncomment the four lines below
+--   and run them.
+-- ═══════════════════════════════════════════════════════════════════════════
+
+-- alter table public.profiles
+--   drop constraint if exists profiles_school_email_check;
+--
+-- alter table public.profiles
+--   add constraint profiles_school_email_check
+--   check (public.is_school_email(email) or status = 'rejected')
+--   not valid;
+
+
+-- ── STEP 10: replace the signup trigger ────────────────────────────────────
+-- Changes vs the original:
+--   * writes `status`, derived from the email domain
+--   * does NOT raise on a bad domain — it marks the row 'rejected' and lets
+--     /api/auth/callback own the user-facing rejection, because a raise here
+--     surfaces as an opaque Supabase server_error with no message we control
+--   * `on conflict (id) do nothing` so it can never fight the callback fallback
+--   * prefers raw_user_meta_data->>'full_name' first, matching the callback
+--     (the two paths previously produced different display names)
+--   * `set search_path = public` hardens the security definer function
+create or replace function public.handle_new_user()
+returns trigger as $$
+begin
+  insert into public.profiles (id, email, name, role, status)
+  values (
+    new.id,
+    new.email,
+    coalesce(
+      new.raw_user_meta_data->>'full_name',
+      new.raw_user_meta_data->>'name',
+      split_part(new.email, '@', 1)
+    ),
+    'member',
+    case when public.is_school_email(new.email) then 'pending' else 'rejected' end
+  )
+  on conflict (id) do nothing;
+  return new;
+end;
+$$ language plpgsql security definer set search_path = public;
+
+-- ── STEP 11: recreate the trigger idempotently ─────────────────────────────
+-- The original `create trigger` had no guard, so re-running the schema file
+-- always errored on this statement. drop-if-exists fixes that wart.
+drop trigger if exists on_auth_user_created on auth.users;
+
+create trigger on_auth_user_created
+  after insert on auth.users
+  for each row execute function public.handle_new_user();
+
+-- ── STEP 12: non-recursive RLS helpers ─────────────────────────────────────
+-- The old officer policies did `auth.uid() in (select id from profiles
+-- where role in (...))`, which is self-referential on profiles itself.
+-- security definer functions break the recursion and add the status check.
+-- `set search_path = public` is load-bearing, not decoration: these run with
+-- the owner's privileges.
+create or replace function public.is_approved()
+returns boolean as $$
+  select exists (
+    select 1 from public.profiles
+     where id = auth.uid() and status = 'approved'
+  );
+$$ language sql stable security definer set search_path = public;
+
+create or replace function public.is_officer()
+returns boolean as $$
+  select exists (
+    select 1 from public.profiles
+     where id = auth.uid()
+       and status = 'approved'
+       and role in ('admin', 'treasurer')
+  );
+$$ language sql stable security definer set search_path = public;
+
+create or replace function public.is_admin()
+returns boolean as $$
+  select exists (
+    select 1 from public.profiles
+     where id = auth.uid() and status = 'approved' and role = 'admin'
+  );
+$$ language sql stable security definer set search_path = public;
+
+-- ── STEP 13: approval-aware RLS on profiles ────────────────────────────────
+-- These do not gate the app today (every query runs as service role) but they
+-- must stay truthful, and they are the backstop if anything ever queries with
+-- the anon key. Note the original had NO policy letting a treasurer read other
+-- profiles — fixed here.
+drop policy if exists "Users can view own profile" on public.profiles;
+drop policy if exists "Admin can manage all profiles" on public.profiles;
+drop policy if exists "Officers can view all profiles" on public.profiles;
+drop policy if exists "Officers can set approval status" on public.profiles;
+drop policy if exists "Admins can manage all profiles" on public.profiles;
+
+create policy "Users can view own profile"
+  on public.profiles for select
+  using (auth.uid() = id);
+
+create policy "Officers can view all profiles"
+  on public.profiles for select
+  using (public.is_officer());
+
+-- The policy NAME says approval status; the GRANT is every column, because RLS
+-- has no column-level restriction. `with check` does not fix that — and note it
+-- is not even a behaviour change: Postgres already reuses `using` as the
+-- `with check` expression when the latter is omitted. It is spelled out here so
+-- nobody reads its absence as a hole and "fixes" it instead of the real one.
+--
+-- THE REAL RESTRICTION IS THE TRIGGER BELOW. Without it, this policy lets a
+-- TREASURER run `update profiles set role='admin' where id = auth.uid()` under
+-- the anon key, which contradicts the app's admin-only rule on role changes.
+create policy "Officers can set approval status"
+  on public.profiles for update
+  using (public.is_officer())
+  with check (public.is_officer());
+
+create policy "Admins can manage all profiles"
+  on public.profiles for all
+  using (public.is_admin())
+  with check (public.is_admin());
+
+-- ── STEP 13b: role changes are admin-only, enforced in the database ─────────
+-- WHAT THIS IS FOR, AND WHAT IT IS NOT FOR.
+--   Not for: the app's own role endpoint. PATCH /api/members/:id runs through
+--   supabaseAdmin, whose service-role JWT carries no `sub`, so auth.uid() is
+--   NULL there and this trigger deliberately stands aside — apiRequireAdmin is
+--   the control on that path and it is already correct. Same for the Supabase
+--   table editor and psql, which is what keeps manual recovery possible.
+--
+--   For: any query that ever runs with an END-USER token. STEP 12-14 exist to
+--   be a truthful second line of defence in exactly that case, and RLS alone
+--   cannot express "an officer may update this row but not this column".
+--
+-- Fires on every profiles UPDATE, but the raise only triggers when `role`
+-- actually changes, so the callback's email/name refresh and the approval
+-- endpoint's status write are untouched.
+create or replace function public.enforce_admin_only_role_change()
+returns trigger as $$
+begin
+  if new.role is distinct from old.role
+     and auth.uid() is not null
+     and not public.is_admin() then
+    raise exception
+      'only an approved admin may change a member role (attempted % -> %)',
+      old.role, new.role
+      using errcode = '42501';  -- insufficient_privilege
+  end if;
+  return new;
+end;
+$$ language plpgsql security definer set search_path = public;
+
+drop trigger if exists profiles_role_change_guard on public.profiles;
+
+create trigger profiles_role_change_guard
+  before update on public.profiles
+  for each row execute function public.enforce_admin_only_role_change();
+
+-- ── STEP 14: approval-aware RLS on events / announcements / attendance ─────
+-- Closes the world-readable events policy and the 'any authenticated user'
+-- announcements policy; a pending account now reads nothing.
+drop policy if exists "Public can read events" on public.events;
+drop policy if exists "Admin/Treasurer can manage events" on public.events;
+drop policy if exists "Approved members can read events" on public.events;
+drop policy if exists "Officers can manage events" on public.events;
+
+create policy "Approved members can read events"
+  on public.events for select
+  using (public.is_approved());
+
+create policy "Officers can manage events"
+  on public.events for all
+  using (public.is_officer());
+
+drop policy if exists "Anyone authenticated can read announcements" on public.announcements;
+drop policy if exists "Admin/Treasurer can manage announcements" on public.announcements;
+drop policy if exists "Approved members can read announcements" on public.announcements;
+drop policy if exists "Officers can manage announcements" on public.announcements;
+
+create policy "Approved members can read announcements"
+  on public.announcements for select
+  using (public.is_approved());
+
+create policy "Officers can manage announcements"
+  on public.announcements for all
+  using (public.is_officer());
+
+drop policy if exists "Users can view own attendance" on public.attendance;
+drop policy if exists "Admin/Treasurer can view all attendance" on public.attendance;
+drop policy if exists "Users can insert own attendance" on public.attendance;
+drop policy if exists "Admin/Treasurer can manage all attendance" on public.attendance;
+drop policy if exists "Officers can view all attendance" on public.attendance;
+drop policy if exists "Approved members can insert own attendance" on public.attendance;
+drop policy if exists "Officers can manage all attendance" on public.attendance;
+
+create policy "Users can view own attendance"
+  on public.attendance for select
+  using (auth.uid() = member_id and public.is_approved());
+
+create policy "Officers can view all attendance"
+  on public.attendance for select
+  using (public.is_officer());
+
+create policy "Approved members can insert own attendance"
+  on public.attendance for insert
+  with check (auth.uid() = member_id and public.is_approved());
+
+create policy "Officers can manage all attendance"
+  on public.attendance for all
+  using (public.is_officer());
+
+-- ── Finance-table policies (unused module, kept truthful and re-runnable) ──
+-- Rewritten onto the STEP 12 helpers so an approved-but-pending account can
+-- never read them either. Behaviour is otherwise unchanged.
+drop policy if exists "Public can read categories" on public.categories;
+drop policy if exists "Admin/Treasurer can manage categories" on public.categories;
+drop policy if exists "Approved members can read categories" on public.categories;
+drop policy if exists "Officers can manage categories" on public.categories;
+
+create policy "Approved members can read categories"
+  on public.categories for select
+  using (public.is_approved());
+
+create policy "Officers can manage categories"
+  on public.categories for all
+  using (public.is_officer());
+
+drop policy if exists "Users can read own transactions" on public.transactions;
+drop policy if exists "Admin/Treasurer can read all transactions" on public.transactions;
+drop policy if exists "Users can insert own transactions" on public.transactions;
+drop policy if exists "Admin/Treasurer can manage all transactions" on public.transactions;
+drop policy if exists "Officers can read all transactions" on public.transactions;
+drop policy if exists "Approved members can insert own transactions" on public.transactions;
+drop policy if exists "Officers can manage all transactions" on public.transactions;
+
+create policy "Users can read own transactions"
+  on public.transactions for select
+  using (auth.uid() = user_id and public.is_approved());
+
+create policy "Officers can read all transactions"
+  on public.transactions for select
+  using (public.is_officer());
+
+create policy "Approved members can insert own transactions"
+  on public.transactions for insert
+  with check (auth.uid() = user_id and public.is_approved());
+
+create policy "Officers can manage all transactions"
+  on public.transactions for all
+  using (public.is_officer());
+
+drop policy if exists "Public can read budgets" on public.budgets;
+drop policy if exists "Admin/Treasurer can manage budgets" on public.budgets;
+drop policy if exists "Approved members can read budgets" on public.budgets;
+drop policy if exists "Officers can manage budgets" on public.budgets;
+
+create policy "Approved members can read budgets"
+  on public.budgets for select
+  using (public.is_approved());
+
+create policy "Officers can manage budgets"
+  on public.budgets for all
+  using (public.is_officer());
+
+drop policy if exists "Admin/Treasurer can read audit logs" on public.audit_logs;
+drop policy if exists "Officers can read audit logs" on public.audit_logs;
+
+create policy "Officers can read audit logs"
+  on public.audit_logs for select
+  using (public.is_officer());
+
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- STEP 15: VERIFICATION  ── RUN THIS ALONE, AFTER EVERYTHING ABOVE, AND READ IT
+-- ═══════════════════════════════════════════════════════════════════════════
+-- Expect: zero pending rows that predate this migration, and exactly the
+-- accounts you expect in each bucket. If anyone who had access yesterday shows
+-- up as 'pending', STEP 2 did not run before STEP 3 — fix it before deploying
+-- the code, with:  update public.profiles set status='approved' where id='…';
+
+select status, count(*) from public.profiles group by status order by status;
+
+select id, email, name, role, status, created_at
+  from public.profiles
+ order by status, created_at;
