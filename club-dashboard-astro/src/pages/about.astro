@@ -21,25 +21,43 @@
  * rendering that section empty — never a 500. This is public-content
  * rendering, not auth; auth elsewhere still fails closed.
  *
- * DESIGN: deliberately NOT the portal's Warm system. This is the club's
- * Bold Graphic poster voice — three inks (near-black, vegas gold, one
- * signal red), zero border-radius, full-bleed bands instead of cards,
- * heavy condensed uppercase display type, serif for reading text, dark
- * mode = same gold band with black type rather than inversion. Standalone:
- * no DashboardLayout, no global.css; everything it needs is in this file.
+ * DESIGN — BOLD GRAPHIC v2. Still deliberately NOT the portal's Warm system:
+ * three inks (near-black, vegas gold, one signal red), zero border-radius,
+ * full-bleed bands instead of cards, heavy condensed uppercase display type,
+ * serif for reading text, dark mode = same gold band with black type rather
+ * than inversion. v2 turns the poster into a full experience:
+ *   · 100svh masthead — viewport-scale title, the middle line set as a gold
+ *     OUTLINE (fills on hover), live San Jose clock, a slowly rotating seal,
+ *     and the tape promoted to a solid gold band at the fold.
+ *   · "Sec. 00 — The pitch": a manifesto whose lines arrive as outlines and
+ *     FILL with ink as they enter; the last line wipes in as a gold-on-black
+ *     slab.
+ *   · Every photo renders as a GOLD DUOTONE (grayscale + gold multiply), so
+ *     any phone photo lands on-palette; hover/focus restores full color —
+ *     the record, in living color.
+ *   · Unattached photos become a full-bleed horizontal rail (scroll-snap).
+ *   · A signal-red scroll progress hair, a square cursor follower in
+ *     difference blend, magnetic primary buttons, and a giant cropped
+ *     outline wordmark bleeding off the footer.
+ * Standalone: no DashboardLayout, no global.css; everything it needs is in
+ * this file.
  *
  * MOTION: CSS + one small inline vanilla script, no libraries. Every
  * hidden-until-revealed style is TRIPLE-GATED behind `html.js` (added by an
  * inline head script) AND `prefers-reduced-motion: no-preference` AND
  * `screen` — with JS off or reduced motion on the page is simply static and
  * fully visible, and print always gets every section, revealed or not.
- * Transform/opacity only; the one perpetual loop is the masthead tape.
+ * Scroll-driven extras (progress hair, hero drift, wordmark rise) sit behind
+ * @supports (animation-timeline) and degrade to static. Cursor + magnetism
+ * additionally require (pointer:fine). Transform/opacity/filter only; the
+ * perpetual loops are the masthead tape and the rotating seal.
  */
 import '@fontsource/barlow-condensed/latin-500.css';
 import '@fontsource/barlow-condensed/latin-600.css';
 import '@fontsource/barlow-condensed/latin-700.css';
 import '@fontsource/barlow-condensed/latin-800.css';
 import '@fontsource/libre-baskerville/latin-400.css';
+import '@fontsource/libre-baskerville/latin-400-italic.css';
 import '@fontsource/libre-baskerville/latin-700.css';
 /* Hashed URLs for the two above-the-fold faces, preloaded in <head> so a slow
    connection never rebuilds the masthead in Arial Narrow mid-choreography.
@@ -209,7 +227,7 @@ const shownBrief = shown.filter((e) => !hasText(e.recap));
 /* Photos join to the events on display; photos of cancelled / future /
    not-shown events are dropped (the backend allows attaching to cancelled
    past events — this is where that gets filtered). Unattached photos get
-   their own grid. */
+   the manifesto slot + the archive rail. */
 const shownIds = new Set(shown.map((e) => e.id));
 const photosByEvent = new Map<string, PhotoRow[]>();
 const unattached: PhotoRow[] = [];
@@ -224,6 +242,15 @@ for (const p of photos) {
   list.push(p);
   photosByEvent.set(p.event_id, list);
 }
+
+/* The newest unattached photo becomes the manifesto's duotone plate; the
+   rest run in the full-bleed archive rail. Zero photos → both slots vanish. */
+const manifestoShot: PhotoRow | null = unattached[0] ?? null;
+const railPhotos = unattached.slice(1);
+
+/* Poster stats. Never member counts — events, photos and officers only. */
+const photosCount = photos.filter((p) => hasText(p.storage_path)).length;
+const officersCount = officers.length;
 
 /* storage_path is server-generated (photos/<uuid>.<ext>) but treated as
    data: segment-encoded, and only ever emitted into a src attribute. */
@@ -266,6 +293,8 @@ const initialsOf = (name: string | null): string => {
   return (first + last).toUpperCase() || 'MB';
 };
 
+const idx2 = (i: number): string => String(i + 1).padStart(2, '0');
+
 const numeral = String(heldCount).padStart(2, '0');
 
 /* The masthead tape — the page's one ambient loop. Repeated so each half of
@@ -295,25 +324,53 @@ const tape = tapeUnit.repeat(4);
 </head>
 <body>
 
-  <!-- ── MASTHEAD ──────────────────────────────────────────────────────── -->
+  <!-- Signal-red reading progress hair. Pure CSS scroll-timeline; hidden
+       where unsupported, in print, and under reduced motion. -->
+  <div class="prog" aria-hidden="true"></div>
+
+  <!-- Square cursor follower (dot + ring, difference blend). Display is
+       gated to html.js + pointer:fine + motion-OK; JS drives transforms. -->
+  <div class="cur curd" aria-hidden="true"></div>
+  <div class="cur curr" aria-hidden="true"></div>
+
+  <!-- ── MASTHEAD — the full-viewport poster ──────────────────────────── -->
   <header class="mast">
-    <div class="wrap">
-      <div class="topline r r1">
-        <svg class="crown" viewBox="0 0 64 64" aria-hidden="true"><path d="M6 46V16l14 12L32 8l12 20 14-12v30Z" fill="currentColor"/><rect x="6" y="51" width="52" height="7" fill="currentColor"/></svg>
-        <span class="lab schooltop">Student club</span>
-        <a class="btn gold signin" href="/login">Member sign in</a>
-      </div>
+    <div class="wrap topline r r1">
+      <svg class="crown" viewBox="0 0 64 64" aria-hidden="true"><path d="M6 46V16l14 12L32 8l12 20 14-12v30Z" fill="currentColor"/><rect x="6" y="51" width="52" height="7" fill="currentColor"/></svg>
+      <span class="lab schooltop">Student club</span>
+      <span class="micro clockw" data-clock aria-hidden="true">San Jose, California</span>
+      <a class="btn gold signin" href="/login" data-mag>Member sign in</a>
+    </div>
+
+    <div class="titlewrap">
+      <p class="lab school r r2">Archbishop Mitty High School &nbsp;·&nbsp; San Jose, California</p>
       <h1 class="dsp title">
         <span class="tl"><span class="tw">Mitty</span></span>
-        <span class="tl"><span class="tw">Business</span></span>
+        <span class="tl"><span class="tw o">Business</span></span>
         <span class="tl"><span class="tw">Club<span class="dot" aria-hidden="true"></span></span></span>
       </h1>
-      <p class="lab school r r2">Archbishop Mitty High School &nbsp;·&nbsp; San Jose, California</p>
-      <p class="stand r r3">
+    </div>
+
+    <div class="wrap mastfoot r r3">
+      <p class="stand">
         The student-run business club at Archbishop Mitty. This page is the record —
         what we&rsquo;ve done, and who we are.
       </p>
+      <div class="seal" aria-hidden="true">
+        <svg viewBox="0 0 120 120">
+          <defs>
+            <path id="sealpath" d="M60,60 m-47,0 a47,47 0 1,1 94,0 a47,47 0 1,1 -94,0" fill="none"/>
+          </defs>
+          <g class="sealtxt">
+            <text textLength="292" lengthAdjust="spacingAndGlyphs">
+              <textPath href="#sealpath">MITTY BUSINESS CLUB ✱ SAN JOSE ✱ THE RECORD ✱ </textPath>
+            </text>
+          </g>
+          <path class="sealarw" d="M60 46v24m0 0-8-8m8 8 8-8"/>
+        </svg>
+      </div>
     </div>
+
     <div class="marq r r4" aria-hidden="true">
       <div class="tape">
         <span class="lab">{tape}</span>
@@ -324,7 +381,46 @@ const tape = tapeUnit.repeat(4);
 
   <main>
 
-    <!-- ── WHAT WE'VE DONE ─────────────────────────────────────────────── -->
+    <!-- ── SEC. 00 — THE PITCH ─────────────────────────────────────────── -->
+    <section class="pitch" aria-labelledby="pitch-h">
+      <div class="wrap">
+        <div class="kickrow io">
+          <span class="micro">Sec. 00 &nbsp;·&nbsp; The pitch</span>
+          <svg class="reg" viewBox="0 0 20 20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="10" cy="10" r="5.5"/><path d="M10 1v18M1 10h18"/></svg>
+        </div>
+        <h2 class="dsp mstat" id="pitch-h">
+          <span class="ml io">No hype.</span>
+          <span class="ml io">No highlight reel.</span>
+          <span class="ml m3 io"><span class="mslab">Just the record.</span></span>
+        </h2>
+        <div class="pitchrow">
+          <p class="serifnote pnote io">
+            Every event on this page actually happened — dated, filed, and written
+            up by the officers who ran it. If it&rsquo;s not on the record, we
+            didn&rsquo;t do it. That&rsquo;s the whole pitch.
+          </p>
+          {manifestoShot && (
+            <figure class="mph io">
+              <div class="ph">
+                <img
+                  src={photoUrl(manifestoShot.storage_path)}
+                  alt={manifestoShot.caption ?? ''}
+                  loading="lazy"
+                  decoding="async"
+                  width="800"
+                  height="600"
+                />
+              </div>
+              {hasText(manifestoShot.caption) && (
+                <figcaption class="micro mcap">{manifestoShot.caption}</figcaption>
+              )}
+            </figure>
+          )}
+        </div>
+      </div>
+    </section>
+
+    <!-- ── SEC. 01 — WHAT WE'VE DONE ───────────────────────────────────── -->
     <section class="block" aria-labelledby="done-h">
 
       <div class="band">
@@ -345,6 +441,15 @@ const tape = tapeUnit.repeat(4);
             </div>
           </div>
         </div></div>
+        <div class="strip top"><div class="wrap statline io">
+          <span class="micro">{heldCount} {heldCount === 1 ? 'event' : 'events'} on the record</span>
+          {photosCount > 0 && (
+            <span class="micro"><span class="sep" aria-hidden="true">✱&nbsp;&nbsp;</span>{photosCount} {photosCount === 1 ? 'photo' : 'photos'} in the archive</span>
+          )}
+          {officersCount > 0 && (
+            <span class="micro"><span class="sep" aria-hidden="true">✱&nbsp;&nbsp;</span>{officersCount} {officersCount === 1 ? 'officer' : 'officers'} at the desk</span>
+          )}
+        </div></div>
       </div>
 
       {shown.length === 0 && (
@@ -360,7 +465,7 @@ const tape = tapeUnit.repeat(4);
 
       {shownRecapped.length > 0 && (
         <div class="wrap feed">
-          {shownRecapped.map((e) => {
+          {shownRecapped.map((e, i) => {
             const eventPhotos = photosByEvent.get(e.id) ?? [];
             return (
               <article class="post io">
@@ -370,6 +475,7 @@ const tape = tapeUnit.repeat(4);
                     {fmt(e.start_time, { month: 'short', year: 'numeric' })}<br />
                     {fmt(e.start_time, { weekday: 'long' })}
                   </div>
+                  <div class="pidx micro" aria-hidden="true">№&nbsp;{idx2(i)}</div>
                 </div>
                 <div class="art">
                   <span class="chip">{catLabel(e.category)}</span>
@@ -389,6 +495,7 @@ const tape = tapeUnit.repeat(4);
                             width="800"
                             height="600"
                           />
+                          {hasText(p.caption) && <span class="cap micro" aria-hidden="true">{p.caption}</span>}
                         </div>
                       ))}
                     </div>
@@ -431,35 +538,39 @@ const tape = tapeUnit.repeat(4);
                     {catLabel(e.category)} &nbsp;·&nbsp; {fmt(e.start_time, { month: 'long', day: 'numeric', year: 'numeric' })}
                   </span>
                 </span>
+                <span class="arw" aria-hidden="true">→</span>
               </div>
             ))}
           </div>
         </div>
       )}
 
-      {unattached.length > 0 && (
-        <div class="wrap life io">
-          <p class="lab alsoh">Around the club</p>
-          <div class="shots">
-            {unattached.map((p) => (
-              <div class="ph">
-                <img
-                  src={photoUrl(p.storage_path)}
-                  alt={p.caption ?? ''}
-                  loading="lazy"
-                  decoding="async"
-                  width="800"
-                  height="600"
-                />
-              </div>
-            ))}
+      {railPhotos.length > 0 && (
+        <div class="life io">
+          <div class="wrap"><p class="lab alsoh">Around the club &nbsp;·&nbsp; drag sideways</p></div>
+          <div class="bleed">
+            <div class="rail" tabindex="0" role="region" aria-label="Photo archive — scrolls sideways">
+              {railPhotos.map((p) => (
+                <div class="ph">
+                  <img
+                    src={photoUrl(p.storage_path)}
+                    alt={p.caption ?? ''}
+                    loading="lazy"
+                    decoding="async"
+                    width="800"
+                    height="600"
+                  />
+                  {hasText(p.caption) && <span class="cap micro" aria-hidden="true">{p.caption}</span>}
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       )}
 
     </section>
 
-    <!-- ── ABOUT US ────────────────────────────────────────────────────── -->
+    <!-- ── SEC. 02 — ABOUT US ──────────────────────────────────────────── -->
     <section class="block who" aria-labelledby="who-h">
       <div class="wrap">
         <header class="sechead io">
@@ -476,8 +587,9 @@ const tape = tapeUnit.repeat(4);
           </div>
         ) : (
           <ul class="officers">
-            {officers.map((o) => (
+            {officers.map((o, i) => (
               <li class="off io">
+                <p class="micro oix" aria-hidden="true">№&nbsp;{idx2(i)}</p>
                 <div class="offhead">
                   <span class="ini2" aria-hidden="true">{initialsOf(o.name)}</span>
                   <div class="offid">
@@ -513,6 +625,7 @@ const tape = tapeUnit.repeat(4);
           href="https://www.mitty.com/student-activities/clubs"
           target="_blank"
           rel="noopener"
+          data-mag
         >See us on the Mitty club page ↗</a>
         <a class="btn ghost" href="/login">Member sign in</a>
       </div>
@@ -522,15 +635,20 @@ const tape = tapeUnit.repeat(4);
         </p>
         <svg class="reg" viewBox="0 0 20 20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="10" cy="10" r="5.5"/><path d="M10 1v18M1 10h18"/></svg>
       </div>
+      <p class="micro colo">Three inks &nbsp;·&nbsp; two typefaces &nbsp;·&nbsp; zero libraries — set by the club, for the record.</p>
+    </div>
+    <div class="wmclip" aria-hidden="true">
+      <span class="dsp wm">Mitty Business Club</span>
     </div>
   </footer>
 
-  <!-- Scroll choreography. is:inline so it ships in the document itself —
-       no separate module fetch to fail. Mutates classList + textContent
-       only; never builds HTML from data. -->
+  <!-- Scroll choreography + ambient details. is:inline so it ships in the
+       document itself — no separate module fetch to fail. Mutates classList,
+       textContent and style transforms only; never builds HTML from data. -->
   <script is:inline>
     (function () {
       var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      var fine = window.matchMedia('(pointer: fine)').matches;
       var items = Array.prototype.slice.call(document.querySelectorAll('.io'));
       var hn = document.querySelector('.hn');
 
@@ -538,7 +656,27 @@ const tape = tapeUnit.repeat(4);
         items.forEach(function (el) { el.classList.add('in'); });
       }
 
-      /* The poster numeral counts 0 → N as its band reveals. Below 5 the
+      /* ── The live San Jose clock. Decorative (aria-hidden); seconds only
+         when motion is welcome, minutes otherwise. */
+      var ck = document.querySelector('[data-clock]');
+      if (ck) {
+        var tick = function () {
+          try {
+            var t = new Intl.DateTimeFormat('en-US', {
+              timeZone: 'America/Los_Angeles',
+              hour: 'numeric',
+              minute: '2-digit',
+              second: reduce ? undefined : '2-digit',
+              hour12: true
+            }).format(new Date());
+            ck.textContent = 'San Jose · ' + t + ' PT';
+          } catch (err) { /* keep the static fallback text */ }
+        };
+        tick();
+        setInterval(tick, reduce ? 15000 : 1000);
+      }
+
+      /* ── The poster numeral counts 0 → N as its band reveals. Below 5 the
          count is a two-frame flicker, not a payoff — the server-rendered
          numeral simply rises in its slab. */
       function countUp() {
@@ -556,6 +694,50 @@ const tape = tapeUnit.repeat(4);
           if (p < 1) requestAnimationFrame(step);
         }
         requestAnimationFrame(step);
+      }
+
+      /* ── Square cursor: dot tracks raw, ring lerps behind. Difference
+         blend, fine pointers only, and never under reduced motion. */
+      if (fine && !reduce) {
+        var cd = document.querySelector('.curd');
+        var cr = document.querySelector('.curr');
+        if (cd && cr) {
+          var mx = -100, my = -100, rx = -100, ry = -100, live = false;
+          document.addEventListener('mousemove', function (e) {
+            mx = e.clientX; my = e.clientY;
+            if (!live) {
+              live = true; rx = mx; ry = my;
+              document.documentElement.classList.add('curlive');
+            }
+          }, { passive: true });
+          document.addEventListener('mouseover', function (e) {
+            var hit = e.target && e.target.closest
+              ? e.target.closest('a, button, .brief, .ph, .off') : null;
+            cr.classList.toggle('grow', !!hit);
+          }, { passive: true });
+          (function loop() {
+            rx += (mx - rx) * 0.16;
+            ry += (my - ry) * 0.16;
+            cd.style.transform = 'translate3d(' + mx + 'px,' + my + 'px,0)';
+            cr.style.transform = 'translate3d(' + rx + 'px,' + ry + 'px,0)';
+            requestAnimationFrame(loop);
+          })();
+        }
+
+        /* Magnetic primaries — a small pull toward the cursor, capped. */
+        Array.prototype.forEach.call(document.querySelectorAll('[data-mag]'), function (el) {
+          el.addEventListener('mousemove', function (e) {
+            var b = el.getBoundingClientRect();
+            var dx = (e.clientX - (b.left + b.width / 2)) * 0.22;
+            var dy = (e.clientY - (b.top + b.height / 2)) * 0.28;
+            dx = Math.max(-10, Math.min(10, dx));
+            dy = Math.max(-8, Math.min(8, dy));
+            el.style.transform = 'translate(' + dx + 'px,' + dy + 'px)';
+          }, { passive: true });
+          el.addEventListener('mouseleave', function () {
+            el.style.transform = '';
+          });
+        });
       }
 
       if (reduce || !('IntersectionObserver' in window)) {
@@ -596,7 +778,7 @@ const tape = tapeUnit.repeat(4);
 
 <style is:global>
 /* ═══════════════════════════════════════════════════════════════════
-   BOLD GRAPHIC — the club's public poster voice.
+   BOLD GRAPHIC v2 — the club's public poster voice, at full volume.
    Three inks. Zero radius. Type is the layout.
    Scoped to this standalone page; the portal's Warm system is untouched.
    ═══════════════════════════════════════════════════════════════════ */
@@ -641,13 +823,17 @@ const tape = tapeUnit.repeat(4);
   --ui:'Helvetica Neue',Helvetica,Arial,'Liberation Sans',sans-serif;
   --editorial:'Libre Baskerville',Georgia,'Palatino Linotype',Palatino,serif;
 
-  /* ONE SCALE — one base, one ratio (1.5). */
+  /* ONE SCALE — one base, one ratio (1.5) — plus three poster sizes that
+     answer to the viewport, not the ratio: the masthead, the manifesto,
+     and the mega numeral. */
   --f-base:clamp(.95rem,.72rem + .98vw,1.35rem);
   --f-h3:calc(var(--f-base) * 1.5);
   --f-h2:calc(var(--f-base) * 2.25);
   --f-h1:calc(var(--f-base) * 3.375);
   --f-num:calc(var(--f-base) * 5.0625);
-  --f-mega:calc(var(--f-base) * 7.594);
+  --f-title:clamp(3.8rem,17.5vw,18rem);
+  --f-state:clamp(2.6rem,9vw,9.5rem);
+  --f-mega:clamp(5.5rem,19vw,17rem);
 
   /* TWO LABEL TOKENS. There is no third. Micro sits at 10px — the mobile
      legibility floor is 9px and this page doesn't ride the floor. */
@@ -708,8 +894,9 @@ body{
 }
 img,svg{display:block;max-width:100%}
 a{color:inherit}
-h1,h2,h3,p,figure,ul,ol{margin:0}
+h1,h2,h3,p,figure,figcaption,ul,ol{margin:0}
 ul,ol{list-style:none;padding:0}
+::selection{background:var(--gold);color:var(--black)}
 
 :focus-visible{outline:3px solid var(--goldtext);outline-offset:2px}
 .mast :focus-visible,.band :focus-visible,.night :focus-visible{outline-color:currentColor}
@@ -751,6 +938,12 @@ ul,ol{list-style:none;padding:0}
 /* Signal-red tick — punctuation that wipes in as a section arrives. */
 .tick{display:block;width:34px;height:8px;background:var(--signal)}
 
+/* ---------- READING PROGRESS (scroll-timeline; enabled below) ---------- */
+.prog{display:none}
+
+/* ---------- CURSOR (pointer:fine; enabled below) ---------- */
+.cur{display:none}
+
 /* ---------- BUTTONS ---------- */
 .btn{
   display:inline-flex;align-items:center;justify-content:center;gap:8px;
@@ -770,48 +963,110 @@ ul,ol{list-style:none;padding:0}
 .night .btn.ghost{background:transparent;border-color:var(--night-fg);color:var(--night-fg)}
 .night .btn.ghost:hover{background:var(--night-fg);color:var(--night-bg)}
 
-/* ---------- MASTHEAD ---------- */
+/* ---------- MASTHEAD — the full-viewport poster ---------- */
 .mast{
   background:var(--mast-bg);color:var(--mast-fg);
-  border-bottom:var(--w-plane) solid var(--gold);
+  display:flex;flex-direction:column;
+  min-height:100svh;
   padding:18px 0 0;
 }
 .topline{
   display:flex;align-items:center;gap:14px;flex-wrap:wrap;
-  padding-bottom:16px;margin-bottom:clamp(22px,3.5vw,40px);
+  width:100%;
+  padding-bottom:16px;
   border-bottom:var(--w-hair) solid rgba(251,250,248,.28);
 }
 .crown{width:32px;height:32px;color:var(--gold);flex:none}
 .schooltop{color:var(--mast-dim);margin-right:auto}
-.title{font-size:clamp(3.2rem,1.4rem + 8.8vw,8.75rem);line-height:.84}
+.clockw{color:var(--mast-dim);font-variant-numeric:tabular-nums}
+
+/* The title breaks out of the frame — viewport-scale, edge to edge. */
+.titlewrap{
+  margin-block:auto;
+  padding:clamp(28px,5vh,72px) var(--gut) clamp(18px,3vh,44px);
+}
+.school{color:var(--mast-dim);margin-bottom:clamp(14px,2.5vh,28px)}
+.title{font-size:var(--f-title);line-height:.82;letter-spacing:-.004em}
 /* Each masthead line is its own clip window; the word rises up into it. */
 .tl{display:block;overflow:hidden}
 .tw{display:inline-block}
+/* The middle line is set as an OUTLINE in gold — it fills when touched. */
+.tw.o{
+  color:transparent;
+  -webkit-text-stroke:max(1.5px,.012em) var(--gold);
+  transition:color var(--t-soft) var(--ease-out);
+}
+.title:hover .tw.o{color:var(--gold)}
+@supports not (-webkit-text-stroke:1px #000){
+  .tw.o{color:var(--gold)}
+}
 /* The red full stop after CLUB — punctuation, set in the third ink. */
 .dot{display:inline-block;width:.13em;height:.13em;background:var(--signal);margin-left:.07em}
-.school{margin-top:18px;color:var(--mast-dim)}
+
+.mastfoot{
+  display:flex;align-items:flex-end;justify-content:space-between;
+  gap:clamp(18px,4vw,48px);flex-wrap:wrap;
+  width:100%;
+  padding-bottom:clamp(18px,3.5vh,40px);
+}
 .stand{
-  margin-top:16px;
   font-family:var(--editorial);
   font-size:calc(var(--f-base) * 1.02);
   line-height:1.65;
   max-width:44ch;
 }
 
-/* The tape — the page's ONE perpetual element. Decorative, aria-hidden. */
+/* The rotating seal — circular text, arrow at heart. Decorative. */
+.seal{width:clamp(96px,11vw,142px);flex:none;color:var(--gold)}
+.seal text{
+  font-family:var(--ui);font-weight:800;font-size:8.6px;
+  letter-spacing:.14em;text-transform:uppercase;fill:currentColor;
+}
+.sealarw{stroke:var(--bone);stroke-width:2.5;fill:none}
+.sealtxt{transform-box:view-box;transform-origin:center}
+
+/* The tape — promoted to a solid gold band at the fold. Decorative. */
 .marq{
   overflow:hidden;
-  margin-top:clamp(26px,4vw,48px);
-  border-top:var(--w-hair) solid rgba(251,250,248,.28);
+  background:var(--gold);
+  border-top:var(--w-sec) solid var(--black);
 }
-.tape{display:flex;width:max-content;color:var(--gold);padding:10px 0}
-.tape .lab{white-space:nowrap;padding-right:2.5em}
+.tape{display:flex;width:max-content;color:var(--black);padding:12px 0}
+.tape .lab{white-space:nowrap;padding-right:2.5em;font-size:.8rem}
+
+/* ---------- SEC. 00 — THE PITCH ---------- */
+.pitch{padding:clamp(52px,9vw,120px) 0 clamp(44px,7vw,96px)}
+.kickrow{
+  display:flex;align-items:center;justify-content:space-between;gap:14px;
+  border-top:var(--w-sec) solid var(--rule);
+  padding-top:10px;color:var(--muted);
+}
+.mstat{font-size:var(--f-state);line-height:.94;margin-top:clamp(30px,5.5vw,68px)}
+.ml{display:block}
+.mslab{
+  display:inline-block;background:var(--black);color:var(--gold);
+  padding:.05em .18em .11em;margin-top:.06em;
+  -webkit-text-stroke:0;
+}
+.pitchrow{
+  display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);
+  gap:clamp(24px,4.5vw,72px);align-items:end;
+  margin-top:clamp(34px,6vw,84px);
+}
+@media (max-width:760px){ .pitchrow{grid-template-columns:1fr} }
+.pnote{
+  font-family:var(--editorial);font-style:italic;
+  font-size:calc(var(--f-base) * 1.06);line-height:1.7;
+  color:var(--muted);max-width:46ch;
+}
+.mph{min-width:0}
+.mcap{display:block;margin-top:10px;color:var(--muted)}
 
 /* ---------- SECTIONS ---------- */
 .block{padding:0 0 clamp(44px,7vw,84px)}
 .sechead{border-bottom:var(--w-sec) solid var(--rule);padding-bottom:12px}
 .sechead .kick{color:var(--muted);margin:12px 0 10px}
-.sechead h2{font-size:var(--f-h1)}
+.sechead h2{font-size:clamp(2.6rem,7vw,6.4rem)}
 .who{padding-top:clamp(36px,6vw,64px)}
 
 /* ---------- THE GOLD PLANE ---------- */
@@ -822,7 +1077,10 @@ ul,ol{list-style:none;padding:0}
   margin-bottom:clamp(10px,2vw,20px);
 }
 .band .strip{border-bottom:var(--w-hair) solid currentColor;padding:9px 0}
+.band .strip.top{border-bottom:0;border-top:var(--w-hair) solid currentColor}
 .stripline{display:flex;align-items:center;justify-content:space-between;gap:14px}
+.statline{display:flex;align-items:center;gap:14px;flex-wrap:wrap;color:var(--band-dim)}
+.statline .sep{color:var(--band-fg)}
 .band .inner{padding:clamp(22px,3.2vw,40px) 0}
 .lockup{display:flex;align-items:flex-end;gap:clamp(14px,2.4vw,26px);flex-wrap:wrap}
 .hero-num{
@@ -871,6 +1129,7 @@ ul,ol{list-style:none;padding:0}
   color:var(--text);
 }
 .post .date .m{margin-top:8px;color:var(--muted)}
+.post .date .pidx{margin-top:12px;color:var(--signal-ink)}
 .post .art{flex:1;min-width:0}
 .chip{
   display:inline-block;border:var(--w-sec) solid currentColor;
@@ -884,21 +1143,47 @@ ul,ol{list-style:none;padding:0}
   max-width:64ch;margin:0 0 14px;
 }
 .prose p:last-child{margin-bottom:0}
+/* Broadsheet drop cap on the opening paragraph. */
+.prose > p:first-child::first-letter{
+  font-family:var(--editorial);font-weight:700;
+  font-size:3.1em;line-height:.78;
+  float:left;padding:.08em .12em 0 0;
+}
 
-/* Photo strip: images butted together on a black plane. Fixed aspect so
-   nothing reflows while they load. */
+/* ---------- PHOTOS — the gold duotone plate ----------
+   Every photo prints in the club's inks: grayscale under a gold multiply.
+   Hover / keyboard focus lifts the plate to full color. Print gets color. */
+.ph{position:relative;overflow:hidden;background:var(--black);isolation:isolate}
+.ph img{
+  width:100%;height:100%;aspect-ratio:4/3;object-fit:cover;
+  filter:grayscale(1) contrast(1.06) brightness(.92);
+}
+.ph::after{
+  content:"";position:absolute;inset:0;z-index:1;
+  background:var(--gold);mix-blend-mode:multiply;opacity:.85;
+  pointer-events:none;
+}
+.ph .cap{
+  position:absolute;left:0;bottom:0;z-index:2;max-width:92%;
+  background:var(--black);color:var(--gold);
+  padding:6px 10px 5px;
+}
+.ph:hover img,.ph:focus-visible img{filter:none;transform:scale(1.03)}
+.ph:hover::after,.ph:focus-visible::after{opacity:0}
+
+/* Photo strip inside an article: images butted together on a black plane.
+   Fixed aspect so nothing reflows while they load. */
 .shots{
   display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));
   gap:3px;padding:3px;background:var(--black);
   margin-top:18px;
 }
-.ph{overflow:hidden;background:var(--black)}
-.ph img{width:100%;height:100%;aspect-ratio:4/3;object-fit:cover}
 
 @media (max-width:640px){
   .post{flex-direction:column;gap:12px}
   .post .date{width:auto;display:flex;align-items:baseline;gap:10px}
   .post .date .m br{display:none}
+  .post .date .pidx{margin-top:0;margin-left:auto}
 }
 
 /* ---------- COMPACT ROWS (events without recaps) ---------- */
@@ -925,8 +1210,23 @@ ul,ol{list-style:none;padding:0}
   font-family:var(--ui);font-weight:800;font-size:var(--micro-size);
   letter-spacing:var(--micro-track);text-transform:uppercase;
 }
+.brief .arw{
+  flex:none;font-family:var(--ui);font-weight:800;font-size:1.35rem;
+  color:var(--goldtext);opacity:0;transform:translateX(-10px);
+}
 
+/* ---------- THE ARCHIVE RAIL — full-bleed, scroll-snap ---------- */
 .life{padding-top:6px}
+.life .alsoh{margin-bottom:12px}
+.bleed{padding-left:max(var(--gut),calc((100vw - var(--frame))/2 + var(--gut)))}
+.rail{
+  display:flex;gap:3px;padding:3px;background:var(--black);
+  overflow-x:auto;overscroll-behavior-x:contain;
+  scroll-snap-type:x proximity;-webkit-overflow-scrolling:touch;
+  scrollbar-width:none;
+}
+.rail::-webkit-scrollbar{display:none}
+.rail .ph{flex:0 0 clamp(230px,34vw,430px);scroll-snap-align:start}
 
 /* ---------- OFFICERS ---------- */
 .officers{
@@ -935,7 +1235,8 @@ ul,ol{list-style:none;padding:0}
   padding-top:clamp(22px,3.4vw,40px);
 }
 @media (max-width:820px){ .officers{grid-template-columns:1fr} }
-.off{border-top:var(--w-sec) solid var(--rule);padding-top:18px;min-width:0}
+.off{border-top:var(--w-sec) solid var(--rule);padding-top:16px;min-width:0}
+.oix{color:var(--signal-ink);margin-bottom:12px}
 .offhead{display:flex;align-items:center;gap:14px}
 .ini2{
   width:52px;height:52px;flex:none;display:grid;place-items:center;
@@ -943,7 +1244,7 @@ ul,ol{list-style:none;padding:0}
   background:var(--gold);color:var(--black);border:var(--w-sec) solid var(--black);
 }
 .offid{min-width:0}
-.off .nm{font-size:var(--f-h2)}
+.off .nm{font-size:clamp(2rem,4.6vw,4.1rem)}
 .badge{
   display:inline-block;margin-top:8px;padding:5px 9px 4px;white-space:nowrap;
   font-family:var(--ui);font-weight:800;font-size:var(--micro-size);
@@ -971,10 +1272,10 @@ ul,ol{list-style:none;padding:0}
 .night{
   background:var(--night-bg);color:var(--night-fg);
   border-top:var(--w-plane) solid var(--gold);
-  padding:clamp(30px,5vw,56px) 0 clamp(24px,4vw,40px);
+  padding:clamp(30px,5vw,56px) 0 0;
 }
 .night .k{color:var(--gold);margin-top:14px}
-.night .fh{font-size:var(--f-h1);margin-top:12px}
+.night .fh{font-size:clamp(2.8rem,8vw,7.5rem);margin-top:12px}
 .fx{display:flex;gap:12px;flex-wrap:wrap;margin-top:22px}
 .night .btn.gold{border-color:var(--gold)}
 .night .btn.gold:hover{background:var(--night-fg);border-color:var(--night-fg)}
@@ -983,6 +1284,21 @@ ul,ol{list-style:none;padding:0}
   margin-top:clamp(24px,4vw,40px);
 }
 .tail{color:var(--night-dim)}
+.colo{color:var(--night-dim);opacity:.75;margin-top:10px}
+
+/* The cropped wordmark — an outline whisper bleeding off the page edge. */
+.wmclip{overflow:hidden;margin-top:clamp(20px,4vw,44px)}
+.wm{
+  display:block;white-space:nowrap;text-align:center;
+  font-size:clamp(4.5rem,15.5vw,19rem);line-height:.8;
+  color:transparent;
+  -webkit-text-stroke:max(1px,.01em) rgba(251,250,248,.3);
+  transform:translateY(30%);
+  user-select:none;
+}
+@supports not (-webkit-text-stroke:1px #000){
+  .wm{color:rgba(251,250,248,.12)}
+}
 
 @media (max-width:640px){
   .fx .btn{flex:1 1 100%}
@@ -995,24 +1311,26 @@ ul,ol{list-style:none;padding:0}
 .off:hover .ini2{transform:translate(-3px,-3px);box-shadow:3px 3px 0 var(--signal)}
 .brief .ttl{transition:transform var(--t-micro) var(--ease-out)}
 .brief .dnum{transition:color var(--t-micro) linear}
+.brief .arw{transition:opacity var(--t-micro) var(--ease-out),transform var(--t-micro) var(--ease-out)}
 .brief:hover .ttl{transform:translateX(6px)}
 .brief:hover .dnum{color:var(--signal-ink)}
-.ph img{transition:transform var(--t-soft) var(--ease-out)}
-.ph:hover img{transform:scale(1.04)}
+.brief:hover .arw{opacity:1;transform:none}
+.ph img{transition:filter var(--t-soft) var(--ease-out),transform var(--t-soft) var(--ease-out)}
+.ph::after{transition:opacity var(--t-soft) var(--ease-out)}
 
 /* ═══════════════════ MOTION ═══════════════════
    TRIPLE-GATED. Every hidden-until-revealed state requires `html.js`
    (scripts actually ran) AND motion-OK AND an actual screen — print gets
    the whole page, revealed or not. No JS → this block's .js selectors
    never match → page fully visible, static. Reduced motion → block never
-   applies → same. Transform/opacity only. */
+   applies → same. Transform/opacity/filter only. */
 @media screen and (prefers-reduced-motion:no-preference){
 
   /* Masthead load choreography (time-driven; above the fold).
      1. topline fades up            60ms
      2. title lines rise, staggered 120/210/300ms, 650ms settle
      3. red full stop pops          780ms
-     4. school + standfirst fade up 480/560ms
+     4. school kicker + foot row    480/560ms
      5. tape fades in               640ms, then loops ambiently
      The script holds the first scroll reveals ~700ms when the page opens
      at the top, so nothing below competes with this. */
@@ -1027,8 +1345,10 @@ ul,ol{list-style:none;padding:0}
   html.js .tl:nth-of-type(3) .tw{animation-delay:300ms}
   html.js .dot{transform:scale(0);animation:pop var(--t-soft) var(--ease-out) 780ms forwards}
 
-  /* The one perpetual loop. Linear is correct for a constant-speed tape. */
+  /* The perpetual loops. Linear is correct for a constant-speed tape;
+     the seal turns once every 28 seconds. */
   .tape{animation:marq 38s linear infinite}
+  .sealtxt{animation:spin 28s linear infinite}
 
   /* Scroll entrances: fade-up, 500ms decelerate / 650ms settle. The 60ms
      stagger is assigned PER IO BATCH by the script — whatever reveals
@@ -1050,13 +1370,82 @@ ul,ol{list-style:none;padding:0}
   /* The poster numeral rises inside its black slab while JS counts it up. */
   html.js .hn{transform:translateY(112%);transition:transform var(--t-rise) var(--ease-rise) 80ms}
   html.js .lockup.in .hn{transform:none}
+
+  /* The manifesto arrives as an OUTLINE and fills with ink; the last line
+     wipes in as a gold-on-black slab. Declared after .io so the combined
+     transition list (including the fill) wins the cascade. */
+  html.js .ml:not(.m3){
+    color:transparent;
+    -webkit-text-stroke:max(1.25px,.012em) var(--rule-soft);
+    transition:opacity var(--t-reveal) var(--ease-out),
+               transform var(--t-rise) var(--ease-rise),
+               color 700ms var(--ease-out),
+               -webkit-text-stroke-color 700ms var(--ease-out);
+  }
+  html.js .ml.in:not(.m3){color:var(--text);-webkit-text-stroke-color:transparent}
+  @supports not (-webkit-text-stroke:1px #000){
+    html.js .ml:not(.m3){color:var(--muted);transition:opacity var(--t-reveal) var(--ease-out),transform var(--t-rise) var(--ease-rise),color 700ms var(--ease-out)}
+    html.js .ml.in:not(.m3){color:var(--text)}
+  }
+  html.js .m3 .mslab{clip-path:inset(0 100% 0 0);transition:clip-path 700ms var(--ease-rise) 150ms}
+  html.js .m3.in .mslab{clip-path:inset(0 0 0 0)}
+
+  /* Square cursor — dot + lerped ring in difference blend. Fine pointers
+     only; arrives on first mouse move (html.curlive set by the script). */
+  @media (pointer:fine){
+    html.js .cur{
+      display:block;position:fixed;top:0;left:0;z-index:2000;
+      pointer-events:none;mix-blend-mode:difference;opacity:0;
+      transition:opacity var(--t-soft) var(--ease-out);
+    }
+    html.js.curlive .cur{opacity:1}
+    .curd{width:7px;height:7px;margin:-3.5px 0 0 -3.5px;background:#fff}
+    .curr{
+      width:38px;height:38px;margin:-19px 0 0 -19px;
+      border:1.5px solid #fff;
+      transition:width .25s var(--ease-out),height .25s var(--ease-out),margin .25s var(--ease-out),opacity var(--t-soft) var(--ease-out);
+    }
+    .curr.grow{width:62px;height:62px;margin:-31px 0 0 -31px}
+  }
+
+  /* Scroll-driven extras — progressive enhancement on top of the gates.
+     Unsupported browsers simply never see them. */
+  @supports (animation-timeline:scroll(root)){
+    .prog{
+      display:block;position:fixed;top:0;left:0;right:0;height:3px;
+      z-index:1900;background:var(--signal);
+      transform-origin:0 50%;transform:scaleX(0);
+      animation:sprog linear both;animation-timeline:scroll(root);
+    }
+    /* The poster drifts up and thins as you leave it. */
+    html.js .titlewrap{
+      animation:hdrift linear both;animation-timeline:scroll(root);
+      animation-range:0px 90vh;
+    }
+    /* The buried wordmark rises a little as the footer arrives. */
+    html.js .wm{
+      animation:wmrise linear both;animation-timeline:view();
+      animation-range:entry 0% entry 100%;
+    }
+  }
 }
 @keyframes fadeup{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
 @keyframes rise{to{transform:none}}
 @keyframes pop{from{transform:scale(0)}to{transform:scale(1)}}
 @keyframes marq{to{transform:translateX(-50%)}}
+@keyframes spin{to{transform:rotate(1turn)}}
+@keyframes sprog{to{transform:scaleX(1)}}
+@keyframes hdrift{to{transform:translateY(-6vh);opacity:.35}}
+@keyframes wmrise{from{transform:translateY(52%)}to{transform:translateY(26%)}}
 
 @media (prefers-reduced-motion:reduce){
   *,*::before,*::after{animation:none!important;transition:none!important}
+}
+
+/* Paper tells the truth: full-color photos, no chrome, everything visible. */
+@media print{
+  .prog,.cur{display:none!important}
+  .ph img{filter:none!important}
+  .ph::after{display:none!important}
 }
 </style>
