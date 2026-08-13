@@ -88,6 +88,7 @@ Full setup (Supabase project, Google OAuth, Vercel) is in
 | [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | Env vars, deploy order, the SITE_URL cutover, and the auth bugs that have already bitten this project |
 | [docs/KNOWN-GAPS.md](docs/KNOWN-GAPS.md) | What the rebuild fixed, what's still open, accepted trades |
 | [docs/REBUILD-PLAN.md](docs/REBUILD-PLAN.md) | The rebuild spec this code implements, with status |
+| [docs/ABOUT-CONTENT-GUIDE.md](docs/ABOUT-CONTENT-GUIDE.md) | How `/about` turns database rows into "the record," and what good recaps/captions/bios look like |
 
 ---
 
