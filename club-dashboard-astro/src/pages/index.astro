@@ -284,6 +284,21 @@ if (hero?.isToday && user.isOfficer && pendingCount > 0) {
         </section>
       )}
 
+      {/* The constant join QR. Deliberately NOT the check-in QR: that one is a
+          15-minute bearer token bound to one event and cannot go on a poster.
+          This is a plain never-expiring link, safe to print and project. */}
+      {user.isOfficer && (
+        <section class="owned" aria-labelledby="joinqr-h">
+          <div class="event-actions__head"><span class="flag">Officer only</span></div>
+          <b id="joinqr-h">Recruiting QR code</b>
+          <p class="small muted" style="margin:6px 0 10px;">
+            A permanent code for posters, slides and the club-fair table — it never expires.
+            Project it at the first meeting so nobody types a URL.
+          </p>
+          <a class="btn btn--sm btn--ghost" href="/join">Open the join code</a>
+        </section>
+      )}
+
       <section aria-labelledby="fig-h">
         <div class="section-head"><h2 id="fig-h">By the numbers</h2></div>
         <div class="figures">

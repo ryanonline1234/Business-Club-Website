@@ -1,0 +1,239 @@
+---
+/**
+ * /join — the CONSTANT QR code. Public, printable, projectable.
+ *
+ * WHY THIS EXISTS, AND WHY IT IS NOT THE CHECK-IN QR
+ *   The check-in QR (/calendar → Present check-in code) is a *bearer token*:
+ *   officer-minted, bound to one event, and valid for 15 minutes. That short
+ *   life is a security property — see docs/KNOWN-GAPS.md. It can never go on a
+ *   poster, a slide, or a table tent, because it is dead before anyone prints
+ *   it.
+ *
+ *   This page is the opposite by design: a plain URL, no token, no expiry,
+ *   nothing secret. Print it, project it, put it in a Mitty Minute slide, tape
+ *   it to a club-fair table. It never needs regenerating.
+ *
+ * WHERE IT POINTS — /about, deliberately, not /login.
+ *   A stranger scanning a poster should land on the page that explains the
+ *   club, and /about's masthead already carries a big MEMBER SIGN IN button.
+ *   Landing a curious freshman on a bare Google login wall is the worse
+ *   outcome; a member who just wants in pays one extra tap. To send people
+ *   straight to sign-in instead, change JOIN_TARGET below to '/login'.
+ *
+ * NO set:html. The QR is rendered as one Astro-templated <path> built from the
+ * module matrix, so the repo's "no data in innerHTML" rule holds even for
+ * library-generated markup. The URL is a build-time constant either way.
+ */
+import QRCode from 'qrcode';
+import { SITE_URL } from '../lib/env';
+
+import '@fontsource/barlow-condensed/latin-600.css';
+import '@fontsource/barlow-condensed/latin-800.css';
+import '@fontsource/libre-baskerville/latin-400.css';
+import barlowDisplayWoff2 from '@fontsource/barlow-condensed/files/barlow-condensed-latin-800-normal.woff2?url';
+
+const JOIN_TARGET = '/about';
+const joinUrl = `${SITE_URL}${JOIN_TARGET}`;
+/** Shown under the code so anyone can type it if a camera misbehaves. */
+const humanUrl = joinUrl.replace(/^https?:\/\//, '');
+
+/**
+ * Error correction 'Q' (~25%) rather than the default 'M'. This code gets
+ * printed, photographed off a projector, and scanned at an angle across a
+ * classroom — the extra redundancy is what survives that.
+ */
+const qr = QRCode.create(joinUrl, { errorCorrectionLevel: 'Q' });
+const { data: modules, size: qrSize } = qr.modules;
+
+let path = '';
+for (let y = 0; y < qrSize; y++) {
+  for (let x = 0; x < qrSize; x++) {
+    if (modules[y * qrSize + x]) path += `M${x} ${y}h1v1h-1z`;
+  }
+}
+/** One module of quiet zone on every side; the spec wants four, the frame supplies the rest visually. */
+const pad = 1;
+const viewBox = `${-pad} ${-pad} ${qrSize + pad * 2} ${qrSize + pad * 2}`;
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="theme-color" content="#0A0A0A" />
+    <meta name="description" content="Scan to join the Mitty Business Club." />
+    <title>Join — Mitty Business Club</title>
+    <link rel="preload" as="font" type="font/woff2" href={barlowDisplayWoff2} crossorigin />
+  </head>
+
+  <body>
+    <main class="sheet">
+      <header class="top">
+        <span class="eyebrow">Archbishop Mitty High School</span>
+        <h1>
+          Mitty<br />Business<br />Club<span class="dot">.</span>
+        </h1>
+      </header>
+
+      <section class="plate" aria-labelledby="scan-h">
+        <h2 id="scan-h" class="scan">Scan to join</h2>
+
+        <div class="code">
+          <svg
+            viewBox={viewBox}
+            role="img"
+            aria-label={`QR code linking to ${humanUrl}`}
+            shape-rendering="crispEdges"
+          >
+            <path d={path} />
+          </svg>
+        </div>
+
+        <p class="url">{humanUrl}</p>
+        <p class="note">
+          Use your school Google account — <b>@mittymonarch.com</b> for students,
+          <b>@mitty.com</b> for faculty. You're in right away; no waiting for approval.
+        </p>
+      </section>
+
+      <footer class="foot">
+        <span>The record · what we've done, and who we are</span>
+      </footer>
+    </main>
+
+    <style>
+      /* Three inks, same as /about. This page is print-first: the light
+         palette IS the design, and dark mode only softens the paper so a
+         projector in a dim room is not a wall of white. */
+      :root {
+        --ink: #0a0a0a;
+        --gold: #c5b358;
+        --signal: #c2361e;
+        --paper: #fbfaf8;
+        --mute: #55524b;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --paper: #0a0a0a;
+          --ink: #fbfaf8;
+          --mute: #a8a49b;
+        }
+      }
+
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        background: var(--paper);
+        color: var(--ink);
+        font-family: 'Barlow Condensed', 'Arial Narrow', sans-serif;
+        -webkit-font-smoothing: antialiased;
+      }
+
+      .sheet {
+        min-height: 100svh;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: clamp(20px, 4vh, 40px);
+        padding: clamp(20px, 5vw, 56px);
+        text-align: center;
+      }
+
+      .eyebrow {
+        display: block;
+        font-weight: 600;
+        font-size: clamp(11px, 1.6vw, 14px);
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+        color: var(--mute);
+        margin-bottom: 10px;
+      }
+
+      h1 {
+        margin: 0;
+        font-weight: 800;
+        font-size: clamp(38px, 9vw, 86px);
+        line-height: 0.88;
+        letter-spacing: -0.01em;
+        text-transform: uppercase;
+      }
+      .dot { color: var(--signal); }
+
+      .scan {
+        margin: 0 0 18px;
+        font-weight: 800;
+        font-size: clamp(20px, 4vw, 34px);
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+      }
+
+      /* The gold plate. The code itself stays on white in BOTH themes —
+         scanners need the contrast, and a dark-mode-inverted QR is a support
+         ticket waiting to happen. */
+      .plate {
+        background: var(--gold);
+        color: #0a0a0a;
+        padding: clamp(20px, 4vw, 40px);
+        border: 3px solid #0a0a0a;
+        max-width: 560px;
+        width: 100%;
+      }
+      .code {
+        background: #fff;
+        padding: clamp(12px, 2.5vw, 20px);
+        display: block;
+      }
+      .code svg {
+        display: block;
+        width: 100%;
+        height: auto;
+        max-width: 420px;
+        margin: 0 auto;
+      }
+      .code path { fill: #0a0a0a; }
+
+      .url {
+        margin: 16px 0 0;
+        font-weight: 600;
+        font-size: clamp(13px, 2.2vw, 18px);
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        word-break: break-all;
+      }
+      .note {
+        margin: 10px 0 0;
+        font-family: 'Libre Baskerville', Georgia, serif;
+        font-size: clamp(12px, 1.7vw, 14px);
+        line-height: 1.5;
+        text-transform: none;
+        letter-spacing: 0;
+      }
+      .note b { font-weight: 700; }
+
+      .foot {
+        font-weight: 600;
+        font-size: clamp(10px, 1.5vw, 12px);
+        letter-spacing: 0.2em;
+        text-transform: uppercase;
+        color: var(--mute);
+      }
+
+      /* Print: force the light palette, drop the chrome, fill the page.
+         An officer hitting Cmd-P gets a poster, not a screenshot. */
+      @media print {
+        :root { --paper: #fff; --ink: #000; --mute: #444; }
+        body { background: #fff; }
+        .sheet { min-height: auto; padding: 0; gap: 24px; }
+        .plate {
+          border-color: #000;
+          -webkit-print-color-adjust: exact;
+          print-color-adjust: exact;
+        }
+        .code svg { max-width: 100%; }
+      }
+    </style>
+  </body>
+</html>
