@@ -152,10 +152,17 @@ distinguish "a database blip parked you here" from "you are genuinely waiting".
 | `requireOfficer` | (available, unused today) | …plus throws to `/` unless approved admin/treasurer |
 | `apiRequireApproved` | member-facing endpoints | Returns `{ok:false, response}` — 403 `Invalid origin` (CSRF), 401, or 403 `Account pending approval` |
 | `apiRequireOfficer` | officer endpoints | …plus 403 `Forbidden` unless approved admin/treasurer |
-| `apiRequireAdmin` | `PATCH /api/members/:id` | …plus 403 `Forbidden` unless approved admin |
+| `apiRequireAdmin` | `PATCH /api/members/:id` | …plus 403 `Forbidden` unless approved officer — **identical to `apiRequireOfficer` since 2026-09-15**, kept as a separate name so re-splitting the tiers is one line in `buildSessionUser` |
 
 Derived flags: `isApproved` = `status === 'approved'`; `isOfficer` and
 `isAdmin` **both require approved** — a pending admin is nobody.
+
+**One officer tier (2026-09-15).** A treasurer has every capability an admin
+has, so `isAdmin` is deliberately the same predicate as `isOfficer`. The three
+role values survive as *titles* on the roster and the public `/about` page,
+not as permission levels. The lockout guards in `api/members/[id].ts` and
+`[id]/status.ts` therefore count approved **officers** — that is the pool that
+can still manage roles if you remove someone from it.
 
 Page guards take `(Astro.request, Astro.response.headers, Astro.redirect)` and
 must be **the first statement of frontmatter**. API guards take

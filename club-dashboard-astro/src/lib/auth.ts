@@ -175,7 +175,18 @@ function buildSessionUser(
     viewingAsStudent,
     isApproved,
     isOfficer: isApproved && (role === 'admin' || role === 'treasurer'),
-    isAdmin: isApproved && role === 'admin',
+    // MERGED TIER (owner decision, 2026-09-15): a treasurer has every
+    // capability an admin has. isAdmin is therefore the SAME predicate as
+    // isOfficer, deliberately — not a bug, and not a leftover.
+    //
+    // The three role VALUES survive because they are titles shown on the
+    // roster and the public /about page; they are no longer permission tiers.
+    // Keeping isAdmin (and apiRequireAdmin) as a distinct name is what makes
+    // re-splitting the tiers later a one-line change here instead of an audit
+    // of every call site. If you re-split, re-read the last-officer guards in
+    // api/members/[id].ts and [id]/status.ts — they count the pool that can
+    // manage roles, which is whatever this predicate admits.
+    isAdmin: isApproved && (role === 'admin' || role === 'treasurer'),
   };
 }
 

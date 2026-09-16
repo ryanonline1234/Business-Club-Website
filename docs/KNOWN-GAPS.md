@@ -25,8 +25,11 @@ is still open:
   `is_school_email()`, `is_approved/is_officer/is_admin()`, and the RLS rewrite
   (proved via an anon read of `categories` returning 0 of 4 rows). **Not
   verifiable from outside**: STEP 6 indexes, STEP 7's `on delete cascade`, the
-  STEP 10–11 trigger, STEP 13b. STEP 7 is the one worth confirming by hand — a
-  rejected non-school signup leaves an orphan profile row without it.
+  STEP 10–11 trigger, STEP 13b. **STEP 7 is now confirmed applied** — a
+  2026-09-15 create-then-delete probe against production showed the profile row
+  cascade-deleted with its auth user, which only happens with the cascade in
+  place. The STEP 10–11 trigger is confirmed too: the same probe produced a
+  profiles row with status `approved` without the app touching it.
 - **STEP 10 changed on 2026-08-12** (auto-approval — see
   [the new entry below](#any-school-google-account-walks-straight-in)). A
   database migrated before that date still runs the trigger that creates
@@ -91,11 +94,11 @@ for a club meeting. Do not lengthen the TTL to make projection more
 convenient; the auto-refresh in Present mode exists so the short window costs
 nothing.
 
-### The last-admin guard is not atomic
+### The last-officer guard is not atomic
 
-**Severity: low.** Both member endpoints count approved admins and then
-write; two admins demoting/declining each other in the same instant could
-both pass the count. There is no transaction available through PostgREST — a
+**Severity: low.** Both member endpoints count approved **officers** (admin +
+treasurer — one tier since 2026-09-15) and then write; two officers
+demoting/declining each other in the same instant could both pass the count. There is no transaction available through PostgREST — a
 DB-level constraint would be the real fix. For a club with a handful of
 officers clicking buttons, the window is not worth a migration. Do not read
 the guard as an airtight invariant; it exists to stop the *ordinary* lockout.

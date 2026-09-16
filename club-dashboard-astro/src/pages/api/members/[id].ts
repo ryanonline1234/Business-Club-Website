@@ -88,19 +88,26 @@ export const PATCH: APIRoute = async ({ request, params }) => {
   }
 
   // ── LAST-ADMIN GUARD ──────────────────────────────────────────────────────
-  // Only relevant when this write removes an *approved admin* from the pool.
-  // A pending or rejected admin is not in the pool, so demoting one is free.
-  if (newRole !== 'admin' && target.role === 'admin' && target.status === 'approved') {
+  // Only relevant when this write removes an *approved officer* from the pool.
+  // Treasurer and admin are one capability tier (see lib/auth.ts), so the pool
+  // this protects is every approved officer — not admins alone. A pending or
+  // rejected officer is not in the pool, so demoting one is free.
+  const OFFICER_ROLES = ['admin', 'treasurer'] as const;
+  const removesAnOfficer =
+    !OFFICER_ROLES.includes(newRole as (typeof OFFICER_ROLES)[number]) &&
+    OFFICER_ROLES.includes(target.role as (typeof OFFICER_ROLES)[number]) &&
+    target.status === 'approved';
+  if (removesAnOfficer) {
     const { count, error: countError } = await supabaseAdmin
       .from('profiles')
       .select('id', { count: 'exact', head: true })
-      .eq('role', 'admin')
+      .in('role', ['admin', 'treasurer'])
       .eq('status', 'approved');
 
     if (countError || count === null) {
       // Fail CLOSED. If we cannot prove another admin exists, we do not perform
       // the one write that can lock everyone out of the club's own portal.
-      console.error('[api/members/:id] admin count failed — refusing demotion', {
+      console.error('[api/members/:id] officer count failed — refusing demotion', {
         targetId: id,
         actorId: session.id,
         code: countError?.code,
@@ -108,7 +115,7 @@ export const PATCH: APIRoute = async ({ request, params }) => {
       });
       return apiJson(
         503,
-        { error: 'Could not verify how many admins remain. Nothing was changed — try again.' },
+        { error: 'Could not verify how many officers remain. Nothing was changed — try again.' },
         responseHeaders
       );
     }
@@ -118,14 +125,14 @@ export const PATCH: APIRoute = async ({ request, params }) => {
         409,
         {
           error:
-            'This is the last approved admin. Promote someone else to admin first, ' +
+            'This is the last approved officer. Promote someone else to officer first, ' +
             'otherwise nobody can approve members or change roles.',
         },
         responseHeaders
       );
     }
   }
-  // NOTE: count-then-write is not atomic. Two admins demoting each other in the
+  // NOTE: count-then-write is not atomic. Two officers demoting each other in the
   // same instant could both pass this check. There is no transaction available
   // through PostgREST here; a DB-level guard would be the real fix. For a club
   // with a handful of officers clicking buttons, the window is not worth a

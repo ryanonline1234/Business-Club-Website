@@ -35,8 +35,10 @@ deleted in the rebuild. If you need a new read, put it in page frontmatter.
 Checks run in that order — the origin check fires before authentication.
 
 **Auth levels used below:** `public` (no session), `approved` (signed in AND
-`status='approved'`), `officer` (approved `admin` or `treasurer`), `admin`
-(approved `admin`).
+`status='approved'`), `officer` (approved `admin` or `treasurer`). There is no
+separate admin level any more — since 2026-09-15 treasurer and admin are one
+capability tier and `apiRequireAdmin` checks exactly what `apiRequireOfficer`
+checks. The role values remain as titles.
 
 ---
 
@@ -52,7 +54,8 @@ Checks run in that order — the origin check fires before authentication.
 | `GET` | `/api/events/:id/qr` | **officer** | `/calendar` Present mode |
 | `PATCH` | `/api/events/:id/recap` | officer | `/calendar` recap editor (past events) |
 | `POST` | `/api/attendance/checkin` | **approved** | `/checkin` |
-| `PATCH` | `/api/members/:id` | **admin** | `/members` role select |
+| `PATCH` | `/api/members/:id` | officer | `/members` role select |
+| `POST` | `/api/members/invite` | officer | `/members` add-members panel |
 | `PATCH` | `/api/members/:id/status` | officer | `/members` approval queue |
 | `PATCH` | `/api/profile/bio` | officer | `/members` own-row bio editor |
 | `POST` | `/api/photos` | officer | `/calendar` photo upload (multipart) |
@@ -273,7 +276,7 @@ again, and recovery is hand-editing the database. If the admin *count query
 itself* fails, the endpoint fails closed with `503` and writes nothing.
 Self-demotion is allowed as long as another approved admin remains (the
 "I'm graduating" path). The count-then-write is not atomic — see
-[KNOWN-GAPS.md](KNOWN-GAPS.md#the-last-admin-guard-is-not-atomic).
+[KNOWN-GAPS.md](KNOWN-GAPS.md#the-last-officer-guard-is-not-atomic).
 
 **Responses:** `200 { data }` (also for an idempotent same-role no-op, which
 skips the write) · `400` (missing id / invalid role) · `404` · `409`
@@ -396,6 +399,46 @@ is already gone; the orphaned object is logged.
 (non-UUID) · `404 { "error": "Photo not found" }` (also on repeat deletes) ·
 guard responses · `500` (STEPs 16-18 copy on a missing table, else
 `"Could not delete the photo"`).
+
+---
+
+### `POST /api/members/invite` — officer
+
+Pre-register people who gave an address but never signed in (the club-fair
+paper-list case). **Not a login bypass** — Google remains the only credential
+path. It creates the account so the person is on the roster now, and so their
+first Google sign-in lands on *this* row.
+
+| Field | Type | Notes |
+|---|---|---|
+| `text` | string | The pasted list, ≤ 50 000 chars. One entry per line. |
+
+Line shapes accepted (a paper list becomes all of these):
+```
+ryantseng29@mittymonarch.com
+Ava Chen <avachen28@mittymonarch.com>
+Noah Kim, noahkim27@mittymonarch.com
+marcus.delgado30@mittymonarch.com — Marcus Delgado
+```
+Lines with no email-shaped token (blank lines, headings like `SIGN-UPS 9/12`)
+are ignored, not rejected. Duplicates inside one paste collapse.
+
+**School domains only**, and not for tidiness: `api/auth/callback` grandfathers
+any existing `approved` profile past the domain gate, so pre-registering a
+non-school address would manufacture a working backdoor around the domain
+restriction. `isSchoolEmail()` closes it.
+
+Per address: existing profile → **untouched** (re-pasting last week's sheet is a
+no-op, never a reset); otherwise `auth.admin.createUser({ email_confirm: true })`
+plus the same profile fallback `api/auth/callback` uses. `email_confirm` is
+load-bearing — Supabase refuses to auto-link an OAuth identity to an unverified
+address, so without it the pre-registered row would be orphaned at sign-in.
+
+Max 200 addresses per request; created 4 at a time.
+
+**Responses:** `200 { summary: { created, already, rejected }, results: [...] }`
+— every address reported with an outcome and, when rejected, a reason safe to
+render · `400` (not JSON, no addresses found, over the cap) · guard responses.
 
 ---
 

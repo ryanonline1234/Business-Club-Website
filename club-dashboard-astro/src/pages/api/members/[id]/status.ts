@@ -117,21 +117,25 @@ export const PATCH: APIRoute = async ({ request, params }) => {
     );
   }
 
-  // ── REFUSAL 4: declining the last approved admin ──────────────────────────
+  // ── REFUSAL 4: declining the last approved officer ──────────────────────────
   // Only bites when the target is currently in the approved-admin pool; a
   // pending or member-role account is not, so declining one is free.
-  if (newStatus === 'rejected' && target.role === 'admin' && target.status === 'approved') {
+  if (
+    newStatus === 'rejected' &&
+    (target.role === 'admin' || target.role === 'treasurer') &&
+    target.status === 'approved'
+  ) {
     const { count, error: countError } = await supabaseAdmin
       .from('profiles')
       .select('id', { count: 'exact', head: true })
-      .eq('role', 'admin')
+      .in('role', ['admin', 'treasurer'])
       .eq('status', 'approved');
 
     if (countError || count === null) {
       // Fail CLOSED — same posture as the role endpoint. If we cannot prove
       // another admin exists, we do not perform the write that can lock the
       // club out of its own portal.
-      console.error('[api/members/:id/status] admin count failed — refusing decline', {
+      console.error('[api/members/:id/status] officer count failed — refusing decline', {
         targetId: id,
         actorId: session.id,
         code: countError?.code,
@@ -139,7 +143,7 @@ export const PATCH: APIRoute = async ({ request, params }) => {
       });
       return apiJson(
         503,
-        { error: 'Could not verify how many admins remain. Nothing was changed — try again.' },
+        { error: 'Could not verify how many officers remain. Nothing was changed — try again.' },
         responseHeaders
       );
     }
@@ -149,7 +153,7 @@ export const PATCH: APIRoute = async ({ request, params }) => {
         409,
         {
           error:
-            'This is the last approved admin. Promote someone else to admin first, ' +
+            'This is the last approved officer. Promote someone else to officer first, ' +
             'otherwise nobody can approve members or change roles.',
         },
         responseHeaders

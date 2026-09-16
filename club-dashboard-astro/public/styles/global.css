@@ -1024,3 +1024,28 @@ button,input,select,textarea{ font:inherit; color:inherit; }
 .pfeed li.fresh{ border-left-color:var(--lit); padding-left:8px; }
 .pfeed .t{ flex:none; width:62px; font-family:var(--f-serif); font-size:var(--t-12); color:var(--gold-2); font-variant-numeric:tabular-nums; }
 .pfeed .n{ flex:1; min-width:0; color:var(--ink); }
+
+/* ── Add members by email (officer panel on /members) ──────────────────────
+   Lives beside the pending queue; reuses .owned for the officer convention. */
+.addm { margin-bottom: 22px; }
+.addm__wrap > summary {
+  cursor: pointer;
+  font-family: var(--f-cond);
+  font-size: var(--t-14);
+  letter-spacing: var(--tr-2);
+  text-transform: uppercase;
+  min-height: var(--tap);
+  display: flex;
+  align-items: center;
+}
+.addm__form { margin-top: 12px; display: grid; gap: 12px; justify-items: start; }
+.addm__form .field { width: 100%; }
+.addm__out {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--rule);
+  font-size: var(--t-14);
+}
+.addm__bad { margin: 8px 0 0; padding-left: 18px; }
+.addm__bad li { margin-bottom: 4px; line-height: 1.45; }
+.addm__bad em { color: var(--clay-2); font-style: normal; }

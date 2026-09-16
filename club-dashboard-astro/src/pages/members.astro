@@ -206,6 +206,38 @@ const plural = (n: number, one: string, many: string) => (n === 1 ? one : many);
     </section>
   )}
 
+  {/* Pre-register people who gave an email but never signed in — the club-fair
+      paper-list case. Officer-only; the endpoint re-checks (never trust the UI).
+      This does NOT grant access: Google is still the only way in. It puts them
+      on the roster now, and Supabase links their Google identity to this exact
+      account on first sign-in. */}
+  {session.isOfficer && (
+    <section class="owned addm" aria-labelledby="addm-h">
+      <div class="event-actions__head"><span class="flag">Officer only</span></div>
+      <details class="addm__wrap">
+        <summary id="addm-h">Add members by email</summary>
+        <form class="addm__form" id="addm-form" novalidate>
+          <label class="field">
+            <span>Paste emails — one per line</span>
+            <textarea
+              class="textarea"
+              id="addm-text"
+              rows="7"
+              placeholder={"ryantseng29@mittymonarch.com\nAva Chen <avachen28@mittymonarch.com>\nNoah Kim, noahkim27@mittymonarch.com"}
+            ></textarea>
+            <span class="field__hint">
+              A bare address works; a name beside it is used until they first sign in with
+              Google, which replaces it with their real one. School addresses only.
+            </span>
+          </label>
+          <button class="btn btn--sm" type="submit" id="addm-go">Add to roster</button>
+          <span class="row-err" id="addm-err" role="alert" style="display:none"></span>
+        </form>
+        <div id="addm-out" class="addm__out" hidden></div>
+      </details>
+    </section>
+  )}
+
   <div class="section-head">
     <h2>Roster</h2>
     <span class="spacer"></span>
@@ -582,4 +614,87 @@ const plural = (n: number, one: string, many: string) => (n === 1 ? one : many);
 
   searchInput?.addEventListener('input', applyFilter);
   roleFilter?.addEventListener('change', applyFilter);
+
+  /* ── Add members by email (officer) ──────────────────────────────────────
+     Results are rendered with createElement + textContent. Never innerHTML:
+     these strings include addresses typed by a person, and this page is where
+     a stored-XSS hole would be worth the most to an attacker. */
+  {
+    const form = document.getElementById("addm-form") as HTMLFormElement | null;
+    const text = document.getElementById("addm-text") as HTMLTextAreaElement | null;
+    const go = document.getElementById("addm-go") as HTMLButtonElement | null;
+    const err = document.getElementById("addm-err") as HTMLElement | null;
+    const out = document.getElementById("addm-out") as HTMLElement | null;
+
+    if (form && text && go && err && out) {
+      const showErr = (msg: string) => {
+        err.textContent = msg;
+        err.style.display = "";
+      };
+
+      form.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        err.style.display = "none";
+        out.hidden = true;
+        out.replaceChildren();
+
+        const body = text.value.trim();
+        if (!body) return showErr("Paste at least one email address.");
+
+        go.disabled = true;
+        const label = go.textContent;
+        go.textContent = "Adding…";
+
+        try {
+          const res = await fetch("/api/members/invite", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ text: body }),
+          });
+          const payload = await res.json().catch(() => null);
+
+          if (!res.ok) {
+            showErr(payload?.error ?? "Could not add those members.");
+            return;
+          }
+
+          const summary = payload?.summary ?? { created: 0, already: 0, rejected: 0 };
+          const head = document.createElement("b");
+          head.textContent =
+            summary.created + " added · " + summary.already + " already on the roster" +
+            (summary.rejected ? " · " + summary.rejected + " skipped" : "");
+          out.append(head);
+
+          // Only the problems need itemising; successes are visible on reload.
+          const bad = (payload?.results ?? []).filter((r: any) => r.outcome === "rejected");
+          if (bad.length) {
+            const ul = document.createElement("ul");
+            ul.className = "addm__bad";
+            for (const r of bad) {
+              const li = document.createElement("li");
+              const who = document.createElement("span");
+              who.textContent = r.email;
+              const why = document.createElement("em");
+              why.textContent = r.reason ?? "Skipped.";
+              li.append(who, document.createTextNode(" — "), why);
+              ul.append(li);
+            }
+            out.append(ul);
+          }
+          out.hidden = false;
+
+          if (summary.created > 0) {
+            // Reload so the roster and its counts reflect the new rows.
+            setTimeout(() => location.reload(), 1200);
+          }
+        } catch {
+          showErr("Network problem — nothing was added. Try again.");
+        } finally {
+          go.disabled = false;
+          go.textContent = label;
+        }
+      });
+    }
+  }
+
 </script>
