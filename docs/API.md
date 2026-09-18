@@ -64,11 +64,11 @@ checks. The role values remain as titles.
 | `DELETE` | `/api/announcements/:id` | officer | `/announcements` delete |
 
 The recap, bio, and photo endpoints write **public content** — everything they
-save renders on the guard-less `/about` page. All three fail soft while
-STEPs 16–18 of `supabase-schema.sql` are unapplied: the write comes back
-`500` with fixed copy naming the fix ("run STEPs 16-18"), and the pages that
-*read* the same columns render the section empty instead of erroring. See
-[KNOWN-GAPS.md](KNOWN-GAPS.md#steps-1618-may-not-be-applied-yet).
+save renders on the guard-less `/about` page. STEPs 16–18 of
+`supabase-schema.sql` are applied in production (verified 2026-09-17), so
+these work today; the fail-soft paths remain for a fresh database, where a
+write returns `500` with fixed copy naming the fix and the pages that *read*
+the same columns render empty instead of erroring.
 
 ---
 

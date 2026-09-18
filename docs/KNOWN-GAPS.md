@@ -12,15 +12,12 @@ is at the bottom for the record.
 
 ## Operational — the ones that bite next
 
-### Deployed — but `rebuild/mbc-portal` is not merged to `main`
+### Migration steps verified, and one still unproven
 
-The rebuild is **live** at `https://mittybusinessclub.vercel.app`. The
-migration was applied, `SITE_URL` was cut over, and the branch is pushed. What
-is still open:
+The rebuild is **live** at `https://mittybusinessclub.vercel.app`, and `main`
+now points at the same commit as `rebuild/mbc-portal` — the earlier
+"push to main would deploy the old app" hazard is closed.
 
-- **The branch has not been merged to `main`.** Vercel's git integration builds
-  `main`, so a push to `main` today would deploy the *pre-rebuild* app over the
-  top of the current deployment. Merge before anyone pushes to `main`.
 - **Verified applied**: `status`, `approved_by`, `approved_at`,
   `is_school_email()`, `is_approved/is_officer/is_admin()`, and the RLS rewrite
   (proved via an anon read of `categories` returning 0 of 4 rows). **Not
@@ -38,22 +35,6 @@ is still open:
   relative to the code deploy); until that runs, new school signups keep
   landing on `/pending` while the login copy promises instant access, and
   STEP 19 is what clears anyone the old trigger already parked in the queue.
-
-### STEPs 16–18 may not be applied yet
-
-The `/about` feature (officer bios, event recaps, the `photos` table) ships
-with its schema in STEPs 16–18 of `supabase-schema.sql`, applied by hand and
-**possibly after the code deploys — that order is safe here**, unlike
-STEPs 0–15. Until they run:
-
-- `/about` renders with empty sections (no recaps, no photos, no bios) —
-  every read of the new columns/table fails soft, never a 500.
-- The portal's editors still render, but **saving** a recap, bio, or photo
-  comes back `500` with fixed copy naming the fix: "run STEPs 16-18".
-
-The `club-photos` Storage bucket is separate from the SQL (created in the
-dashboard: public read, 8MB, image mime allow-list) and already exists.
-Delete this entry once STEPs 16–18 are verified applied.
 
 ### Local dev and production share one database
 

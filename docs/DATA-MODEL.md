@@ -18,7 +18,7 @@ no-op and running it on an empty project builds everything from scratch.
    `photos` table). Unlike the rest, these are safe **any time, in either
    order relative to the code deploy**: nullable columns older code never
    selects, a new table nothing else references, and the code that reads them
-   fails soft. See [KNOWN-GAPS.md](KNOWN-GAPS.md#steps-1618-may-not-be-applied-yet).
+   fails soft. See [KNOWN-GAPS.md](KNOWN-GAPS.md#migration-steps-verified-and-one-still-unproven).
 
 Deploy order is **SQL first, then code** — the wrong order strands every user
 on `/pending`. See [DEPLOYMENT.md](DEPLOYMENT.md#deploy-order-sql-first-then-code).

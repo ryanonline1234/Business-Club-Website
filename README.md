@@ -33,12 +33,17 @@ Two gates, both enforced server-side:
    the auth account is deleted so a retry with the right account is clean.
    One exception: an *already-approved* profile on another domain keeps its
    access (the grandfather clause — the club's admin uses a personal address).
-2. **Officer approval** — every new account lands on `/pending` until an
-   officer (admin *or* treasurer) approves it from `/members`.
+2. **After-the-fact moderation** — a school account is **approved
+   automatically at signup** (owner decision, 2026-08-12) and goes straight to
+   the dashboard. Officers moderate afterwards: declining from `/members`
+   flips the account to `rejected` and locks it out, and that sticks on every
+   later sign-in.
 
 Three roles: `member`, `treasurer`, `admin`. "Officer" means an **approved**
-admin or treasurer. Role changes are admin-only; approvals are officer-wide.
-See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#roles-and-authorization).
+admin or treasurer — and since 2026-09-15 treasurer and admin are **one
+capability tier**, so the role values are titles rather than permission
+levels. Every officer can manage roles, approvals, events and content. See
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#the-guard-layer).
 
 ---
 
@@ -86,6 +91,7 @@ Full setup (Supabase project, Google OAuth, Vercel) is in
 | [docs/API.md](docs/API.md) | Every endpoint: method, guard, request body, responses, CSRF behavior |
 | [docs/DATA-MODEL.md](docs/DATA-MODEL.md) | Tables, the approval migration, RLS policies, the signup trigger |
 | [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | Env vars, deploy order, the SITE_URL cutover, and the auth bugs that have already bitten this project |
+| [docs/STATE.md](docs/STATE.md) | Where the project is today and what to do next — **start here** |
 | [docs/KNOWN-GAPS.md](docs/KNOWN-GAPS.md) | What the rebuild fixed, what's still open, accepted trades |
 | [docs/REBUILD-PLAN.md](docs/REBUILD-PLAN.md) | The rebuild spec this code implements, with status |
 | [docs/ABOUT-CONTENT-GUIDE.md](docs/ABOUT-CONTENT-GUIDE.md) | How `/about` turns database rows into "the record," and what good recaps/captions/bios look like |
@@ -97,7 +103,7 @@ Full setup (Supabase project, Google OAuth, Vercel) is in
 | Route | Guard | Notes |
 |---|---|---|
 | `/` | approved | Home: greeting, next event, latest announcements, club figures; officers also see the approval-queue nudge |
-| `/about` | **public** | The club's showcase for non-members: past events with officer-written recaps and photos, officer bios, link to the school's clubs page. Its own Bold Graphic design, not the portal's Warm system; renders empty-but-alive until STEPs 16–18 of the schema are applied |
+| `/about` | **public** | The club's showcase for non-members: past events with officer-written recaps and photos, officer bios, link to the school's clubs page. Its own Bold Graphic design, not the portal's Warm system; renders a designed empty state until officers add recaps, photos and bios |
 | `/login` | public | Google sign-in; fixed error copy keyed by `?error=` |
 | `/pending` | any session | Waiting room: pending / declined / server-error states |
 | `/calendar` | approved | Month grid + agenda; officers get event composer, cancel, and Present mode (projected QR, auto-refreshing) |
@@ -105,6 +111,7 @@ Full setup (Supabase project, Google OAuth, Vercel) is in
 | `/members` | approved | Roster; emails officer-only; approval queue officer-only; role select admin-only |
 | `/announcements` | approved | Server-rendered feed; officers compose and delete |
 | `/checkin?token=…` | public | QR landing page; sign-in round-trips back to the scan via `?next=` |
+| `/join` | public | The permanent recruiting QR — printable and projectable; points at `/about`. Officers reach it from the home dashboard |
 
 "approved" means `requireApproved` — signed in AND officer-approved. Officer
 and admin *controls* are rendered server-side only for those roles, never

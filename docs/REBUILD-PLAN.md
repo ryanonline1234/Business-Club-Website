@@ -4,12 +4,15 @@ The Mitty Business Club portal is being rebuilt on branch `rebuild/mbc-portal`.
 This is the spec. The machine-readable version — including per-page data shapes —
 is [`rebuild-plan.json`](rebuild-plan.json).
 
-**Status:** code-complete on `rebuild/mbc-portal` — teardown, backend (auth
-foundation, guards, endpoints), all pages in the approved "Warm & Mobile-First"
-design, and the doc rewrite (the [Documentation debt](#documentation-debt)
-below is paid). Remaining: apply the migration (STEP 0 pre-flight first), deploy,
-and the SITE_URL + Supabase allow-list cutover — see
-[DEPLOYMENT.md](DEPLOYMENT.md#deploy-order-sql-first-then-code).
+**Status: DONE and LIVE** at https://mittybusinessclub.vercel.app. Everything
+this plan describes shipped — teardown, backend, all pages, the migration
+(STEPs 0–19), the SITE_URL cutover, and the doc rewrite. `main` and
+`rebuild/mbc-portal` are the same commit.
+
+This file is now **history, not a to-do**: it records what the rebuild set out
+to do and why, which is still the best explanation of the decisions baked into
+the code. For where the project is *today* and what is open, read
+[STATE.md](STATE.md); for open trades and gaps, [KNOWN-GAPS.md](KNOWN-GAPS.md).
 
 ---
 

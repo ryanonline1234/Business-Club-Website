@@ -10,6 +10,8 @@ environment variables is stale documentation, not code that exists.
 
 Before writing code, read:
 
+- [`docs/STATE.md`](docs/STATE.md) — where the project is right now and
+  what is open; the fastest orientation
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — request flow, the guard
   layer, env validation, the two Supabase clients
 - [`docs/API.md`](docs/API.md) — every endpoint with its guard and contract
