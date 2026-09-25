@@ -3,23 +3,26 @@ import { supabaseAdmin } from '../../../lib/supabase';
 import { apiRequireAdmin, apiJson, type MemberRole } from '../../../lib/auth';
 
 /**
- * PATCH /api/members/:id  —  change a member's ROLE. Admin only.
+ * PATCH /api/members/:id  —  change a member's ROLE. Officers only (see below).
  *
  * Approval status is a different verb on a different route:
  * PATCH /api/members/:id/status, which officers (admin OR treasurer) may call.
- * Role promotion stays admin-only; a treasurer cannot mint another admin.
+ * Role changes are guarded by apiRequireAdmin — which, since the 2026-09-15
+ * tier merge, admits exactly the officers apiRequireOfficer admits (see
+ * buildSessionUser in lib/auth.ts). Any approved officer may change a role.
  *
- * THE LAST-ADMIN GUARD is the reason most of this file exists. If the only
- * approved admin is demoted, nobody can promote anyone or approve anyone ever
+ * THE LAST-OFFICER GUARD is the reason most of this file exists. If the last
+ * approved officer is demoted, nobody can promote anyone or approve anyone ever
  * again, and the only way out is hand-editing a row in the Supabase table
  * editor — precisely the manual step the approval flow is supposed to delete.
- * So a write that would take the approved-admin count to zero is refused 409.
+ * So a write that would take the approved-officer count (admin + treasurer) to
+ * zero is refused 409.
  *
- * Note what is NOT guarded: an admin demoting themselves. That is allowed as
- * long as another approved admin remains, which is the normal "I'm graduating,
- * hand it over" path. The last-admin count already covers the lockout case, and
- * blocking self-demotion outright would mean the outgoing admin needs someone
- * else to do it for them.
+ * Note what is NOT guarded: an officer demoting themselves. That is allowed as
+ * long as another approved officer remains, which is the normal "I'm
+ * graduating, hand it over" path. The count already covers the lockout case,
+ * and blocking self-demotion outright would mean the outgoing officer needs
+ * someone else to do it for them.
  */
 
 const ROLES: readonly MemberRole[] = ['member', 'treasurer', 'admin'];
@@ -58,7 +61,7 @@ export const PATCH: APIRoute = async ({ request, params }) => {
   const newRole = rawRole as MemberRole;
 
   // Read the target BEFORE writing: we need its current role and status to know
-  // whether this write is the one that empties the admin bench, and we need a
+  // whether this write is the one that empties the officer bench, and we need a
   // real 404 for an id that does not exist (a bare .update() on a missing row
   // succeeds with zero rows affected and looks like success).
   const { data: target, error: targetError } = await supabaseAdmin
@@ -87,7 +90,7 @@ export const PATCH: APIRoute = async ({ request, params }) => {
     return apiJson(200, { data: target }, responseHeaders);
   }
 
-  // ── LAST-ADMIN GUARD ──────────────────────────────────────────────────────
+  // ── LAST-OFFICER GUARD ────────────────────────────────────────────────────
   // Only relevant when this write removes an *approved officer* from the pool.
   // Treasurer and admin are one capability tier (see lib/auth.ts), so the pool
   // this protects is every approved officer — not admins alone. A pending or
@@ -105,7 +108,7 @@ export const PATCH: APIRoute = async ({ request, params }) => {
       .eq('status', 'approved');
 
     if (countError || count === null) {
-      // Fail CLOSED. If we cannot prove another admin exists, we do not perform
+      // Fail CLOSED. If we cannot prove another officer exists, we do not perform
       // the one write that can lock everyone out of the club's own portal.
       console.error('[api/members/:id] officer count failed — refusing demotion', {
         targetId: id,

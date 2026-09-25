@@ -44,8 +44,10 @@ Before writing code, read:
    `innerHTML` feed was a stored-XSS hole that allowed treasurer→admin
    escalation.
 4. **Never write `role` or `status` on a returning login.** In
-   `api/auth/callback.ts`: missing profile → insert `{ id, email, name }` only
-   (column defaults own role/status); existing profile → update `email`/`name`
+   `api/auth/callback.ts`: missing profile → insert `{ id, email, name, status }`
+   with `status` decided once by the domain rule (school → `approved`, the same
+   rule the STEP 10 trigger applies; the column default is still `pending`),
+   `role` left to the column default; existing profile → update `email`/`name`
    only. The tempting upsert with `role: 'member', status: 'pending'` silently
    demotes every officer and un-approves every member on their next sign-in.
 5. **Migration sequencing: SQL first, then code.** The app selects

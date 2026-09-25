@@ -105,17 +105,20 @@ all in the same change.
 
 ### The grandfathered admin vs STEP 9
 
-**Severity: structural.** The club's only admin signs in with a personal
-(non-school) address and keeps access through the grandfather clause in the
-OAuth callback. Consequences: the DB-level domain constraint (STEP 9) must
+**Severity: structural.** The founding admin row is a personal (non-school)
+address that keeps access through the grandfather clause in the OAuth
+callback (the club now has other officers on school accounts, but that row
+still exists and is still an approved admin). Consequences: the DB-level domain constraint (STEP 9) must
 never be applied while that row exists, and the domain rule for that account
 is enforced in exactly one code path. If the admin ever moves to a school
 account, apply STEP 9 and delete this entry.
 
 ### `/about`'s select lists are a privacy boundary — do not widen them casually
 
-**Severity: structural.** `/about` is the one guard-less page, and it reads
-through `supabaseAdmin`, which can see everything. What keeps it safe is that
+**Severity: structural.** `/about` is the one public page that reads through
+`supabaseAdmin` with no gate at all (`/login` and `/join` read nothing;
+`/checkin` reads one event's `title, start_time, end_time, location` only after
+a signed QR token verifies), and `supabaseAdmin` can see everything. What keeps it safe is that
 its queries name only the columns the public may see:
 
 - `events` → `id, title, start_time, category, recap` (never `created_by`;
@@ -265,7 +268,7 @@ closed on `rebuild/mbc-portal`:
 | Empty `AUTH_SECRET` silently signed forgeable tokens | Boot-time env validation refuses to start |
 | Supabase error text leaked into redirect URLs (`&detail=`) | Fixed error-code set; detail only in the function log |
 | No CSRF defence beyond `SameSite=lax` | Origin/Sec-Fetch-Site check in the shared guards; signout GET covered too |
-| No last-admin guard | Both member endpoints refuse the write that empties the admin bench (with the atomicity caveat above) |
+| No last-admin guard | Both member endpoints refuse the write that empties the officer bench — admins and treasurers, one tier since 2026-09-15 (with the atomicity caveat above) |
 | 4-hour bearer QR tokens | 15 minutes + pinned algorithm/issuer/audience + auto-refresh |
 | Calendar bucketed days on UTC (evening events on the wrong day) | Pacific-local day keys everywhere |
 | Attendance log shown club-wide to every member | Members see only their own history; emails render officer-only |

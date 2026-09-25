@@ -146,10 +146,10 @@ export const GET: APIRoute = async ({ request }) => {
     if (existingProfile && existingStatus === 'approved') {
       // ── THE GRANDFATHER CLAUSE ──────────────────────────────────────────
       // An account that an officer already approved keeps its access even
-      // though its address is not a school domain. Without this, the club's
-      // only admin — whose Google account is a personal address (see STEP 0 of
-      // supabase-schema.sql) — is locked out of their own app the moment this
-      // rule ships, and the app cannot be recovered without manual SQL.
+      // though its address is not a school domain. Without this, the
+      // founding admin — whose Google account is a personal address (see
+      // STEP 0 of supabase-schema.sql) — would have been locked out the
+      // moment this rule shipped, recoverable only with manual SQL.
       // The rule still applies to everyone else: only an ALREADY-APPROVED row
       // passes, so no new non-school account can slip through.
       console.warn(

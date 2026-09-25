@@ -18,19 +18,27 @@ ended up unauthenticated in the old app — do not hand-roll a new one.
   policies.
 - **No client framework.** No React, no islands. Pages are `.astro` files with
   plain `<script>` blocks, one global stylesheet at `public/styles/global.css`.
-- **No external runtime resources.** Fonts are self-hosted via `@fontsource`
-  packages (Barlow Condensed, Libre Baskerville), bundled at build time. No
-  CDNs, no Google Fonts URLs, no remote images.
+- **No external runtime resources, with one exception.** Fonts are
+  self-hosted via `@fontsource` packages (Barlow Condensed, Libre
+  Baskerville), bundled at build time. No CDNs, no Google Fonts URLs. The
+  exception is club photos: `/about` and `/calendar` load them in `<img>`
+  straight from the public `club-photos` Supabase Storage bucket.
 
-Astro config is four lines ([`club-dashboard-astro/astro.config.mjs`](../club-dashboard-astro/astro.config.mjs)):
+Astro config ([`club-dashboard-astro/astro.config.mjs`](../club-dashboard-astro/astro.config.mjs)):
 
 ```js
 export default defineConfig({
   output: 'server',
   adapter: vercel(),
   server: { port: 3000 },
+  security: { checkOrigin: false }, // must stay false on Vercel
 });
 ```
+
+`checkOrigin: false` is load-bearing: Astro's built-in CSRF check can never
+pass inside a Vercel function and 403s every form-like or content-type-less
+mutation. Our own origin check in `lib/auth.ts` does the job — see
+[DEPLOYMENT.md](DEPLOYMENT.md#astros-securitycheckorigin-must-stay-false).
 
 ---
 
@@ -55,6 +63,7 @@ club-dashboard-astro/
 │   └── pages/
 │       ├── index.astro                 ← home dashboard
 │       ├── login.astro  pending.astro  checkin.astro   ← standalone (no layout)
+│       ├── about.astro  join.astro     ← PUBLIC, standalone: showcase + recruiting QR
 │       ├── calendar.astro  attendance.astro
 │       ├── members.astro   announcements.astro
 │       └── api/                        ← JSON endpoints (see docs/API.md)
@@ -153,9 +162,15 @@ distinguish "a database blip parked you here" from "you are genuinely waiting".
 | `apiRequireApproved` | member-facing endpoints | Returns `{ok:false, response}` — 403 `Invalid origin` (CSRF), 401, or 403 `Account pending approval` |
 | `apiRequireOfficer` | officer endpoints | …plus 403 `Forbidden` unless approved admin/treasurer |
 | `apiRequireAdmin` | `PATCH /api/members/:id` | …plus 403 `Forbidden` unless approved officer — **identical to `apiRequireOfficer` since 2026-09-15**, kept as a separate name so re-splitting the tiers is one line in `buildSessionUser` |
+| `apiRequireActualOfficer_previewToggleOnly` | `POST /api/preview` **only** | …plus 403 `Forbidden` unless the **real** role is officer (`actualIsOfficer`) — it ignores the student preview so a previewing officer can turn it off. Never use it anywhere else: see [KNOWN-GAPS.md](KNOWN-GAPS.md#one-guard-ignores-the-student-preview--on-purpose) |
 
 Derived flags: `isApproved` = `status === 'approved'`; `isOfficer` and
-`isAdmin` **both require approved** — a pending admin is nobody.
+`isAdmin` **both require approved** — a pending admin is nobody. Both read the
+**effective** role: while an officer has "view as student" on (the `mbc-view`
+cookie, read only in `buildSessionUser`), the effective role is `member`, so
+every officer guard fails closed and every officer panel is simply not
+rendered. `actualRole` / `actualIsOfficer` carry the real values, for the
+preview banner and toggle only.
 
 **One officer tier (2026-09-15).** A treasurer has every capability an admin
 has, so `isAdmin` is deliberately the same predicate as `isOfficer`. The three
@@ -220,11 +235,15 @@ Google OAuth through Supabase Auth, PKCE flow. Four gates; gate 1 is a hint,
    `admin.deleteUser()` (so a student who picked the wrong account gets a
    clean retry — this needs the `on delete cascade` from the migration).
    **The grandfather clause:** an existing profile with `status='approved'`
-   signs in regardless of domain — without it the club's only admin, on a
-   personal address, is locked out the moment the rule ships.
+   signs in regardless of domain — without it the founding admin, on a
+   personal address, would be rejected and their auth user deleted (see
+   [KNOWN-GAPS.md](KNOWN-GAPS.md#the-grandfathered-admin-vs-step-9)).
 3. **The session layer** — the guards above, on every route.
-4. **Page level** — the only public routes are `/login`, `/checkin`, and
-   `/api/auth/*`; `/pending` needs a session but not approval.
+4. **Page level** — the only public routes are `/login`, `/checkin`,
+   `/about`, `/join`, and `/api/auth/*`; `/pending` needs a session but not
+   approval. `/about` reads through `supabaseAdmin` with no guard, so its
+   select lists are the privacy boundary — see
+   [KNOWN-GAPS.md](KNOWN-GAPS.md#abouts-select-lists-are-a-privacy-boundary--do-not-widen-them-casually).
 
 Error redirects carry a **fixed code only** (`?error=domain | auth-error`) —
 never provider error text, which used to leak into browser history and
@@ -267,21 +286,34 @@ Pending users always land on `/pending` regardless of `next`.
 
 ## Roles and authorization
 
+Two capability tiers, three titles. Since **2026-09-15** `treasurer` and
+`admin` are one tier ("officer") — the owner merged them — so the role values
+are titles shown on the roster and on `/about`, not permission levels.
+
 | Role | Granted by | Can |
 |---|---|---|
 | `member` | default on signup (school accounts are approved automatically) | See everything approved members see; check in to events |
-| `treasurer` | admin promotion | …plus create/cancel events, post/delete announcements, present QR codes, **approve/decline accounts** |
-| `admin` | first one by SQL, then promotion | …plus change member roles |
+| `treasurer` / `admin` (officer) | first one by SQL, then promotion by any officer | …plus create/cancel events, present QR codes, post/delete announcements, write recaps/photos/bio for `/about`, approve/decline accounts, **change roles**, pre-register members by email |
 
-Approve/decline (`PATCH /api/members/:id/status`) is deliberately officer-wide —
-treasurers run meetings, and ruling on accounts is part of running a meeting.
-Since auto-approval it is mostly the **decline** lever: school accounts are in
-at signup, so moderation is after-the-fact — a decline flips the account to
-`rejected`, locks it out, and sticks on every later sign-in.
-Role changes (`PATCH /api/members/:id`) are admin-only, so a treasurer cannot
-mint an admin. Both endpoints refuse the write that would leave zero approved
-admins (the last-admin guard), and an officer can never rule on their own
-account. See [API.md](API.md#members).
+Approve/decline (`PATCH /api/members/:id/status`) is mostly the **decline**
+lever since auto-approval: school accounts are in at signup, so moderation is
+after-the-fact — a decline flips the account to `rejected`, locks it out, and
+sticks on every later sign-in. Role changes (`PATCH /api/members/:id`) are
+guarded by `apiRequireAdmin`, which admits exactly the officers
+`apiRequireOfficer` admits — the separate name is kept so re-splitting the
+tiers is one line in `buildSessionUser`. Both endpoints refuse the write that
+would leave zero approved **officers** (the last-officer guard — the pool is
+every approved admin *and* treasurer, because that is who can still manage
+roles), and an officer can never rule on their own account. See
+[API.md](API.md#members).
+
+The database did **not** merge: `public.is_admin()` (STEP 12) still means
+`role = 'admin'`, so the STEP 13b trigger still stops a *treasurer* changing a
+role under an end-user token, and STEP 13's admin policy still denies a
+treasurer INSERT/DELETE on `profiles`. The app never uses one — every query runs as the
+service role — so this changes nothing today; it matters only if a query ever
+moves off the service role. See
+[DATA-MODEL.md](DATA-MODEL.md#the-role-change-guard-step-13b).
 
 ---
 

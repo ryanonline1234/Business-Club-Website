@@ -102,20 +102,21 @@ Full setup (Supabase project, Google OAuth, Vercel) is in
 
 | Route | Guard | Notes |
 |---|---|---|
-| `/` | approved | Home: greeting, next event, latest announcements, club figures; officers also see the approval-queue nudge |
+| `/` | approved | Home: greeting, next event, latest announcements, club figures; officers also see the approval-queue nudge and shortcuts to the join QR and add-by-email |
 | `/about` | **public** | The club's showcase for non-members: past events with officer-written recaps and photos, officer bios, link to the school's clubs page. Its own Bold Graphic design, not the portal's Warm system; renders a designed empty state until officers add recaps, photos and bios |
 | `/login` | public | Google sign-in; fixed error copy keyed by `?error=` |
 | `/pending` | any session | Waiting room: pending / declined / server-error states |
 | `/calendar` | approved | Month grid + agenda; officers get event composer, cancel, and Present mode (projected QR, auto-refreshing) |
 | `/attendance` | approved | Officers see the club log and turnout; members see **only their own** history |
-| `/members` | approved | Roster; emails officer-only; approval queue officer-only; role select admin-only |
+| `/members` | approved | Roster with check-in counts; emails, approval queue, role select and add-by-email are officer-only. `?add=1#add-members` opens the add-by-email panel |
 | `/announcements` | approved | Server-rendered feed; officers compose and delete |
 | `/checkin?token=…` | public | QR landing page; sign-in round-trips back to the scan via `?next=` |
 | `/join` | public | The permanent recruiting QR — printable and projectable; points at `/about`. Officers reach it from the home dashboard |
 
-"approved" means `requireApproved` — signed in AND officer-approved. Officer
-and admin *controls* are rendered server-side only for those roles, never
-CSS-hidden.
+"approved" means `requireApproved`: signed in with `status = 'approved'`.
+School accounts get that at signup; an officer decline revokes it. Officer
+*controls* are rendered server-side only for officers (never CSS-hidden) —
+and not at all while an officer has "view as student" on.
 
 ## Scripts
 

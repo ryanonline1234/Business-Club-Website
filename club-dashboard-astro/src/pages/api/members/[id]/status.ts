@@ -7,11 +7,10 @@ import { isSchoolEmail } from '../../../../lib/env';
  * PATCH /api/members/:id/status  —  approve or decline a pending account.
  * Body: { status: 'approved' | 'rejected' }
  *
- * Guarded by apiRequireOfficer, i.e. admin OR treasurer — deliberately NOT
- * admin-only. Treasurers run meetings, and letting new members in is part of
- * running a meeting; routing every approval through the one admin is how the
- * queue stops being worked. Role changes are the admin-only verb and live on
- * PATCH /api/members/:id.
+ * Guarded by apiRequireOfficer, i.e. admin OR treasurer. (This was the
+ * officer-wide verb back when role changes were admin-only; since the
+ * 2026-09-15 tier merge every officer can do both. Role changes live on
+ * PATCH /api/members/:id.)
  *
  * FOUR REFUSALS, in this order:
  *   1. Self — an officer may not rule on their own account (403). Checked before
@@ -21,7 +20,7 @@ import { isSchoolEmail } from '../../../../lib/env';
  *      (409). Declining one is still allowed: that is how you dispose of a bad
  *      row. isSchoolEmail is imported, never re-implemented — the rule lives in
  *      lib/env.ts and is mirrored by public.is_school_email() in SQL.
- *   4. Last admin — declining the only approved admin (409). Same guard, same
+ *   4. Last officer — declining the only approved officer (409). Same guard, same
  *      reasoning as the role endpoint: it is the write that locks the club out
  *      of its own approval queue with no recovery short of the Supabase table
  *      editor.
@@ -78,7 +77,7 @@ export const PATCH: APIRoute = async ({ request, params }) => {
   const newStatus = rawStatus as MemberStatus;
 
   // Read the target first: we need its email for the domain check, its role and
-  // status for the last-admin check, and a genuine 404 for an unknown id (a
+  // status for the last-officer check, and a genuine 404 for an unknown id (a
   // bare .update() matching zero rows otherwise reports success).
   const { data: target, error: targetError } = await supabaseAdmin
     .from('profiles')
@@ -118,7 +117,7 @@ export const PATCH: APIRoute = async ({ request, params }) => {
   }
 
   // ── REFUSAL 4: declining the last approved officer ──────────────────────────
-  // Only bites when the target is currently in the approved-admin pool; a
+  // Only bites when the target is currently in the approved-officer pool; a
   // pending or member-role account is not, so declining one is free.
   if (
     newStatus === 'rejected' &&
@@ -133,7 +132,7 @@ export const PATCH: APIRoute = async ({ request, params }) => {
 
     if (countError || count === null) {
       // Fail CLOSED — same posture as the role endpoint. If we cannot prove
-      // another admin exists, we do not perform the write that can lock the
+      // another officer exists, we do not perform the write that can lock the
       // club out of its own portal.
       console.error('[api/members/:id/status] officer count failed — refusing decline', {
         targetId: id,

@@ -23,7 +23,7 @@ deleted in the rebuild. If you need a new read, put it in page frontmatter.
 - Every response is built with `apiJson(...)`, which preserves refreshed
   session `Set-Cookie` headers even on rejections.
 
-### Guard responses (identical on every guarded endpoint)
+### Guard responses (the same on every guarded endpoint)
 
 | Status | Body | When |
 |---|---|---|
@@ -31,6 +31,7 @@ deleted in the rebuild. If you need a new read, put it in page frontmatter.
 | `401` | `{ "error": "Unauthorized" }` | No valid session |
 | `403` | `{ "error": "Account pending approval", "status": "pending" \| "rejected" }` | Signed in but not approved |
 | `403` | `{ "error": "Forbidden" }` | Approved but insufficient role (officer/admin endpoints) |
+| `403` | `{ "error": "You're viewing as a student — exit the preview to do this." }` | Same failed check, but the caller is a real officer with "view as student" on (`forbiddenBody()` in `lib/auth.ts`) — copy only, same decision |
 
 Checks run in that order — the origin check fires before authentication.
 
@@ -58,6 +59,7 @@ checks. The role values remain as titles.
 | `POST` | `/api/members/invite` | officer | `/members` add-members panel |
 | `PATCH` | `/api/members/:id/status` | officer | `/members` approval queue |
 | `PATCH` | `/api/profile/bio` | officer | `/members` own-row bio editor |
+| `POST` | `/api/preview` | **real** officer (ignores the preview) | topbar "View as student" / banner exit |
 | `POST` | `/api/photos` | officer | `/calendar` photo upload (multipart) |
 | `DELETE` | `/api/photos/:id` | officer | `/calendar` photo delete |
 | `POST` | `/api/announcements/create` | officer | `/announcements` composer |
@@ -261,32 +263,36 @@ Three independent checks before the insert: (1) caller signed in and approved,
 
 ## Members
 
-### `PATCH /api/members/:id` — **admin only**
+### `PATCH /api/members/:id` — officer
 
-Change a member's **role**. The one endpoint where `treasurer` is
-insufficient — a treasurer must not be able to mint an admin.
+Change a member's **role**. Guarded by `apiRequireAdmin`, which since the
+2026-09-15 tier merge admits every approved officer — admin **or** treasurer.
+(It was the one admin-only endpoint before; the distinct guard name survives
+so a future re-split is one line in `lib/auth.ts`.)
 
 ```json
 { "role": "admin" | "treasurer" | "member" }
 ```
 
-**The last-admin guard:** a write that would take the approved-admin count to
-zero is refused `409` — otherwise nobody can approve or promote anyone ever
-again, and recovery is hand-editing the database. If the admin *count query
-itself* fails, the endpoint fails closed with `503` and writes nothing.
-Self-demotion is allowed as long as another approved admin remains (the
-"I'm graduating" path). The count-then-write is not atomic — see
+**The last-officer guard:** a write that would take the count of approved
+officers (admin + treasurer) to zero is refused `409` — otherwise nobody can
+approve or promote anyone ever again, and recovery is hand-editing the
+database. Moving someone *between* admin and treasurer never trips it; only a
+demotion to `member` of an approved officer does. If the *count query itself*
+fails, the endpoint fails closed with `503` and writes nothing. Self-demotion
+is allowed as long as another approved officer remains (the "I'm graduating"
+path). The count-then-write is not atomic — see
 [KNOWN-GAPS.md](KNOWN-GAPS.md#the-last-officer-guard-is-not-atomic).
 
 **Responses:** `200 { data }` (also for an idempotent same-role no-op, which
 skips the write) · `400` (missing id / invalid role) · `404` · `409`
-(last admin, or the STEP 9 domain check constraint if applied) · `503`
+(last officer, or the STEP 9 domain check constraint if applied) · `503`
 (count failed) · guard responses · `500`.
 
 ### `PATCH /api/members/:id/status` — officer
 
-Approve or decline an account. Officer-wide **on purpose** — treasurers run
-meetings, and ruling on accounts is part of running a meeting.
+Approve or decline an account. Officer-guarded (admin or treasurer — one
+tier since 2026-09-15).
 
 Since auto-approval (2026-08-12) school accounts are `approved` at signup, so
 moderation is **after-the-fact** and this endpoint is mostly the decline
@@ -308,8 +314,8 @@ Four refusals, in order:
 2. **Missing** — `404` for an unknown id.
 3. **Domain** — `409`: approving a non-school address is refused (declining
    one is allowed — that's how you dispose of a bad row).
-4. **Last admin** — `409`: declining the only approved admin is refused; a
-   failed count query fails closed with `503`.
+4. **Last officer** — `409`: declining the only approved officer (admin or
+   treasurer) is refused; a failed count query fails closed with `503`.
 
 On success the row is stamped with `approved_by` / `approved_at` — **who
 ruled**, not only who said yes; declines are stamped identically.
@@ -343,6 +349,35 @@ edit an `/about` bio. That is the preview keeping its promise, not a bug.
 not a string / too long) · guard responses · `500` — the STEPs 16-18 copy
 when `profiles.bio` doesn't exist yet (`42703`/`PGRST204`), else
 `"Could not save your bio"`.
+
+### `POST /api/preview` — real officer
+
+Turns the officer-only **"view as student"** preview on or off by setting or
+clearing the `mbc-view` cookie (HttpOnly, no `Max-Age`). It lasts until the
+officer exits the preview, signs out, or closes the browser — so it quietly
+survives page loads, tabs and days of an open browser. While it is on, every
+page renders as a plain member and every officer guard fails closed: officer
+panels are not rendered at all (not CSS-hidden), and the sticky gold
+"Viewing as a student" banner is the only sign.
+
+```json
+{ "mode": "student" | "officer" }
+```
+
+Guarded by `apiRequireActualOfficer_previewToggleOnly` — the one guard that
+reads the **real** role, because `apiRequireOfficer` would 403 the request
+that turns the preview off. Do not use that guard anywhere else (see
+[KNOWN-GAPS.md](KNOWN-GAPS.md#one-guard-ignores-the-student-preview--on-purpose)).
+
+Two body shapes, on purpose: **JSON → `200`** (the topbar "View as student"
+button, which then reloads) and **form-urlencoded → `303`** back to the
+referring page (the banner's "Back to officer view", a plain `<form>` so the
+exit works with JavaScript dead). A handy consequence when reading function
+logs: `POST /api/preview 200` means someone *entered* the preview, `303`
+means they left it.
+
+**Responses:** `200 { mode, viewingAsStudent }` · `303` · `400` (bad body /
+bad mode) · guard responses.
 
 ---
 
@@ -430,7 +465,7 @@ restriction. `isSchoolEmail()` closes it.
 
 Per address: existing profile → **untouched** (re-pasting last week's sheet is a
 no-op, never a reset); otherwise `auth.admin.createUser({ email_confirm: true })`
-plus the same profile fallback `api/auth/callback` uses. `email_confirm` is
+plus a profile fallback in case the signup trigger misses (the trigger writes `approved` for school addresses; the fallback inserts `id`/`email`/`name` only, so on a trigger miss the row would take the column default `pending` — unlike the callback's fallback, which sets `status` explicitly). `email_confirm` is
 load-bearing — Supabase refuses to auto-link an OAuth identity to an unverified
 address, so without it the pre-registered row would be orphaned at sign-in.
 

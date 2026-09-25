@@ -21,7 +21,12 @@ The app selects `profiles.status` on every request. The sequence:
 3. **Run STEP 15 alone** and read it: every account that had access yesterday
    must show `status = 'approved'`. If anyone who had access shows `pending`,
    fix it *before* deploying code.
-4. **Then deploy the code.**
+4. **Paste STEPs 16–19 as one block** — the `/about` columns and `photos`
+   table, plus STEP 19, the auto-approval backfill. Safe any time, on either
+   side of the code deploy. Caveat: STEP 19 approves every school-domain row
+   at `pending` on every run, so suspend an account with `rejected`, never
+   `pending`.
+5. **Then deploy the code.**
 
 Why this order is the only safe one: the migration against the *old* code just
 means new signups carry a `status` the old app ignores. The new code against
@@ -163,7 +168,7 @@ cutover and re-project.
 ## 1. Supabase
 
 1. Create a project at [supabase.com](https://supabase.com).
-2. Apply the schema — the three-pass procedure in
+2. Apply the schema — the four-pass procedure in
    [Deploy order](#deploy-order-sql-first-then-code).
 3. **Authentication → Providers → Google** → enable, paste your Google OAuth
    client ID and secret.
@@ -185,9 +190,19 @@ most common first-time setup failure.
 
 ### Create the first admin
 
-Signup yields `role='member', status='pending'`, and only an approved officer
-can approve anyone — so the very first account is bootstrapped by hand after
-its first sign-in:
+A school signup yields `role='member', status='approved'` (auto-approval).
+Only an officer can promote anyone, so the very first officer is bootstrapped
+by hand: **sign in once with a school address**, then run the SQL below (the
+`status` line is a no-op for a school address — harmless).
+
+A **non-school** founder cannot use that order: the callback rejects a
+first-time non-school sign-in and deletes the auth user, and the STEP 7
+cascade takes the profile with it, so the UPDATE would match no row. For that
+case, create the account first — Supabase → Authentication → Users → Add user,
+exact address, auto-confirm (or `auth.admin.createUser({ email_confirm: true })`
+with no password, as `api/members/invite.ts` does) — then run the SQL, then
+sign in with Google. Supabase links the Google identity to that same user id,
+and the callback's grandfather clause admits the now-approved row.
 
 ```sql
 update public.profiles
@@ -195,8 +210,8 @@ update public.profiles
  where email = 'you@example.com';
 ```
 
-From then on `/members` handles approvals and promotions, and the last-admin
-guard prevents the club from locking itself out again.
+From then on `/members` handles declines and promotions, and the
+last-officer guard prevents the club from locking itself out again.
 
 ---
 
@@ -303,8 +318,10 @@ projected code. A printed QR is stale by design.
 
 No build-time migration step, so rolling back a **deployment** in the Vercel
 dashboard is safe on its own — including rolling back to pre-approval code
-after the migration ran (the old code ignores `status`; new signups pile up
-as `pending` invisibly until you roll forward again).
+after the migration ran (the old code ignores `status`, so while it is live
+officer declines and the non-school `rejected` status go unenforced; the
+STEP 10 trigger keeps creating school signups `approved`, so there is no
+backlog to clear when you roll forward).
 
 **Schema** changes are applied by hand and are not rolled back with a deploy;
 reverting one means writing the inverse SQL yourself. The migration was

@@ -238,8 +238,11 @@ export const POST: APIRoute = async ({ request }) => {
 
     // The on_auth_user_created trigger should have made the profile (status
     // derived from the school domain => 'approved'). It has been unreliable
-    // before — hence the same belt-and-braces fallback api/auth/callback uses.
-    // Insert writes only id/email/name; column defaults own role and status.
+    // before — hence a belt-and-braces fallback like api/auth/callback's.
+    // Insert writes only id/email/name; column defaults own role and status —
+    // which means a trigger miss here yields 'pending' (the column default),
+    // not 'approved' as the callback's fallback would. ignoreDuplicates keeps
+    // it ON CONFLICT DO NOTHING, so a row the trigger did write is untouched.
     const profile = await supabaseAdmin
       .from('profiles')
       .upsert({ id: userId, email, name }, { onConflict: 'id', ignoreDuplicates: true })

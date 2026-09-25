@@ -6,7 +6,7 @@ file. It is the single source of truth: no migration tooling, no ORM, no
 generated types. Every statement is idempotent, so re-running the file is a
 no-op and running it on an empty project builds everything from scratch.
 
-**How to run it — three passes, not one paste.** The SQL Editor only shows the
+**How to run it — four passes, not one paste.** The SQL Editor only shows the
 *last* result set, so:
 
 1. **STEP 0 alone** — the pre-flight. Read the rows it returns; they decide
@@ -14,15 +14,18 @@ no-op and running it on an empty project builds everything from scratch.
    "relation does not exist" — that counts as zero rows.)
 2. **PART 1 → STEP 14** as one block.
 3. **STEP 15 alone** — verification. Read it before deploying any code.
-4. **STEPs 16–18 as one block** — the `/about` additions (`bio`, `recap`, the
-   `photos` table). Unlike the rest, these are safe **any time, in either
-   order relative to the code deploy**: nullable columns older code never
-   selects, a new table nothing else references, and the code that reads them
-   fails soft. See [KNOWN-GAPS.md](KNOWN-GAPS.md#migration-steps-verified-and-one-still-unproven).
+4. **STEPs 16–19 as one block** — the `/about` additions (`bio`, `recap`, the
+   `photos` table) plus STEP 19, the auto-approval backfill. Unlike the rest,
+   these are safe **any time, in either order relative to the code deploy**:
+   nullable columns older code never selects, a new table nothing else
+   references, code that reads them fails soft, and STEP 19 only approves
+   school rows still at `pending`. That last part is also its caveat: it runs
+   on every re-paste, so a manual suspension must use `rejected`, never
+   `pending`. See [KNOWN-GAPS.md](KNOWN-GAPS.md#migration-steps-verified-and-one-still-unproven).
 
 Deploy order is **SQL first, then code** — the wrong order strands every user
 on `/pending`. See [DEPLOYMENT.md](DEPLOYMENT.md#deploy-order-sql-first-then-code).
-(That constraint is about STEPs 0–15; STEPs 16–18 are exempt, as above.)
+(That constraint is about STEPs 0–15; STEPs 16–19 are exempt, as above.)
 
 ---
 
@@ -193,8 +196,10 @@ officer has since declined.
 
 STEP 10's `handle_new_user()` differs from the old one in four ways:
 
-- Writes `status`, derived from the domain: school email → `'pending'`,
-  anything else → `'rejected'` (it does **not** raise — a raise surfaces as an
+- Writes `status`, derived from the domain: school email → `'approved'`
+  (auto-approval since 2026-08-12 — before that it wrote `'pending'`; a
+  database migrated earlier needs STEP 10 + STEP 19 re-pasted), anything
+  else → `'rejected'` (it does **not** raise — a raise surfaces as an
   opaque Supabase `server_error`; the callback owns the user-facing rejection).
 - `on conflict (id) do nothing`, so it can never fight the callback fallback.
 - Prefers `raw_user_meta_data->>'full_name'` first, matching the callback (the
@@ -204,8 +209,10 @@ STEP 10's `handle_new_user()` differs from the old one in four ways:
 
 **The trigger is not trusted on its own.** It has been observed not to fire
 (commit `37e9246`); `/api/auth/callback` independently creates the row. Both
-paths write `id`/`email`/`name` only on the insert and never touch
-`role`/`status` on an existing row — see
+paths decide `status` once, on the insert, by the same domain rule (school →
+`approved`; the trigger also writes `role = 'member'`, the callback leaves
+`role` to the column default) and never touch `role`/`status` on an existing
+row — see
 [ARCHITECTURE.md](ARCHITECTURE.md#profile-creation--and-the-one-write-you-must-never-make).
 
 ---
@@ -243,9 +250,18 @@ the officer update policy would otherwise let a treasurer
 The `profiles_role_change_guard` trigger raises `insufficient_privilege` when
 `role` changes and the caller is not an approved admin.
 
+**The 2026-09-15 officer-tier merge did not reach the database.** The app
+treats treasurer and admin as one tier, but `public.is_admin()` (STEP 12)
+still means `role = 'admin'`, and it keys two things: this trigger (under an
+end-user token a treasurer still cannot change a role) and STEP 13's "Admins
+can manage all profiles" policy (the only INSERT/DELETE grant on `profiles`).
+Nothing in the app runs under an end-user token, so both are invisible today —
+align `is_admin()` with the app, which fixes both, only if a query ever moves
+off the service role.
+
 It deliberately stands aside when `auth.uid()` is NULL — i.e. for the
 service-role client (the app's own `PATCH /api/members/:id`, which
-`apiRequireAdmin` already controls), the Supabase table editor, and psql.
+`apiRequireAdmin` — i.e. any approved officer — already controls), the Supabase table editor, and psql.
 That is what keeps manual recovery possible.
 
 ---

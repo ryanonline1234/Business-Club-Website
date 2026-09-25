@@ -37,7 +37,8 @@ export interface SessionUser {
   isApproved: boolean;
   /** approved AND effective role is admin or treasurer. */
   isOfficer: boolean;
-  /** approved AND effective role is admin. */
+  /** approved AND effective role is admin or treasurer — the same predicate
+   *  as isOfficer since the 2026-09-15 merged tier (see buildSessionUser). */
   isAdmin: boolean;
 
   /**
@@ -518,7 +519,11 @@ export async function apiRequireActualOfficer_previewToggleOnly(
   return guard;
 }
 
-/** apiRequireApproved plus role === 'admin'. */
+/**
+ * apiRequireApproved plus session.isAdmin. Since the 2026-09-15 merged tier
+ * this admits every approved officer, exactly as apiRequireOfficer does; the
+ * separate name is kept so the tiers can be split again later.
+ */
 export async function apiRequireAdmin(
   request: Request,
   responseHeaders: Headers

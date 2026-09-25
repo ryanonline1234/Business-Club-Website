@@ -4,7 +4,7 @@ Where the project is **right now** and what to do next. Overwrite this file in
 place; do not append history to it — history lives in git and
 [REBUILD-PLAN.md](REBUILD-PLAN.md).
 
-_Last refreshed: 2026-09-17._
+_Last refreshed: 2026-09-25._
 
 ---
 
@@ -18,10 +18,26 @@ _Last refreshed: 2026-09-17._
 | Branch | `rebuild/mbc-portal` — **identical to `main`**; deploys go out from either |
 | Schema | `supabase-schema.sql` STEPs 0–19 all applied and verified |
 
-The app is in real use: 40 profiles (35 members, 5 admins), 2 events, 0
-check-ins, 0 announcements, 0 photos. It is fully built and **empty of
-content** — that gap is the main thing standing between the site and being
-worth showing people.
+The app is in real use: **98 profiles** (93 members, 5 admins), 2 events
+(both cancelled), 0 check-ins, 0 announcements, 0 photos. 55 of those
+profiles were pre-registered on 2026-09-25 from the "Business Club Attendance
+26/27" sheet (both tabs; 20 more people on it had already signed in) — by a
+one-off service-role script that mirrors `POST /api/members/invite` exactly
+(auth users tagged `invite_source: 'Business Club Attendance 26/27'`). One
+entry was held back: `ishabose@mittymonarch.com` has no grad year, and every
+real student address in the database has one. It is fully built and **empty of content** — that gap
+is the main thing standing between the site and being worth showing people.
+
+**Add-by-email (the UI) had never been used** as of 2026-09-25. The owner
+asked for it again, not knowing it existed. Two likely reasons: its toggle
+was a bare uppercase label (no arrow, no button look) that reads as a heading,
+and the function logs show *an* officer entering "view as student" just
+before visiting `/members` — the logs don't name which officer, so that part
+is unconfirmed. 2026-09-25: it is now linked from the home
+dashboard (`/members?add=1#add-members` opens it) and its toggle looks like a
+button. If an officer says an officer feature is missing, check for the gold
+"Viewing as a student" banner first — in the function logs,
+`POST /api/preview 200` = *some* officer entered the preview, `303` = left it.
 
 ## What exists
 
