@@ -5,16 +5,23 @@
  * Visibility rules (all enforced SERVER-SIDE, nothing is CSS-hidden):
  *   • Everyone approved sees the roster: name, role tag, joined date.
  *   • Emails render ONLY for officers (the old page leaked every address).
- *   • The pending-approvals panel and the declined disclosure render ONLY
- *     for officers.
- *   • The role <select> renders ONLY for admins (role changes are the
- *     admin-only verb — PATCH /api/members/:id).
+ *   • The pending-approvals panel, the declined disclosure, the role <select>
+ *     and the add-members panel render ONLY for officers. (Since 2026-09-15
+ *     admin and treasurer are one tier, so `isAdmin` === `isOfficer`; the
+ *     role select still keys off isAdmin so a re-split stays a one-line
+ *     change in lib/auth.ts.)
+ *   • `/members?add=1#add-members` opens the add-members panel on arrival —
+ *     the home dashboard links there, because a collapsed disclosure on this
+ *     page was too easy to miss.
  *
  * Mutations (client JS, fetch + location.reload() on success):
  *   • PATCH /api/members/:id/status  { status: 'approved' | 'rejected' }
  *     — approve / decline / restore. Officer-guarded server-side.
  *   • PATCH /api/members/:id         { role }
- *     — admin-guarded server-side. Last-admin 409 surfaced inline.
+ *     — admin-guarded server-side (= officer since the tier merge).
+ *       Last-officer 409 surfaced inline.
+ *   • POST /api/members/invite       { text }
+ *     — officer-guarded pre-registration by email (the club-fair sheet).
  *   • PATCH /api/profile/bio         { bio }
  *     — the signed-in officer's OWN public /about bio, edited from their own
  *       roster row only. Officer-guarded server-side; the prefill read fails
@@ -43,6 +50,10 @@ const roster = (approvedData ?? []).slice().sort((a, b) => {
   const bn = (b.name ?? b.email ?? '').toLowerCase();
   return an.localeCompare(bn);
 });
+
+/* Arriving via the home dashboard's "Add members" link opens the panel. The
+   param only ever sets a boolean; its value is never read or echoed. */
+const openAddMembers = session.isOfficer && Astro.url.searchParams.has('add');
 
 /* ── Officer-only queues ───────────────────────────────────────────────── */
 let pendingRows: any[] = [];
@@ -212,9 +223,13 @@ const plural = (n: number, one: string, many: string) => (n === 1 ? one : many);
       on the roster now, and Supabase links their Google identity to this exact
       account on first sign-in. */}
   {session.isOfficer && (
-    <section class="owned addm" aria-labelledby="addm-h">
+    <section class="owned addm" id="add-members" aria-labelledby="addm-h">
       <div class="event-actions__head"><span class="flag">Officer only</span></div>
-      <details class="addm__wrap">
+      <p class="small muted addm__lede">
+        Got a paper sign-up sheet? Paste the emails and they're on the roster before they
+        ever sign in.
+      </p>
+      <details class="addm__wrap" open={openAddMembers}>
         <summary id="addm-h">Add members by email</summary>
         <form class="addm__form" id="addm-form" novalidate>
           <label class="field">
@@ -543,7 +558,8 @@ const plural = (n: number, one: string, many: string) => (n === 1 ? one : many);
     });
   });
 
-  /* ── Role change (admin only — the select only exists for admins) ────── */
+  /* ── Role change (officers — the select only renders when isAdmin, which
+     is the same predicate as isOfficer since the 2026-09-15 tier merge) ── */
   document.querySelectorAll<HTMLSelectElement>('.js-role').forEach((sel) => {
     // SSR `selected` can be stale after back/forward cache; assert the truth.
     sel.value = sel.dataset.currentRole ?? sel.value;

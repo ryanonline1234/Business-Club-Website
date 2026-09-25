@@ -658,7 +658,10 @@ button,input,select,textarea{ font:inherit; color:inherit; }
 .feed{ max-width:74ch; }
 
 .composer{ border-bottom:1px solid var(--rule); margin-bottom:8px; }
-.composer > summary{
+/* Shared with the add-members disclosure on /members: a bare uppercase label
+   there read as a heading, not a control, and officers missed it. */
+.composer > summary,
+.addm__wrap > summary{
   list-style:none; cursor:pointer; display:inline-flex; align-items:center; gap:9px;
   min-height:var(--tap); padding:0 18px; margin:16px 0;
   font-family:var(--f-cond); text-transform:uppercase; letter-spacing:var(--tr-2);
@@ -666,8 +669,10 @@ button,input,select,textarea{ font:inherit; color:inherit; }
   border:1px solid var(--gold-ink); background:var(--gold); color:#241F19;
   border-radius:var(--r);
 }
-.composer > summary::-webkit-details-marker{ display:none; }
-.composer[open] > summary{ background:transparent; color:var(--gold-2); border-color:var(--rule-2); }
+.composer > summary::-webkit-details-marker,
+.addm__wrap > summary::-webkit-details-marker{ display:none; }
+.composer[open] > summary,
+.addm__wrap[open] > summary{ background:transparent; color:var(--gold-2); border-color:var(--rule-2); }
 .composer__form{
   background:var(--paper-2); border:1px solid var(--rule);
   border-left:3px solid var(--gold);
@@ -1027,17 +1032,10 @@ button,input,select,textarea{ font:inherit; color:inherit; }
 
 /* ── Add members by email (officer panel on /members) ──────────────────────
    Lives beside the pending queue; reuses .owned for the officer convention. */
-.addm { margin-bottom: 22px; }
-.addm__wrap > summary {
-  cursor: pointer;
-  font-family: var(--f-cond);
-  font-size: var(--t-14);
-  letter-spacing: var(--tr-2);
-  text-transform: uppercase;
-  min-height: var(--tap);
-  display: flex;
-  align-items: center;
-}
+.addm { margin-bottom: 22px; scroll-margin-top: 16px; }
+.addm__lede { margin: 0; max-width: 60ch; }
+/* Button look comes from the shared .composer > summary rule (ANNOUNCEMENTS). */
+.addm__wrap > summary { margin: 12px 0 0; }
 .addm__form { margin-top: 12px; display: grid; gap: 12px; justify-items: start; }
 .addm__form .field { width: 100%; }
 .addm__out {
