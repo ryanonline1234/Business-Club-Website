@@ -328,11 +328,32 @@ token can never pass.
 ```
 Officer on /calendar → Present mode → GET /api/events/:id/qr   (officer-gated)
   → full-bleed projected QR, silently re-fetched ~3 min before expiry
+  → live tally: GET /api/events/:id/checkins every 3 s → a NUMBER, never names
 Member scans → /checkin (public) → signs in if needed (?next= round trip)
-  → taps Check in → POST /api/attendance/checkin { qr_token }
+  → already checked in? server renders "You're checked in" (no button)
+  → otherwise the page POSTs automatically → POST /api/attendance/checkin { qr_token }
   → identity comes from the SESSION, never the body
   → event must exist, be 'active', and be inside its check-in window
 ```
+
+**Automatic check-in (2026-09-30).** The owner chose scan-and-you're-in over
+a tap. Opening a valid `/checkin` link while signed in *is* checking in.
+Link unfurlers (iMessage, Slack) fetch the page without the member's cookies
+and don't run its script, and the `SameSite=Lax` session cookie isn't sent to
+a cross-site `<iframe>`, so neither can check anyone in. What remains is any
+top-level visit with a live token: a scan, but equally a tap on a forwarded
+or pasted link (Lax cookies ride top-level navigations). See the
+bearer-token note below.
+
+**"Am I checked in?"** is answered server-side wherever it matters: `/checkin`
+renders the ✓ state for an existing row — including after the code expires
+or the event stops being active: the token is then re-verified with only its
+expiry relaxed (`verifyQRToken(token, { expiredGraceS })`, signature still
+enforced), purely to read the member's own row; someone with no row still gets
+the details-free "invalid" view. The home page's next-up card shows
+your status on the day of the meeting, and the calendar's event facts show it
+once check-in has opened. Each is the signed-in member's **own** row only; a
+failed lookup renders nothing rather than a false "not checked in".
 
 The check-in window is `start_time − 30 min` → `end_time + 2 h` (or
 `start_time + 4 h` when there's no end). A valid token is *not* enough on its
@@ -343,7 +364,8 @@ get a clean 409 from an explicit lookup, with the
 
 **The token is still a bearer credential.** Anyone in the room who photographs
 the projected code can check in, or forward it to an absent friend, for up to
-15 minutes. Accepted trade — see
+15 minutes. With automatic check-in, a friend who merely *opens* a forwarded
+link while signed in is checked in — the same exposure, one tap shorter. Accepted trade — see
 [KNOWN-GAPS.md](KNOWN-GAPS.md#the-qr-token-is-a-shared-bearer-secret).
 
 Rotating `AUTH_SECRET` invalidates every outstanding token immediately.

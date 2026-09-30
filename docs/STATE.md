@@ -4,7 +4,7 @@ Where the project is **right now** and what to do next. Overwrite this file in
 place; do not append history to it — history lives in git and
 [REBUILD-PLAN.md](REBUILD-PLAN.md).
 
-_Last refreshed: 2026-09-25._
+_Last refreshed: 2026-09-30._
 
 ---
 
@@ -40,6 +40,14 @@ button. If an officer says an officer feature is missing, check for the gold
 `POST /api/preview 200` = *some* officer entered the preview, `303` = left it.
 
 ## What exists
+
+Check-in (2026-09-30): scanning the projected QR checks a signed-in member in
+**automatically** and shows a ✓ (reopening shows "You're checked in", never a
+second button — even after the 15-minute code expires; there's a "Not you?"
+on every checked-in screen for shared iPads); Present mode shows a live count that ticks up; members see
+their own ✓ / not-yet on the home card and the calendar; officers download a
+date-named attendance PDF per meeting from `/attendance` (Meeting sheets) or
+the calendar.
 
 Portal (signed-in, "Warm & Mobile-First" design): home, `/calendar` with QR
 present mode, `/attendance`, `/members` with roster + approval queue + add-by-email,

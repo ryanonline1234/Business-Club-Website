@@ -20,8 +20,10 @@ deleted in the rebuild. If you need a new read, put it in page frontmatter.
   `reason` field, noted per endpoint. **Raw Postgres/Supabase messages are
   never echoed to the client** — detail goes to the Vercel function log.
 - Sessions come from the Supabase auth cookie; there is no bearer-token path.
-- Every response is built with `apiJson(...)`, which preserves refreshed
-  session `Set-Cookie` headers even on rejections.
+- Every JSON response is built with `apiJson(...)`, which preserves refreshed
+  session `Set-Cookie` headers even on rejections. The two non-JSON successes
+  (the attendance PDF and `POST /api/preview`'s 303) are built directly from
+  the same `Headers` object, which keeps those cookies intact too.
 
 ### Guard responses (the same on every guarded endpoint)
 
@@ -53,6 +55,8 @@ checks. The role values remain as titles.
 | `POST` | `/api/events/create` | officer | `/calendar` composer |
 | `DELETE` | `/api/events/:id/delete` | officer | `/calendar` cancel |
 | `GET` | `/api/events/:id/qr` | **officer** | `/calendar` Present mode |
+| `GET` | `/api/events/:id/checkins` | officer | `/calendar` Present mode live tally (polled) |
+| `GET` | `/api/events/:id/attendance.pdf` | officer | `/attendance` meeting sheets, `/calendar` event detail |
 | `PATCH` | `/api/events/:id/recap` | officer | `/calendar` recap editor (past events) |
 | `POST` | `/api/attendance/checkin` | **approved** | `/checkin` |
 | `PATCH` | `/api/members/:id` | officer | `/members` role select |
@@ -199,6 +203,43 @@ Minting is refused for events that can no longer accept check-ins:
 There is deliberately no *lower* bound here (unlike check-in itself): an
 officer setting up a room early may open Present mode before the window opens.
 
+### `GET /api/events/:id/checkins` — officer
+
+`{ "count": <number> }` — how many people have checked in to this event.
+Polled every 3 s by Present mode's live tally, which ticks the projected
+number up as people scan. While the tab is hidden no request is made (the
+loop re-checks every 15 s and refreshes immediately when the tab returns);
+after a failed poll — including a 401/403, which the guard also returns on a
+transient Supabase blip — it keeps retrying every 15 s rather than stopping,
+and dims the number after three misses. It stops for good only when the QR
+fetch reports the meeting over or cancelled. A **count only, never
+names**: the projected screen is seen by the whole room. `no-store`.
+
+**Responses:** `200 { count }` · `400 { "error": "Invalid event id" }`
+(non-UUID) · guard responses · `500 { "error": "Could not count check-ins" }`.
+An unknown-but-well-formed id simply counts `0`.
+
+### `GET /api/events/:id/attendance.pdf` — officer
+
+The meeting's attendance sheet as a PDF download, built server-side by
+`lib/attendance-pdf.ts` (pdf-lib). `Content-Disposition: attachment`, named
+for the meeting's **Pacific** date: `MBC Attendance 2026-10-01.pdf`. Inside:
+the long date, title / time / location, the total, and a numbered list —
+name, school email, check-in time — alphabetical by name.
+
+It carries members' **emails**, hence officer-only and `no-store`. Any event
+status is served (a cancelled meeting's sheet says so on its face); the
+`/attendance` list only offers non-cancelled meetings whose check-in has
+opened. Names are drawn in the built-in Helvetica (WinAnsi): Western accents
+print as-is, other accents are stripped to the base letter ("Nguyễn" →
+"Nguyen", "Łukasz" → "Lukasz"), and anything else (e.g. CJK) prints as "?".
+Emails are never character-substituted; a long one shrinks (down to 7 pt)
+before it is ever cut short with "…".
+
+**Responses:** `200` (`application/pdf`) · `400` (invalid id) · `404
+{ "error": "Meeting not found" }` · guard responses · `500` (lookup, read, or
+render failure — fixed copy, detail in the log).
+
 ### `PATCH /api/events/:id/recap` — officer
 
 Officer-written "what happened" prose for a past event, rendered on the
@@ -232,7 +273,10 @@ the log), else `"Could not save the recap"`.
 
 ### `POST /api/attendance/checkin` — approved
 
-Records **the caller's** attendance. The body carries `qr_token` and nothing
+Records **the caller's** attendance. `/checkin` calls it **automatically on
+page load** for a signed-in, approved member who isn't already checked in
+(owner decision, 2026-09-30 — scan and you're in), and again from its "Try
+again" button after a failure. The body carries `qr_token` and nothing
 else; the member written is always `session.id`. The old endpoint accepted
 `member_id` from the body — that was the impersonation hole, and a `member_id`
 key in the body is now logged as a probe and ignored. **Never reintroduce a

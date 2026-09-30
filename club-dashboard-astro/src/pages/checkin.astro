@@ -11,10 +11,30 @@
  *   signin  — valid token but nobody signed in: hand off to Google with a
  *             root-relative ?next= so they land right back here.
  *   pending — signed in but not yet approved by an officer.
- *   ready   — signed in + approved: the one big thumb-zone button. Client JS
- *             POSTs { qr_token } to /api/attendance/checkin and swaps to the
- *             pre-rendered done / already panels (textContent only — no HTML
- *             is ever built from response data).
+ *   already — signed in + approved AND this member already has an attendance
+ *             row for this event. Rendered server-side, so reopening or
+ *             refreshing the page answers "am I checked in?" with a ✓ instead
+ *             of offering a button whose result you only learn by tapping it.
+ *             This holds even after the 15-minute code has expired (or the
+ *             event stopped being active): the token is re-verified with the
+ *             expiry relaxed — signature still enforced — and ONLY to look up
+ *             the member's own row. Nothing is written on that path, and
+ *             someone with no row still gets the details-free 'invalid' view.
+ *   ready   — signed in + approved, not yet checked in: checks in
+ *             AUTOMATICALLY on load (owner decision, 2026-09-30 — scan, and
+ *             you're in; no tap to forget). Client JS POSTs { qr_token } to
+ *             /api/attendance/checkin and swaps to the pre-rendered done /
+ *             already panels (textContent only — no HTML is ever built from
+ *             response data). A failure reveals a "Try again" button.
+ *
+ * Auto check-in and link previews: unfurlers (iMessage, Slack) fetch this page
+ * WITHOUT the member's cookies and do not run its script, so a preview cannot
+ * check anyone in. The session cookie is SameSite=Lax, so a cross-site
+ * <iframe> of this page is signed out too. What remains is ANY top-level visit
+ * with a live token: a scan, or equally a tap on a forwarded link (Lax cookies
+ * ride top-level navigations, and a link tapped in a chat app is
+ * indistinguishable from a scan). That is the accepted bearer-token trade in
+ * docs/KNOWN-GAPS.md, one tap shorter than before.
  */
 import '@fontsource/barlow-condensed/latin-500.css';
 import '@fontsource/barlow-condensed/latin-600.css';
@@ -40,7 +60,7 @@ const token = rawToken && /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.tes
   : null;
 const session = await getSession(Astro.request, Astro.response.headers);
 
-type View = 'invalid' | 'error' | 'signin' | 'pending' | 'ready';
+type View = 'invalid' | 'error' | 'signin' | 'pending' | 'already' | 'ready';
 let view: View = 'invalid';
 let event: {
   id: string;
@@ -74,6 +94,60 @@ if (token) {
   }
 }
 
+/* Already checked in? Answer it on the server, so the page never shows a
+   button to someone who is already in. A failed lookup falls back to 'ready':
+   the POST's own duplicate check (409 → the "already" panel) still catches it. */
+let alreadyAt: string | null = null;
+
+/* Code expired (or the event is no longer active), but this member already
+   used it: still answer "you're in". The token is re-verified with only the
+   expiry relaxed, and the lookup is the member's OWN attendance row — nothing
+   is written, and anyone without a row keeps the details-free 'invalid' view,
+   so an old code is still not permission to learn what the meeting was. */
+const STALE_CODE_GRACE_S = 24 * 60 * 60;
+if (view === 'invalid' && token && session?.isApproved) {
+  const stale = await verifyQRToken(token, { expiredGraceS: STALE_CODE_GRACE_S });
+  if (stale) {
+    const [evRes, rowRes] = await Promise.all([
+      supabaseAdmin
+        .from('events')
+        .select('id, title, start_time, end_time, location')
+        .eq('id', stale.event_id)
+        .maybeSingle(),
+      supabaseAdmin
+        .from('attendance')
+        .select('checked_in_at')
+        .eq('event_id', stale.event_id)
+        .eq('member_id', session.id)
+        .maybeSingle(),
+    ]);
+    if (!evRes.error && !rowRes.error && evRes.data && rowRes.data) {
+      event = evRes.data;
+      view = 'already';
+      alreadyAt = (rowRes.data.checked_in_at as string | null) ?? null;
+    }
+  }
+}
+
+if (view === 'ready' && event && session) {
+  const { data: existing, error: existingError } = await supabaseAdmin
+    .from('attendance')
+    .select('checked_in_at')
+    .eq('event_id', event.id)
+    .eq('member_id', session.id)
+    .maybeSingle();
+  if (existingError) {
+    console.error('[checkin] existing check-in lookup failed', {
+      eventId: event.id,
+      message: existingError.message,
+      code: existingError.code,
+    });
+  } else if (existing) {
+    view = 'already';
+    alreadyAt = (existing.checked_in_at as string | null) ?? null;
+  }
+}
+
 // When/where line — Pacific-local, .hl only when the event is TODAY.
 const TZ = 'America/Los_Angeles';
 const dayKey = (value: string | Date): string =>
@@ -97,6 +171,10 @@ if (event) {
   const end = event.end_time ? fmtTime(event.end_time) : '';
   whenText = `${dayLabel}, ${start}${end ? ` – ${end}` : ''}`;
 }
+
+// Server-rendered times are Pacific (the room is in San Jose); the client
+// swaps in the phone's own clock only for a check-in made on this page.
+const alreadyTime = alreadyAt ? fmtTime(alreadyAt) : null;
 
 const selfPath = token ? `/checkin?token=${encodeURIComponent(token)}` : '/checkin';
 const signinHref = `/api/auth/signin?next=${encodeURIComponent(selfPath)}`;
@@ -137,8 +215,11 @@ const firstName = session?.name?.trim().split(/\s+/)[0] || null;
           Ask an officer to put a fresh one up — the projected code refreshes every few
           minutes.
         </p>
+        <p class="pcheck__meta">
+          Already scanned it? Your check-in is saved — the portal shows your ✓.
+        </p>
         <div class="pcheck__spacer"></div>
-        <a class="btn btn--ghost btn--wide" href="/">Go to the portal</a>
+        <a class="btn btn--ghost btn--wide" href="/">Check my status in the portal</a>
         <p class="pcheck__foot">No event details are shown here on purpose.</p>
       </div>
     )}
@@ -194,6 +275,29 @@ const firstName = session?.name?.trim().split(/\s+/)[0] || null;
       </div>
     )}
 
+    {view === 'already' && event && session && (
+      <div class="pcheck">
+        <p class="seal" aria-hidden="true">✓</p>
+        <h1 style="margin-top:16px;">You&rsquo;re checked in{firstName ? `, ${firstName}` : ''}.</h1>
+        <p class="pcheck__meta">
+          {alreadyTime
+            ? <>Checked in at <span class="hl">{alreadyTime}</span> — {event.title}{event.location ? `, ${event.location}` : ''}.</>
+            : <>Your check-in for {event.title} is recorded.</>}
+        </p>
+        <div class="pcheck__spacer"></div>
+        <a class="btn btn--ghost btn--wide" href="/">Back to the portal</a>
+        <div class="pcheck__foot">
+          Signed in as {session.email} ·
+          <form method="post" action="/api/auth/signout" style="display:inline">
+            <button
+              type="submit"
+              style="background:none;border:0;margin:0;padding:14px 6px;display:inline-block;color:var(--gold-2);font:inherit;cursor:pointer;text-decoration:underline;text-underline-offset:2px;"
+            >Not you?</button>
+          </form>
+        </div>
+      </div>
+    )}
+
     {view === 'ready' && event && session && (
       <>
         <div class="pcheck" id="panel-ready">
@@ -204,13 +308,22 @@ const firstName = session?.name?.trim().split(/\s+/)[0] || null;
             {event.location && <><br />{event.location}</>}
           </p>
           <div class="pcheck__spacer"></div>
+          <p class="pcheck__working" id="checkin-working" role="status">
+            <span class="pcheck__dot" aria-hidden="true"></span>Checking you in…
+          </p>
+          <noscript>
+            <style>.pcheck__working{ display:none; }</style>
+            <p class="pcheck__meta" style="color:var(--clay);">
+              Check-in needs JavaScript. Turn it on, or ask an officer to check you in.
+            </p>
+          </noscript>
           <p
             class="pcheck__meta"
             id="checkin-error"
             role="alert"
             style="display:none;margin-bottom:12px;color:var(--clay);"
           ></p>
-          <button class="btn btn--wide" id="checkin-btn" type="button">Check in</button>
+          <button class="btn btn--wide" id="checkin-btn" type="button" style="display:none">Try again</button>
           <div class="pcheck__foot">
             Signed in as {session.email} ·
             <form method="post" action="/api/auth/signout" style="display:inline">
@@ -232,18 +345,34 @@ const firstName = session?.name?.trim().split(/\s+/)[0] || null;
           </p>
           <div class="pcheck__spacer"></div>
           <a class="btn btn--ghost btn--wide" href="/">Back to the portal</a>
-          <p class="pcheck__foot">Scan again and it&rsquo;ll just tell you you&rsquo;re already in.</p>
+          <div class="pcheck__foot">
+            Signed in as {session.email} ·
+            <form method="post" action="/api/auth/signout" style="display:inline">
+              <button
+                type="submit"
+                style="background:none;border:0;margin:0;padding:14px 6px;display:inline-block;color:var(--gold-2);font:inherit;cursor:pointer;text-decoration:underline;text-underline-offset:2px;"
+              >Not you?</button>
+            </form>
+          </div>
         </div>
 
         <div class="pcheck" id="panel-already" style="display:none">
           <p class="seal" aria-hidden="true">✓</p>
-          <h1 style="margin-top:16px;" tabindex="-1">You&rsquo;re already in.</h1>
+          <h1 style="margin-top:16px;" tabindex="-1">You&rsquo;re already in{firstName ? `, ${firstName}` : ''}.</h1>
           <p class="pcheck__meta">
             Your check-in for {event.title} was already recorded<span id="already-time"></span>. You&rsquo;re all set.
           </p>
           <div class="pcheck__spacer"></div>
           <a class="btn btn--ghost btn--wide" href="/">Back to the portal</a>
-          <p class="pcheck__foot">One check-in per member per meeting.</p>
+          <div class="pcheck__foot">
+            Signed in as {session.email} ·
+            <form method="post" action="/api/auth/signout" style="display:inline">
+              <button
+                type="submit"
+                style="background:none;border:0;margin:0;padding:14px 6px;display:inline-block;color:var(--gold-2);font:inherit;cursor:pointer;text-decoration:underline;text-underline-offset:2px;"
+              >Not you?</button>
+            </form>
+          </div>
         </div>
       </>
     )}
@@ -252,6 +381,7 @@ const firstName = session?.name?.trim().split(/\s+/)[0] || null;
   {view === 'ready' && (
     <script is:inline define:vars={{ token, signinHref }}>
       var btn = document.getElementById('checkin-btn');
+      var working = document.getElementById('checkin-working');
       var err = document.getElementById('checkin-error');
       var panelReady = document.getElementById('panel-ready');
       var panelDone = document.getElementById('panel-done');
@@ -273,15 +403,21 @@ const firstName = session?.name?.trim().split(/\s+/)[0] || null;
       }
 
       function fail(message) {
+        working.style.display = 'none';
         err.textContent = message;
         err.style.display = '';
         btn.disabled = false;
-        btn.textContent = 'Check in';
+        btn.textContent = 'Try again';
+        btn.style.display = '';
+        // Only after a tapped retry: on the automatic first attempt, leave
+        // focus alone so the role=alert message is read in full.
+        if (retrying) btn.focus();
       }
 
-      btn.addEventListener('click', async function () {
+      async function checkIn() {
         btn.disabled = true;
-        btn.textContent = 'Checking in…';
+        btn.style.display = 'none';
+        working.style.display = '';
         err.style.display = 'none';
 
         var res;
@@ -315,12 +451,25 @@ const firstName = session?.name?.trim().split(/\s+/)[0] || null;
           }
           show(panelAlready);
         } else if (res.status === 401) {
-          // Session evaporated between page load and tap — restart sign-in.
+          // Session evaporated between page load and the POST — restart sign-in.
           location.href = signinHref;
+        } else if (data && data.reason === 'checkin_not_open' && fmtTime(data.opens_at)) {
+          // This page's code will likely expire before then, so a retry here
+          // can't work — send them back to the projected code instead.
+          fail('Check-in opens at ' + fmtTime(data.opens_at) + '. Scan the code again then.');
+          btn.style.display = 'none';
         } else {
           fail((data && data.error) || 'Something went wrong. Try again.');
         }
+      }
+
+      var retrying = false;
+      btn.addEventListener('click', function () {
+        retrying = true;
+        checkIn();
       });
+      // Scan → checked in. The owner chose automatic over a tap (2026-09-30).
+      checkIn();
     </script>
   )}
 </body>

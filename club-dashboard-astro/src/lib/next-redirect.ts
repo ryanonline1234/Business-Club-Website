@@ -4,10 +4,11 @@ import { SITE_ORIGIN } from './env';
  * "Where was I going before you made me sign in?"
  *
  * WHY THIS EXISTS
- *   A student scans a meeting QR code, lands on /checkin, taps Check In, and —
- *   if they are not signed in — gets a 401. The intended recovery (security_fixes
- *   for api/attendance/checkin.ts) is to send them to
- *   `/login?next=<the checkin url>` and return them to the scan afterwards.
+ *   A student scans a meeting QR code and lands on /checkin. If they are not
+ *   signed in, the page renders a sign-in link to
+ *   `/api/auth/signin?next=<the checkin url>` (and the automatic check-in POST
+ *   falls back to that same link on a 401), so they return to the scan — and
+ *   are checked in — after Google.
  *   Only the OAuth callback can perform that final redirect, so the round trip
  *   needs a server-side carrier: `next` cannot survive the trip to Google and
  *   back as a query parameter on our own URL.

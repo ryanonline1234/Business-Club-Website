@@ -54,6 +54,8 @@ const meetingsHeld = meetingsHeldCount ?? 0;
 /* ── Officer data ─────────────────────────────────────────────────────── */
 
 const LOG_LIMIT = 400;
+/** Meeting sheets listed on this page; older meetings' PDFs are on the calendar. */
+const SHEETS_LIMIT = 60;
 
 interface LogRow {
   name: string;
@@ -72,6 +74,13 @@ interface FilterEvent {
   id: string;
   label: string;
 }
+interface SheetRow {
+  id: string;
+  title: string;
+  day: string;
+  isToday: boolean;
+  count: number;
+}
 
 let logRows: LogRow[] = [];
 let filterEvents: FilterEvent[] = [];
@@ -79,6 +88,8 @@ let turnout: TurnoutRow[] = [];
 let approvedCount = 0;
 let totalCheckins = 0;
 let avgTurnout = 0;
+let sheets: SheetRow[] = [];
+let sheetsFailed = false;
 
 if (session.isOfficer) {
   const { data: log } = await supabaseAdmin
@@ -162,6 +173,31 @@ if (session.isOfficer) {
       method: r.method === 'qr' ? 'QR' : 'Code',
     };
   });
+
+  // Meeting sheets: the SHEETS_LIMIT most recent meetings whose check-in
+  // window has opened (start − 30 min, the check-in endpoint's own rule),
+  // newest first, each with a PDF; older ones are on each event's calendar
+  // page. Cancelled meetings are left out of the list (the endpoint still
+  // serves them). The embedded count is one query, not one per meeting.
+  const sheetsOpenBefore = new Date(Date.now() + 30 * 60 * 1000).toISOString();
+  const { data: sheetEvents, error: sheetsError } = await supabaseAdmin
+    .from('events')
+    .select('id, title, start_time, attendance(count)')
+    .in('status', ['active', 'completed'])
+    .lte('start_time', sheetsOpenBefore)
+    .order('start_time', { ascending: false })
+    .limit(SHEETS_LIMIT);
+  if (sheetsError) {
+    sheetsFailed = true;
+    console.error('[pages/attendance] meeting sheets read failed', { message: sheetsError.message });
+  }
+  sheets = (sheetEvents ?? []).map((e: any) => ({
+    id: e.id as string,
+    title: (e.title as string) ?? 'Untitled',
+    day: fmtDay(e.start_time),
+    isToday: dayKey(e.start_time) === todayKey,
+    count: one<{ count: number }>(e.attendance)?.count ?? 0,
+  }));
 
   filterEvents = [...seenEvents.entries()]
     .sort((a, b) => (a[1].start < b[1].start ? 1 : -1))
@@ -291,6 +327,45 @@ if (!session.isOfficer) {
                 Project a QR code at your next meeting and every scan lands here, newest
                 first.
               </p>
+            </div>
+          )}
+        </section>
+
+        <section aria-labelledby="sheets-h" class="owned sheets-wrap">
+          <div class="section-head">
+            <h2 id="sheets-h">Meeting sheets</h2>
+            <span class="spacer"></span>
+            <span class="flag">Officer only</span>
+          </div>
+          <p class="small muted sheets__lede">
+            One PDF per meeting, named for its date: every attendee with their email and
+            check-in time. It has members&rsquo; emails on it — share it with care.
+          </p>
+          {sheetsFailed ? (
+            <div class="state">
+              <b>Couldn&rsquo;t load the meetings</b>
+              <p>Reload the page to try again.</p>
+            </div>
+          ) : sheets.length > 0 ? (
+            <ul class="sheets">
+              {sheets.map((m) => (
+                <li>
+                  <span class="sheets__when">{m.isToday ? <span class="hl">Today</span> : m.day}</span>
+                  <span class="sheets__title">{m.title}</span>
+                  <span class="sheets__n"><span class="num">{m.count}</span> in</span>
+                  <a
+                    class="btn btn--sm btn--ghost sheets__dl"
+                    href={`/api/events/${encodeURIComponent(m.id)}/attendance.pdf`}
+                    download
+                    aria-label={`Download the attendance PDF for ${m.title}, ${m.day}`}
+                  >PDF</a>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <div class="state">
+              <b>No meetings yet</b>
+              <p>Each meeting gets a downloadable sheet once its check-in opens.</p>
             </div>
           )}
         </section>

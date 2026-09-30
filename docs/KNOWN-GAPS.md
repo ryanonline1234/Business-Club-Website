@@ -71,7 +71,10 @@ forward it to an absent friend, who checks in from anywhere. The rebuild cut
 the blast radius (15-minute TTL, officer-only minting, session-only identity,
 event-window checks, `jti` in the logs) but did **not** eliminate it — that
 would take per-member tokens or proximity proof, which is over-engineering
-for a club meeting. Do not lengthen the TTL to make projection more
+for a club meeting. Since 2026-09-30 `/checkin` checks in automatically on
+load, so opening a forwarded link while signed in is enough — no tap. Same
+exposure, one step shorter; accepted with the owner's choice of automatic
+check-in. Do not lengthen the TTL to make projection more
 convenient; the auto-refresh in Present mode exists so the short window costs
 nothing.
 
@@ -132,6 +135,19 @@ a privacy decision, not a refactor — the page header in
 `src/pages/about.astro` says the same thing. The DB mirrors the boundary:
 STEP 18's column-level grant keeps `photos.uploaded_by` unreadable under the
 anon key even though the photo rows themselves are public.
+
+### Attendance PDFs carry members' emails off the site
+
+**Severity: low, accepted.** `GET /api/events/:id/attendance.pdf` is
+officer-only and `no-store`, and `/attendance` warns officers the file has
+emails on it — but once downloaded, the PDF is a file on an officer's device
+and can be forwarded anywhere. The owner asked for name, email and check-in
+time (2026-09-30). If that ever needs tightening, dropping the email column
+in `lib/attendance-pdf.ts` means the header label in `tableHead()`, the row
+draw, and `COL.email`/`NAME_W`/`EMAIL_W` (so names get the width), plus the
+README, `docs/API.md` and `/attendance` copy that promise emails. Email is
+also the only identifier on a row whose name is empty ("—") or prints as
+"?", so something else would have to identify those rows.
 
 ### A deleted photo can outlive its delete in caches, briefly
 
@@ -198,12 +214,16 @@ Schema features with no code behind them. All inherited; none regressed.
 
 ### Check-in window constants are duplicated
 
-`start − 30 min / end + 2 h / 4 h assumed length` live in both
-`api/attendance/checkin.ts` and `api/events/[id]/qr.ts` (which mirrors them
-so it won't mint a code every scan of which would be rejected). They could
-not share a module during the rebuild because `src/lib` was owned by another
-work stream. If they ever drift, check-in gets confusing at the edges — lift
-them into `lib/` on the next touch of either file.
+`start − 30 min / end + 2 h / 4 h assumed length` are enforced in
+`api/attendance/checkin.ts` and mirrored in `api/events/[id]/qr.ts` (close
+rule, so it won't mint a code every scan of which would be rejected),
+`pages/calendar.astro` (close rule for the Present button; open rule for
+"Your check-in" and the Attendance PDF button), `pages/attendance.astro`
+(open rule for Meeting sheets) and `pages/index.astro` (close rule for the
+"scan the code" prompt). They could not share a module during the rebuild
+because `src/lib` was owned by another work stream. If they ever drift,
+check-in gets confusing at the edges — lift them into `lib/` on the next
+touch of any of these files.
 
 
 ### `GET /api/auth/signout` still exists

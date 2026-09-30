@@ -122,5 +122,10 @@ const signinHref = nextPath
     margin-top:28px;
     font-size:var(--t-12); color:var(--ink-3); line-height:1.6;
   }
-  .gate__about a{ color:var(--ink-3); }
+  /* A 12px text link is a ~17px tap target on a phone; pad the hit area to
+     ~44px without moving the line (the negative margin cancels the padding). */
+  .gate__about a{
+    color:var(--ink-3);
+    display:inline-block; padding:13px 4px; margin:-13px -4px;
+  }
 </style>

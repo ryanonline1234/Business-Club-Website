@@ -72,7 +72,17 @@ export async function signEventToken(eventId: string): Promise<string> {
  * `algorithms: ['HS256']` is pinned so a token with alg:'none' or an attacker-
  * chosen algorithm header can never be accepted.
  */
-export async function verifyQRToken(token: string): Promise<QRTokenPayload | null> {
+export async function verifyQRToken(
+  token: string,
+  /**
+   * `expiredGraceS` relaxes ONLY the expiry check (jose clockTolerance);
+   * signature, algorithm, issuer and audience are still enforced. It exists
+   * for one read-only caller — /checkin showing a member their OWN existing
+   * check-in after the code has expired. api/attendance/checkin.ts (the only
+   * writer) must keep calling this with no grace.
+   */
+  opts: { expiredGraceS?: number } = {}
+): Promise<QRTokenPayload | null> {
   if (!token || typeof token !== 'string') return null;
 
   try {
@@ -80,6 +90,7 @@ export async function verifyQRToken(token: string): Promise<QRTokenPayload | nul
       algorithms: [ALG],
       issuer: ISSUER,
       audience: AUDIENCE,
+      clockTolerance: opts.expiredGraceS ?? 0,
     });
 
     const eventId = payload['event_id'];

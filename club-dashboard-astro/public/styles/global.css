@@ -424,7 +424,8 @@ button,input,select,textarea{ font:inherit; color:inherit; }
   color:var(--ink);
 }
 .textarea{ min-height:150px; resize:vertical; line-height:1.65; }
-.select{ padding:6px 10px; font-size:var(--t-14); }
+/* 16px, not 14: iOS Safari zooms the page on focus for anything smaller. */
+.select{ padding:6px 10px; font-size:var(--t-16); }
 
 /* ---------- section heads: serif over a gold hairline ---------- */
 .section-head{
@@ -700,11 +701,14 @@ button,input,select,textarea{ font:inherit; color:inherit; }
   padding:26px 0; border-bottom:1px solid var(--rule);
 }
 .ann:last-child{ border-bottom:0; }
-.ann__top{ display:flex; align-items:flex-start; gap:14px; }
+.ann__top{ display:flex; align-items:flex-start; gap:14px; flex-wrap:wrap; }
 .ann__top h3, .ann__top h2{
   font-family:var(--f-serif); font-weight:600; color:var(--ink);
   font-size:clamp(var(--t-19),3.4vw,var(--t-24)); line-height:1.24; flex:1; min-width:0;
 }
+/* An open delete-confirm takes its own full-width row on a phone instead of
+   crushing the post's title to zero width (same pattern as .pending__acts). */
+.ann__top .confirm[open]{ flex:1 1 100%; min-width:0; }
 .ann__body{
   margin-top:12px; max-width:66ch; white-space:pre-line; overflow-wrap:anywhere;
   font-size:var(--t-16); line-height:1.68; color:var(--ink-2);
@@ -742,9 +746,10 @@ button,input,select,textarea{ font:inherit; color:inherit; }
 .pending__who b{ color:var(--ink); font-weight:600; display:block; }
 .pending__who span{ display:block; font-size:var(--t-14); color:var(--ink-2); overflow-wrap:anywhere; }
 .pending__who em{ font-style:normal; color:var(--clay); }
-.pending__acts{ display:flex; gap:12px; flex:0 0 auto; flex-wrap:wrap; min-width:0; }
-/* An open inline-confirm needs the full row width on a phone — without this
-   the non-wrapping acts row pushes the Keep button off a 375px screen. */
+.pending__acts{ display:flex; gap:12px; flex:0 1 auto; flex-wrap:wrap; min-width:0; }
+/* An open inline-confirm needs the full row width on a phone. The acts box
+   must be allowed to shrink (flex:0 1 auto) for this to take effect —
+   otherwise the confirm box overflows the panel at 320–375px. */
 .pending__acts .confirm[open]{ flex:1 1 100%; min-width:0; }
 
 .roster-tools{ display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end; padding:16px 0 6px; }
@@ -803,10 +808,12 @@ button,input,select,textarea{ font:inherit; color:inherit; }
 /* The officer composer is a direct grid child (between the two column divs,
    so phone stacking order is unchanged): capped so its line lengths stay
    sane, and on desktop it spans a full-width row under both columns instead
-   of squeezing into the 264px month column. */
+   of squeezing into the 336px month column. */
 .eventgrid > .composer{ max-width:680px; }
 @media (min-width:980px){
-  .eventgrid{ grid-template-columns:minmax(0,264px) minmax(0,1fr); align-items:start; }
+  /* 336 = 7 × 48: each month-grid day link meets the 48px tap floor on an
+     iPad in landscape, where the grid is the day-level navigation. */
+  .eventgrid{ grid-template-columns:minmax(0,336px) minmax(0,1fr); align-items:start; }
   .eventgrid > div:first-of-type{ grid-column:1; grid-row:1; }
   .eventgrid > div:last-of-type{ grid-column:2; grid-row:1; }
   .eventgrid > .composer{ grid-column:1 / -1; grid-row:2; }
@@ -839,7 +846,13 @@ button,input,select,textarea{ font:inherit; color:inherit; }
 .month__grid .day.today .pip{ background:var(--lit-ink); }
 /* month grid is desktop-only; a seven-column grid at 375px is unreadable */
 @media (max-width:979px){ .month{ display:none; } }
-@media (min-width:980px){ .agenda{ display:none; } }
+/* ≥980px the month grid replaces the agenda's month header and prev/next —
+   but the per-event list stays, because a grid day links only to its FIRST
+   event, and a second event that day would otherwise be unreachable. */
+@media (min-width:980px){
+  .agenda{ margin-top:24px; }
+  .agenda > .section-head, .agenda > p, .agenda > .state{ display:none; }
+}
 
 .event-detail__cat{ display:flex; gap:8px; align-items:center; margin-bottom:12px; flex-wrap:wrap; }
 .event-detail h1, .event-detail h2{
@@ -903,7 +916,15 @@ button,input,select,textarea{ font:inherit; color:inherit; }
   border-radius:var(--r-full); background:#C5B358; border:1px solid #6B5A2C; display:block;
   animation:pulse 2.4s ease-in-out infinite;
 }
-.present__stage{ display:grid; place-items:center; min-height:0; }
+/* Three tracks: the QR sits in the middle, the live tally in the right-hand
+   spare width, so adding the tally never shrinks the code. The row is
+   minmax(0,1fr) so the QR is held inside the stage instead of spilling over
+   the footer on small plates. */
+.present__stage{
+  display:grid; place-items:center; min-height:0;
+  grid-template-columns:1fr auto 1fr; grid-template-rows:minmax(0,1fr);
+}
+.present__stage img{ grid-column:2; }
 .present__stage svg, .present__stage img{
   height:min(100%, 72cqb); width:auto; aspect-ratio:1; display:block;
 }
@@ -922,6 +943,32 @@ button,input,select,textarea{ font:inherit; color:inherit; }
   font-variant-numeric:lining-nums tabular-nums;
 }
 .present__meta{ margin-left:auto; text-align:right; flex:none; }
+/* Live tally. The number is the one thing on this surface allowed to be as
+   loud as the title — it is what the room watches go up. */
+.present__tally{ grid-column:3; justify-self:end; align-self:end; text-align:right; }
+.present__tallynum{
+  display:inline-block; transform-origin:100% 85%;
+  font-family:var(--f-serif); font-weight:700; line-height:1;
+  font-size:clamp(30px, 8cqi, 124px); color:#241F19;
+  font-variant-numeric:lining-nums tabular-nums;
+}
+.present__tallycap{
+  display:block; margin-top:.3cqi;
+  font-family:var(--f-cond); text-transform:uppercase; letter-spacing:var(--tr-2);
+  font-size:clamp(12px, 1.7cqi, 22px); font-weight:600; color:#6B5A2C;
+}
+/* Feedback bump when the count rises: transform only (compositor), 450ms.
+   Out-leg decelerates (ease-out), settle uses the standard curve. */
+.present__tallynum.is-bump{ animation:tally-bump 450ms both; }
+@keyframes tally-bump{
+  0%  { transform:scale(1);    animation-timing-function:cubic-bezier(0, 0, .2, 1); }
+  35% { transform:scale(1.14); animation-timing-function:cubic-bezier(.2, 0, 0, 1); }
+  100%{ transform:scale(1); }
+}
+@media (prefers-reduced-motion: reduce){ .present__tallynum.is-bump{ animation:none; } }
+/* Several polls in a row failed: dim the number so a frozen count reads as
+   "not live right now" instead of silently looking current. */
+.present__tallynum.is-stale{ opacity:.4; }
 .present__count{
   font-family:var(--f-serif); font-weight:600; font-size:clamp(14px, 2.6cqi, 34px);
   font-variant-numeric:lining-nums tabular-nums; display:block; line-height:1.1;
@@ -930,6 +977,26 @@ button,input,select,textarea{ font:inherit; color:inherit; }
   display:block; margin-top:.5cqi;
   font-family:var(--f-cond); text-transform:uppercase; letter-spacing:var(--tr-2);
   font-size:clamp(12px, 1.6cqi, 20px); color:#6B5A2C;
+}
+/* Meeting sheets on /attendance — one row per meeting with its PDF. */
+.sheets-wrap{ margin-top:clamp(30px,3.6vw,42px); }
+.sheets__lede{ margin:-4px 0 12px; max-width:62ch; }
+.sheets{ list-style:none; margin:0; padding:0; }
+.sheets li{
+  display:grid; grid-template-columns:64px minmax(0,1fr) auto auto; align-items:center;
+  gap:6px 14px; min-height:var(--tap); padding:4px 0; border-bottom:1px solid var(--rule);
+}
+.sheets li:last-child{ border-bottom:0; }
+.sheets__when{ font-family:var(--f-serif); font-size:var(--t-14); color:var(--gold-2); font-variant-numeric:lining-nums; }
+.sheets__title{ color:var(--ink); min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.sheets__n{ font-size:var(--t-14); color:var(--ink-3); white-space:nowrap; }
+/* Phones: the title takes its own line so the PDF button keeps a full tap target. */
+@media (max-width:480px){
+  .sheets li{ grid-template-columns:64px minmax(0,1fr) auto; padding:8px 0; }
+  .sheets__title{ grid-column:2 / -1; grid-row:1; white-space:normal; }
+  .sheets__n{ grid-column:2; grid-row:2; }
+  .sheets__dl{ grid-column:3; grid-row:2; }
+  .sheets__when{ grid-row:1 / span 2; align-self:start; padding-top:2px; }
 }
 .presentwrap__note{ margin-top:10px; font-size:var(--t-14); color:var(--ink-3); max-width:66ch; }
 
@@ -1000,6 +1067,33 @@ button,input,select,textarea{ font:inherit; color:inherit; }
 .pcheck__foot{ margin-top:12px; font-size:var(--t-12); color:var(--ink-3); text-align:center; }
 .pcheck__foot a{ color:var(--gold-2); display:inline-block; padding:14px 6px; }
 .pcheck .btn{ min-height:56px; }
+/* "Am I checked in?" — one shared state line for the home card and the
+   calendar's event facts. ✓ in moss (positive), ○ in ink-3 (not yet). */
+.checkstate{
+  display:inline-flex; align-items:center; gap:8px; margin:0;
+  font-size:var(--t-14); color:var(--ink-2); line-height:1.35;
+}
+p.checkstate{ display:flex; margin-top:12px; }
+.checkstate__mark{
+  flex:none; display:inline-grid; place-items:center;
+  width:22px; height:22px; border-radius:var(--r-full);
+  border:1px solid var(--rule-2); color:var(--ink-3); font-size:13px; line-height:1;
+}
+.checkstate--in{ color:var(--moss-2); font-weight:600; }
+.checkstate--in .checkstate__mark{ background:var(--moss); border-color:var(--moss); color:var(--moss-ink); }
+/* "Checking you in…" — shown for the second or so the automatic POST takes. */
+.pcheck__working{
+  display:flex; align-items:center; justify-content:center; gap:10px;
+  min-height:56px; margin-bottom:4px;
+  font-family:var(--f-cond); text-transform:uppercase; letter-spacing:var(--tr-2);
+  font-size:var(--t-14); font-weight:600; color:var(--gold-2);
+}
+.pcheck__dot{
+  width:10px; height:10px; border-radius:var(--r-full); flex:none;
+  background:var(--lit); border:1px solid var(--gold-ink);
+  animation:pulse 1.2s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce){ .pcheck__dot{ animation:none; } }
 
 .seal{
   width:56px; height:56px; border-radius:var(--r-full); display:grid; place-items:center;

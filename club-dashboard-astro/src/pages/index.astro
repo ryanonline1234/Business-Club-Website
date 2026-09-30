@@ -144,6 +144,40 @@ if (heroEvent) {
   };
 }
 
+/* Am I checked in to today's meeting? Only asked on the day — for a future
+   meeting "not checked in yet" is noise. Always the signed-in user's own row
+   (never anyone else's). A failed read shows nothing rather than a wrong ✗. */
+let heroCheckin: { checkedIn: boolean; time: string | null; canStill: boolean } | null = null;
+if (hero?.isToday && heroEvent) {
+  // Mirror of POST /api/attendance/checkin's close rule: end + 2 h, or
+  // start + 4 h when there's no (valid) end. Past it, "scan the code" would
+  // tell members to do something they no longer can.
+  const startMs = Date.parse(heroEvent.start_time);
+  const endMs = heroEvent.end_time ? Date.parse(heroEvent.end_time) : Number.NaN;
+  const closesMs =
+    !Number.isNaN(endMs) && endMs > startMs ? endMs + 2 * 60 * 60 * 1000 : startMs + ASSUMED_LENGTH_MS;
+  const canStill = nowMs <= closesMs;
+  const { data: mine, error: mineError } = await supabaseAdmin
+    .from('attendance')
+    .select('checked_in_at')
+    .eq('event_id', hero.id)
+    .eq('member_id', user.id)
+    .maybeSingle();
+  if (mineError) {
+    console.error('[pages/index] own check-in lookup failed', { message: mineError.message });
+  } else {
+    heroCheckin = mine
+      ? {
+          checkedIn: true,
+          time: mine.checked_in_at
+            ? fmtDate(mine.checked_in_at as string, { hour: 'numeric', minute: '2-digit' })
+            : null,
+          canStill,
+        }
+      : { checkedIn: false, time: null, canStill };
+  }
+}
+
 /* Check-ins at the most recent past (or in-progress) event. */
 const lastEvent = ((lastEventRes.data ?? [])[0] ?? null) as
   | { id: string; title: string; start_time: string }
@@ -221,6 +255,17 @@ if (hero?.isToday && user.isOfficer && pendingCount > 0) {
                 {hero.location && <span>{hero.location}</span>}
               </p>
               {hero.note && <p class="nextup__note">{hero.note}</p>}
+              {heroCheckin && (heroCheckin.checkedIn ? (
+                <p class="checkstate checkstate--in">
+                  <span class="checkstate__mark" aria-hidden="true">✓</span>
+                  You&rsquo;re checked in{heroCheckin.time ? ` · ${heroCheckin.time}` : ''}
+                </p>
+              ) : (
+                <p class="checkstate">
+                  <span class="checkstate__mark" aria-hidden="true">○</span>
+                  {heroCheckin.canStill ? 'Not checked in yet — scan the code at the meeting' : 'Not checked in'}
+                </p>
+              ))}
             </div>
           </div>
           <div class="nextup__actions">

@@ -2,9 +2,12 @@
 /**
  * /calendar — the events view.
  *
- * Month grid ≥980px, agenda list below (CSS swaps them; both are rendered).
+ * Month grid ≥980px with the agenda's per-event list under it (below 980px
+ * the agenda is the whole view; both are always rendered).
  * All event data is rendered SERVER-SIDE in this template — client JS only
- * submits forms, fetches the QR code, and reloads. Day bucketing and "today"
+ * submits forms, fetches the QR code, polls the check-in COUNT while Present
+ * mode is open (written via textContent into the tally and the "Checked in"
+ * fact), and reloads. Day bucketing and "today"
  * use Pacific-local date keys, never the server's UTC date.
  *
  * Cancelled events never render on this page: they are filtered out right
@@ -15,7 +18,9 @@
  * Officer flows: New event (disclosure composer → POST /api/events/create),
  * Cancel event (inline confirm → DELETE /api/events/[id]/delete), Present
  * mode (full-bleed projected surface fed by GET /api/events/[id]/qr, silently
- * re-fetched before the 15-minute token expires), and — for past,
+ * re-fetched before the 15-minute token expires, with a live tally polled from
+ * GET /api/events/[id]/checkins — a number, never names), the attendance PDF
+ * (GET /api/events/[id]/attendance.pdf, once check-in has opened), and — for past,
  * non-cancelled events —
  * Recap & photos (PATCH /api/events/[id]/recap, multipart POST /api/photos,
  * DELETE /api/photos/[id]), which publishes to the public /about page. The
@@ -219,6 +224,30 @@ if (selected) {
       .eq('id', selected.created_by)
       .maybeSingle();
     creatorName = (creator?.name as string | null) ?? null;
+  }
+}
+
+/* ── My own check-in for the selected event ───────────────────────────────
+   Asked once the check-in window has opened (start − 30 min, the same rule
+   POST /api/attendance/checkin enforces); before that there is nothing to
+   report. Own row only. A failed read renders nothing rather than a false ✗. */
+const CHECKIN_OPENS_BEFORE_MS = 30 * 60 * 1000;
+const checkinHasOpened =
+  selected !== null && nowMs >= startMsOf(selected) - CHECKIN_OPENS_BEFORE_MS;
+let myCheckin: { checkedIn: boolean; time: string | null } | null = null;
+if (selected && checkinHasOpened) {
+  const { data: mine, error: mineError } = await supabaseAdmin
+    .from('attendance')
+    .select('checked_in_at')
+    .eq('event_id', selected.id)
+    .eq('member_id', user.id)
+    .maybeSingle();
+  if (mineError) {
+    console.error('[pages/calendar] own check-in lookup failed', { message: mineError.message });
+  } else {
+    myCheckin = mine
+      ? { checkedIn: true, time: mine.checked_in_at ? fmtTime(mine.checked_in_at as string) : null }
+      : { checkedIn: false, time: null };
   }
 }
 
@@ -458,9 +487,27 @@ const canPresent =
             <div><dt>Where</dt><dd>{selected.location ?? 'To be announced'}</dd></div>
             <div>
               <dt>Checked in</dt>
-              <dd><span class="num">{checkinCount}</span>{selected.capacity !== null && <> of <span class="num">{selected.capacity}</span></>}</dd>
+              <dd><span class="num" id="facts-checkins">{checkinCount}</span>{selected.capacity !== null && <> of <span class="num">{selected.capacity}</span></>}</dd>
             </div>
             <div><dt>Created by</dt><dd>{creatorName ?? '—'}</dd></div>
+            {myCheckin && (
+              <div>
+                <dt>Your check-in</dt>
+                <dd>
+                  {myCheckin.checkedIn ? (
+                    <span class="checkstate checkstate--in">
+                      <span class="checkstate__mark" aria-hidden="true">✓</span>
+                      Checked in{myCheckin.time ? ` · ${myCheckin.time}` : ''}
+                    </span>
+                  ) : (
+                    <span class="checkstate">
+                      <span class="checkstate__mark" aria-hidden="true">○</span>
+                      Not checked in
+                    </span>
+                  )}
+                </dd>
+              </div>
+            )}
           </dl>
 
           {user.isOfficer && selected.status === 'active' && (
@@ -471,6 +518,13 @@ const canPresent =
                   <button class="btn" type="button" id="present-open" data-event-id={selected.id} data-event-title={selected.title}>
                     Present check-in code
                   </button>
+                )}
+                {checkinHasOpened && (
+                  <a
+                    class="btn btn--ghost"
+                    href={`/api/events/${encodeURIComponent(selected.id)}/attendance.pdf`}
+                    download
+                  >Attendance PDF</a>
                 )}
                 <details class="confirm">
                   <summary class="btn btn--danger">Cancel event</summary>
@@ -574,6 +628,13 @@ const canPresent =
         </div>
         <div class="present__stage">
           <img id="present-qr" alt="Check-in QR code" />
+          {/* Live tally — a NUMBER, never names (see the comment on this
+              layer). Beside the QR, in the plate's spare width, so it costs the
+              code none of its size. Seeded server-side, then polled while open. */}
+          <span class="present__tally">
+            <b class="present__tallynum" id="present-tally" data-count={checkinCount}>{checkinCount}</b>
+            <span class="present__tallycap">checked in</span>
+          </span>
         </div>
         <div class="present__foot">
           <div class="present__say">
@@ -941,6 +1002,8 @@ const canPresent =
     const countEl = document.getElementById('present-count') as HTMLElement;
     const statusEl = document.getElementById('present-status') as HTMLElement;
     const exitBtn = document.getElementById('present-exit') as HTMLButtonElement;
+    const tallyEl = document.getElementById('present-tally') as HTMLElement;
+    const factsCountEl = document.getElementById('facts-checkins');
 
     const eventId = openBtn.dataset.eventId ?? '';
     const eventTitle = openBtn.dataset.eventTitle ?? '';
@@ -954,6 +1017,79 @@ const canPresent =
     let tickTimer = 0;
     let fetchTimer = 0;
 
+    /* Generation counters, one per loop. Each loop captures its generation
+       and only reschedules while it is still current, so a request that was
+       in flight when Present closed (or the tab came back) can never start a
+       second, parallel loop. Bumped on open, on close, and to stop a loop. */
+    let codeGen = 0;
+    let countGen = 0;
+
+    /* ── Live tally ─────────────────────────────────────────────────────────
+       Polls a count-only endpoint. Polling, not Supabase Realtime: realtime
+       would need supabase-js in the browser plus an end-user token path, all
+       to move one integer; one projector asking every 3s is nothing. The
+       number is written with textContent only.
+       Failures are never terminal: the guard answers 401/403 on a transient
+       Supabase blip (and while "view as student" is on in another tab), so
+       the loop keeps asking, slower, and the number dims after a few misses
+       so a frozen count is visible rather than silent. */
+    const COUNT_POLL_MS = 3_000;
+    const COUNT_POLL_SLOW_MS = 15_000; // hidden tab, or after a failed poll
+    const STALE_AFTER_FAILS = 3;
+    let shownCount = Number(tallyEl.dataset.count ?? '0') || 0;
+    let countTimer = 0;
+    let countFails = 0;
+    let countStopped = false; // check-in closed: the count can't change
+
+    const setCount = (n: number) => {
+      if (n === shownCount) return;
+      const rose = n > shownCount;
+      shownCount = n;
+      tallyEl.textContent = String(n);
+      if (factsCountEl) factsCountEl.textContent = String(n);
+      if (rose) {
+        // Restart the bump even if the last one is mid-flight.
+        tallyEl.classList.remove('is-bump');
+        void tallyEl.offsetWidth;
+        tallyEl.classList.add('is-bump');
+      }
+    };
+
+    const pollCount = async (gen: number) => {
+      if (!isOpen || gen !== countGen) return;
+      if (!document.hidden) {
+        let ok = false;
+        try {
+          const res = await fetch(`/api/events/${encodeURIComponent(eventId)}/checkins`, {
+            headers: { accept: 'application/json' },
+            cache: 'no-store',
+          });
+          if (res.ok) {
+            const body = await res.json();
+            if (typeof body.count === 'number') {
+              setCount(body.count);
+              ok = true;
+            }
+          }
+        } catch {
+          /* network blip — keep the last number and try again */
+        }
+        countFails = ok ? 0 : countFails + 1;
+        tallyEl.classList.toggle('is-stale', countFails >= STALE_AFTER_FAILS);
+      }
+      if (isOpen && gen === countGen) {
+        countTimer = window.setTimeout(
+          () => void pollCount(gen),
+          document.hidden || countFails > 0 ? COUNT_POLL_SLOW_MS : COUNT_POLL_MS
+        );
+      }
+    };
+    const stopCount = () => {
+      countStopped = true;
+      countGen++;
+      window.clearTimeout(countTimer);
+    };
+
     const fmtCountdown = (ms: number) => {
       const s = Math.max(0, Math.ceil(ms / 1000));
       return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
@@ -963,11 +1099,16 @@ const canPresent =
       countEl.textContent = `Refreshes in ${fmtCountdown(refreshAtMs - Date.now())}`;
     };
 
-    const fetchCode = async () => {
+    const fetchCode = async (gen: number) => {
+      if (!isOpen || gen !== codeGen) return;
+      const again = (ms: number) => {
+        if (isOpen && gen === codeGen) fetchTimer = window.setTimeout(() => void fetchCode(gen), ms);
+      };
       try {
         const res = await fetch(`/api/events/${encodeURIComponent(eventId)}/qr`, {
           headers: { accept: 'application/json' },
         });
+        if (!isOpen || gen !== codeGen) return;
         if (!res.ok) {
           let msg = 'Could not fetch a check-in code.';
           try {
@@ -979,10 +1120,16 @@ const canPresent =
           statusEl.textContent = msg;
           countEl.textContent = '';
           refreshAtMs = 0;
-          // 4xx = this event can no longer mint codes (over, cancelled, or
-          // no longer authorized) — stop. 5xx / network = retry shortly.
-          if (res.status >= 400 && res.status < 500) return;
-          fetchTimer = window.setTimeout(fetchCode, 30_000);
+          // 404/409 = this event can no longer take check-ins (gone, over, or
+          // cancelled): stop both loops — the count can't change any more.
+          // 400 = unusable id: stop. Everything else (401/403 on a transient
+          // auth blip, 5xx, …) retries shortly.
+          if (res.status === 404 || res.status === 409) {
+            stopCount();
+            return;
+          }
+          if (res.status === 400) return;
+          again(30_000);
           return;
         }
         const body = await res.json();
@@ -991,13 +1138,14 @@ const canPresent =
         const expiresInS = typeof body.expires_in === 'number' ? body.expires_in : 900;
         const waitS = Math.max(expiresInS - REFRESH_MARGIN_S, 30);
         refreshAtMs = Date.now() + waitS * 1000;
-        fetchTimer = window.setTimeout(fetchCode, waitS * 1000);
+        again(waitS * 1000);
         tick();
       } catch {
+        if (!isOpen || gen !== codeGen) return;
         statusEl.textContent = 'Network error — retrying shortly.';
         countEl.textContent = '';
         refreshAtMs = 0;
-        fetchTimer = window.setTimeout(fetchCode, 30_000);
+        again(30_000);
       }
     };
 
@@ -1006,22 +1154,40 @@ const canPresent =
       nameEl.textContent = eventTitle;
       statusEl.textContent = 'Fetching a fresh code…';
       countEl.textContent = '';
+      countFails = 0;
+      countStopped = false;
+      tallyEl.classList.remove('is-stale');
       layer.style.display = 'grid';
       document.body.style.overflow = 'hidden';
       exitBtn.focus();
-      void fetchCode();
+      void fetchCode(++codeGen);
+      void pollCount(++countGen);
       tickTimer = window.setInterval(tick, 1000);
     };
     const closeLayer = () => {
       isOpen = false;
+      codeGen++;
+      countGen++;
       layer.style.display = 'none';
       document.body.style.overflow = '';
       window.clearInterval(tickTimer);
       window.clearTimeout(fetchTimer);
+      window.clearTimeout(countTimer);
       refreshAtMs = 0;
       qrImg.removeAttribute('src');
       openBtn.focus();
     };
+
+    // Back from a hidden tab: refresh the count now rather than after the
+    // slow interval, so the room isn't looking at a stale number. A fresh
+    // generation means a poll still in flight can't become a second loop.
+    // A loop stopped because check-in closed stays stopped.
+    document.addEventListener('visibilitychange', () => {
+      if (isOpen && !document.hidden && !countStopped) {
+        window.clearTimeout(countTimer);
+        void pollCount(++countGen);
+      }
+    });
 
     openBtn.addEventListener('click', openLayer);
     exitBtn.addEventListener('click', closeLayer);
