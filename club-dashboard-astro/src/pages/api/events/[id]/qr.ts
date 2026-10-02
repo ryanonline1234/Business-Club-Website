@@ -2,6 +2,7 @@ import type { APIRoute } from 'astro';
 import { generateEventQR, QR_TOKEN_TTL_SECONDS } from '../../../../lib/qrcode';
 import { supabaseAdmin } from '../../../../lib/supabase';
 import { apiJson, apiRequireOfficer } from '../../../../lib/auth';
+import { checkinWindow } from '../../../../lib/event-time';
 
 /**
  * GET /api/events/[id]/qr — mint a check-in QR code for an event.
@@ -25,37 +26,14 @@ import { apiJson, apiRequireOfficer } from '../../../../lib/auth';
  */
 
 /* ────────────────────────────────────────────────────────────────────────────
- * When check-in closes. Mirrors src/pages/api/attendance/checkin.ts — there is
- * no point issuing a code whose every scan would be rejected. Keep the two in
- * sync; they cannot share a module without editing src/lib/**, which this
- * change is not allowed to touch.
+ * When check-in closes — src/lib/event-time.ts, the same rule
+ * api/attendance/checkin.ts enforces: there is no point issuing a code whose
+ * every scan would be rejected.
  *
  * Deliberately asymmetric with checkin.ts: that route also refuses check-ins
  * more than 30 minutes BEFORE start_time, but an officer setting up a room
  * early should still be able to open the modal, so no lower bound here.
  * ──────────────────────────────────────────────────────────────────────────── */
-const CLOSES_AFTER_END_MS = 2 * 60 * 60 * 1000;
-const ASSUMED_LENGTH_MS = 4 * 60 * 60 * 1000;
-
-function parseTime(value: unknown): number | null {
-  if (typeof value !== 'string') return null;
-  const ms = Date.parse(value);
-  return Number.isNaN(ms) ? null : ms;
-}
-
-/**
- * Unix ms after which check-in is closed, or null when start_time is missing or
- * unparseable. An end_time at or before start_time is treated as absent (bad
- * data — fall back to the 4-hour rule) so a typo cannot make a live event
- * un-QR-able.
- */
-function checkinClosesAt(startTime: unknown, endTime: unknown): number | null {
-  const start = parseTime(startTime);
-  if (start === null) return null;
-
-  const end = parseTime(endTime);
-  return end === null || end <= start ? start + ASSUMED_LENGTH_MS : end + CLOSES_AFTER_END_MS;
-}
 
 export const GET: APIRoute = async ({ params, request }) => {
   const responseHeaders = new Headers();
@@ -98,7 +76,7 @@ export const GET: APIRoute = async ({ params, request }) => {
     );
   }
 
-  const closesAt = checkinClosesAt(event.start_time, event.end_time);
+  const closesAt = checkinWindow(event.start_time, event.end_time)?.closesAt ?? null;
   if (closesAt === null) {
     console.error('[events/qr] event has an unparseable start_time', {
       eventId: event.id,

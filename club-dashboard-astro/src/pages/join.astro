@@ -221,6 +221,25 @@ const viewBox = `${-pad} ${-pad} ${qrSize + pad * 2} ${qrSize + pad * 2}`;
         color: var(--mute);
       }
 
+      /* Short landscape screens (iPad landscape, 1366x768 laptops, projectors):
+         the stacked layout pushed the code below the fold. Title and footer go
+         left of the plate and the code is capped by viewport height. Screen
+         only — the printed poster is unchanged. */
+      @media screen and (orientation: landscape) and (min-width: 900px) and (min-height: 600px) {
+        .sheet {
+          display: grid;
+          grid-template-columns: auto minmax(0, 560px);
+          grid-template-areas: "top plate" "foot plate";
+          place-content: center;
+          column-gap: 56px;
+          row-gap: 24px;
+        }
+        .top { grid-area: top; align-self: end; }
+        .plate { grid-area: plate; }
+        .foot { grid-area: foot; align-self: start; }
+        .code svg { max-width: clamp(200px, 100svh - 410px, 420px); }
+      }
+
       /* Print: force the light palette, drop the chrome, fill the page.
          An officer hitting Cmd-P gets a poster, not a screenshot. */
       @media print {

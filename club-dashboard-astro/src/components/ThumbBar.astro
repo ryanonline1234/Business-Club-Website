@@ -26,16 +26,17 @@ const current = (href: string) => (isActive(href) ? 'page' : undefined);
   </a>
   <a href="/members" aria-current={current('/members')}>
     <svg class="ic" viewBox="0 0 20 20" aria-hidden="true"><circle cx="8" cy="7.5" r="3"/><path d="M2.5 16.5c0-3 2.5-4.6 5.5-4.6s5.5 1.6 5.5 4.6"/><path d="M14 5.4a2.9 2.9 0 010 4.6"/></svg>
-    People
+    Members
   </a>
   <a href="/announcements" aria-current={current('/announcements')}>
     <svg class="ic" viewBox="0 0 20 20" aria-hidden="true"><path d="M3.5 4.5h13v11h-13z"/><path d="M6 8h9M6 11h9M6 14h6"/></svg>
     Posts
   </a>
-  <!-- Check-in stays at the RIGHT edge — the mockup put the primary action
-       where a thumb already rests. -->
+  <!-- Attendance — the check-in record (members: their own history; officers:
+       the club log and meeting sheets). Checking IN happens by scanning the
+       projected code, so the label and icon promise the record, not a scanner. -->
   <a href="/attendance" aria-current={current('/attendance')}>
-    <svg class="ic" viewBox="0 0 20 20" aria-hidden="true"><path d="M3.5 3.5h5v5h-5zM11.5 3.5h5v5h-5zM3.5 11.5h5v5h-5z"/><path d="M11.5 11.5h2v2M16.5 11.5v2M14.5 15.5h2v1"/></svg>
-    Check-in
+    <svg class="ic" viewBox="0 0 20 20" aria-hidden="true"><path d="M4 3.5h12v13H4z"/><path d="M7 8l1.5 1.5L11 7M7 13h6"/></svg>
+    Attendance
   </a>
 </nav>

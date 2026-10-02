@@ -2,6 +2,7 @@
 import DashboardLayout from '../layouts/DashboardLayout.astro';
 import { requireApproved } from '../lib/auth';
 import { supabaseAdmin } from '../lib/supabase';
+import { checkinWindow, explicitEndMs, isHappeningNow } from '../lib/event-time';
 
 const user = await requireApproved(Astro.request, Astro.response.headers, Astro.redirect);
 
@@ -102,14 +103,24 @@ const approvedCount = approvedRes.count ?? 0;
 
 /* The hero: first active event whose Pacific day is today or later. An event
    earlier today stays the day's headline even after it starts. */
+const heroCandidates = upcoming.filter((e) => {
+  const t = Date.parse(e.start_time);
+  return !Number.isNaN(t) && dayKeyOf(new Date(t)) >= todayKey;
+});
+/* With two meetings today, the LATER one takes over once its check-in opens —
+   a no-end meeting is "live" until midnight (lib/event-time), so "first of the
+   day" would keep an earlier meeting as the headline, and its Present button,
+   all evening. */
 const heroEvent =
-  upcoming.find((e) => {
-    const t = Date.parse(e.start_time);
-    return !Number.isNaN(t) && dayKeyOf(new Date(t)) >= todayKey;
-  }) ?? null;
-
-/* Same 4-hour assumed length the check-in window uses for open-ended events. */
-const ASSUMED_LENGTH_MS = 4 * 60 * 60 * 1000;
+  [...heroCandidates]
+    .reverse()
+    .find(
+      (e) =>
+        dayKeyOf(new Date(e.start_time)) === todayKey &&
+        (checkinWindow(e.start_time, e.end_time)?.opensAt ?? Infinity) <= nowMs
+    ) ??
+  heroCandidates[0] ??
+  null;
 
 interface HeroView {
   id: string;
@@ -125,10 +136,11 @@ interface HeroView {
 let hero: HeroView | null = null;
 if (heroEvent) {
   const start = new Date(heroEvent.start_time);
-  const endMs = heroEvent.end_time ? Date.parse(heroEvent.end_time) : Number.NaN;
-  const end = Number.isNaN(endMs) ? null : new Date(endMs);
+  // Shown end: the explicit one only. With none, the meeting ends with its
+  // day (lib/event-time) — "Happening now" holds until then.
+  const endMs = explicitEndMs(heroEvent.start_time, heroEvent.end_time);
+  const end = endMs === null ? null : new Date(endMs);
   const isToday = dayKeyOf(start) === todayKey;
-  const closesMs = end ? end.getTime() : start.getTime() + ASSUMED_LENGTH_MS;
   hero = {
     id: heroEvent.id,
     day: fmtDate(start, { day: '2-digit' }),
@@ -138,24 +150,29 @@ if (heroEvent) {
       ? `Today, ${timeRange(start, end)}`
       : `${fmtDate(start, { weekday: 'short' })}, ${fmtDate(start, { month: 'short', day: 'numeric' })} · ${timeRange(start, end)}`,
     isToday,
-    isNow: start.getTime() <= nowMs && nowMs <= closesMs,
+    isNow: isHappeningNow(heroEvent.start_time, heroEvent.end_time, nowMs),
     location: heroEvent.location,
     note: heroEvent.description ? teaser(heroEvent.description, 160) : null,
   };
 }
+
+/* Officers get a one-tap Present button on the day, while check-in is open —
+   the same rule the calendar uses to offer Present at all. */
+const heroCanPresent =
+  user.isOfficer &&
+  hero !== null &&
+  hero.isToday &&
+  heroEvent !== null &&
+  nowMs <= (checkinWindow(heroEvent.start_time, heroEvent.end_time)?.closesAt ?? 0);
 
 /* Am I checked in to today's meeting? Only asked on the day — for a future
    meeting "not checked in yet" is noise. Always the signed-in user's own row
    (never anyone else's). A failed read shows nothing rather than a wrong ✗. */
 let heroCheckin: { checkedIn: boolean; time: string | null; canStill: boolean } | null = null;
 if (hero?.isToday && heroEvent) {
-  // Mirror of POST /api/attendance/checkin's close rule: end + 2 h, or
-  // start + 4 h when there's no (valid) end. Past it, "scan the code" would
-  // tell members to do something they no longer can.
-  const startMs = Date.parse(heroEvent.start_time);
-  const endMs = heroEvent.end_time ? Date.parse(heroEvent.end_time) : Number.NaN;
-  const closesMs =
-    !Number.isNaN(endMs) && endMs > startMs ? endMs + 2 * 60 * 60 * 1000 : startMs + ASSUMED_LENGTH_MS;
+  // POST /api/attendance/checkin's own close rule (lib/event-time). Past it,
+  // "scan the code" would tell members to do something they no longer can.
+  const closesMs = checkinWindow(heroEvent.start_time, heroEvent.end_time)?.closesAt ?? 0;
   const canStill = nowMs <= closesMs;
   const { data: mine, error: mineError } = await supabaseAdmin
     .from('attendance')
@@ -269,12 +286,15 @@ if (hero?.isToday && user.isOfficer && pendingCount > 0) {
             </div>
           </div>
           <div class="nextup__actions">
-            {/* Present mode lives on the calendar's event detail panel — not
-                /attendance, which is the after-the-fact log. */}
-            {user.isOfficer && (
-              <a class="btn" href={`/calendar?event=${encodeURIComponent(hero.id)}`}>Present check-in QR</a>
-            )}
-            <a class={user.isOfficer ? 'btn btn--ghost' : 'btn'} href="/calendar">Open calendar</a>
+            {/* One button. For an officer on the day, while check-in is open,
+                it opens the projected code directly (?present=1 — the calendar
+                opens Present mode on arrival); otherwise it opens the event. */}
+            <a
+              class="btn"
+              href={heroCanPresent
+                ? `/calendar?event=${encodeURIComponent(hero.id)}&present=1`
+                : `/calendar?event=${encodeURIComponent(hero.id)}`}
+            >{heroCanPresent ? 'Present check-in code' : 'Open in calendar'}</a>
           </div>
         </section>
       ) : (

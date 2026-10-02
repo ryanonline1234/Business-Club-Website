@@ -163,13 +163,8 @@ const audienceLine =
         <b>Nothing posted yet</b>
         <p>
           When officers post, it lands here.
-          {session.isOfficer && ' Start with what happens at the next meeting.'}
+          {session.isOfficer && ' Use “Post an announcement” above — start with what happens at the next meeting.'}
         </p>
-        {session.isOfficer && (
-          <button class="btn btn--sm btn--ghost" type="button" id="empty-compose">
-            Post the first one
-          </button>
-        )}
       </div>
     ) : (
       posts.map((p) => (
@@ -299,14 +294,6 @@ const audienceLine =
       composer?.removeAttribute('open');
     });
   }
-
-  // Empty state: "Post the first one" opens the composer.
-  document.getElementById('empty-compose')?.addEventListener('click', () => {
-    if (!composer) return;
-    composer.setAttribute('open', '');
-    composer.scrollIntoView({ block: 'start' });
-    composer.querySelector<HTMLInputElement>('input[name="title"]')?.focus();
-  });
 
   // Inline-confirm delete. The row is already the question; the go-button fires.
   for (const btn of document.querySelectorAll<HTMLButtonElement>('[data-delete-id]')) {

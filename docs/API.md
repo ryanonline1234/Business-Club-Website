@@ -53,6 +53,7 @@ checks. The role values remain as titles.
 | `GET` | `/api/auth/callback` | public | OAuth redirect |
 | `GET`/`POST` | `/api/auth/signout` | public + cross-site check | layout & `/pending` sign-out forms |
 | `POST` | `/api/events/create` | officer | `/calendar` composer |
+| `PATCH` | `/api/events/:id` | officer | `/calendar` event detail → Edit details |
 | `DELETE` | `/api/events/:id/delete` | officer | `/calendar` cancel |
 | `GET` | `/api/events/:id/qr` | **officer** | `/calendar` Present mode |
 | `GET` | `/api/events/:id/checkins` | officer | `/calendar` Present mode live tally (polled) |
@@ -149,7 +150,7 @@ with POST forms; GET remains for direct navigation and old links.
 |---|---|---|---|
 | `title` | string | ✅ | ≤ 200 chars after trim |
 | `start_time` | ISO timestamp | ✅ | must parse |
-| `end_time` | ISO timestamp | | must parse and be after `start_time` |
+| `end_time` | ISO timestamp | | must parse and be after `start_time`. Absent/`null` = the meeting **ends at the end of its Pacific day** (never open-ended). The form sends a same-day time, pre-filled to start + 1 h |
 | `description` | string | | ≤ 5000 |
 | `location` | string | | ≤ 300 |
 | `category` | string | | ≤ 60; defaults to `'meeting'` |
@@ -162,6 +163,34 @@ existed).
 
 **Responses:** `201 { data }` (the inserted row) · `400` (validation, message
 names the field) · guard responses · `500 { "error": "Could not create the event" }`.
+
+Field rules are `lib/event-input.ts`, shared with `PATCH /api/events/:id`.
+
+### `PATCH /api/events/:id` — officer
+
+Edit an event **in place** — same row id, so its check-ins, recap and photos
+stay attached (cancel-and-recreate used to strand them). A **partial**
+update: only keys present in the body change, validated by the same rules as
+create (`lib/event-input.ts`). Accepted keys: `title`, `start_time`,
+`end_time`, `description`, `location`, `category`, `capacity`. `status`,
+`created_by`, `recap` and `password` are never settable here (unknown keys are
+ignored). `end_time: null` (or `''`) clears the end — the meeting then ends at
+the end of its Pacific day. End-after-start is checked on the **merged** event,
+so moving only the start can't leave the stored end before it; moving only
+the start to another day while a stored end exists is refused (send
+`end_time` too). A meeting that started **more than 12 h ago** can't be moved
+into the future (its recap/photos are history and would vanish from
+`/about`); within 12 h, postponing a meeting that's running late is allowed.
+
+The Edit details form reads times as **Pacific wall time on any device**, and
+leaves `start_time`/`end_time` out of the request when neither time field was
+touched — a title-only fix can never move the meeting.
+
+**Responses:** `200 { data }` (the updated row) · `400` (invalid id / JSON /
+field, `"Nothing to change"`, `end_time must be after start_time`, or a
+start-only move across days) · `404` · `409` (cancelled — not editable; or a
+meeting from more than 12 h ago moved into the future) · guard responses ·
+`500`.
 
 ### `DELETE /api/events/:id/delete` — officer
 
@@ -197,8 +226,8 @@ Minting is refused for events that can no longer accept check-ins:
 
 **Responses:** `200` · `400` (missing id) · `404` (no such event) ·
 `409 { reason: "event_not_active" }` (cancelled/completed) ·
-`409 { reason: "checkin_closed", closed_at }` (past `end_time + 2h`, or
-`start_time + 4h` with no end) · guard responses · `500`.
+`409 { reason: "checkin_closed", closed_at }` (past `end_time + 2 h` but never past midnight of the start's Pacific day; that day's end when there's no end time; a legacy end on a later day closes at that end, no grace — `lib/event-time.ts`) · guard
+responses · `500`.
 
 There is deliberately no *lower* bound here (unlike check-in itself): an
 officer setting up a room early may open Present mode before the window opens.
@@ -289,7 +318,9 @@ client-supplied identity here.**
 Three independent checks before the insert: (1) caller signed in and approved,
 (2) token signature/expiry/issuer/audience valid, (3) the event exists, is
 `'active'`, and is inside its check-in window (`start_time − 30 min` →
-`end_time + 2 h`, or `start_time + 4 h` when there's no end time).
+`end_time + 2 h` but never past midnight of the start's Pacific day; that
+day's end when there's no end time; a legacy end on a later day closes at that
+end, no grace — `lib/event-time.ts`).
 
 **Responses:**
 - `201 { "success": true, "member_name": "…", "checked_in_at": "…", "event": { "id", "title" } }`

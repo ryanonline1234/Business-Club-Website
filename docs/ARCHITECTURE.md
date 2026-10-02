@@ -355,8 +355,13 @@ your status on the day of the meeting, and the calendar's event facts show it
 once check-in has opened. Each is the signed-in member's **own** row only; a
 failed lookup renders nothing rather than a false "not checked in".
 
-The check-in window is `start_time − 30 min` → `end_time + 2 h` (or
-`start_time + 4 h` when there's no end). A valid token is *not* enough on its
+The check-in window is `start_time − 30 min` → `end_time + 2 h` **capped at
+the end of the start's Pacific day**; with no end time, that day's end
+(meetings end the day of; owner decision 2026-10-01); a legacy end on a later
+day closes at that end, no grace. Every rule about when a meeting starts, ends,
+is "happening now", and accepts check-ins lives in
+[`lib/event-time.ts`](../club-dashboard-astro/src/lib/event-time.ts), shared
+by both endpoints and every page — import it, never re-derive it. A valid token is *not* enough on its
 own — a token stays signature-valid even if the event is cancelled a minute
 after projection, which is why the endpoint re-checks the event. Duplicates
 get a clean 409 from an explicit lookup, with the
@@ -414,8 +419,11 @@ decides), and 48px minimum touch targets.
 
 Navigation is responsive by **replacement**, not squeezing: under 700px the
 top rail is removed entirely and the fixed `ThumbBar` (with
-`env(safe-area-inset-bottom)` clearance) becomes the navigation, check-in at
-the right edge where a thumb rests.
+`env(safe-area-inset-bottom)` clearance) becomes the navigation, with the
+same labels as the top rail except "Posts" (Announcements won't fit a phone
+cell). From 701 to 1179px the top bar wraps and the nav takes its own full row
+— an officer's extra "View as student" button made the nav wrap its own links
+at iPad-landscape widths. The nav must never wrap its own links.
 
 `DashboardLayout.astro` takes `{ title, subtitle?, user }` and derives the
 default subtitle from the current Pacific school term (Fall/Spring/Summer +

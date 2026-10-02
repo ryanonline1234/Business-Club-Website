@@ -84,14 +84,14 @@ clients as a 409 with fixed copy, never the raw Postgres message).
 | `title` | `text` | not null |
 | `description` | `text` | |
 | `start_time` | `timestamptz` | not null |
-| `end_time` | `timestamptz` | |
+| `end_time` | `timestamptz` | NULL = no explicit end: the meeting **ends at the end of its start's Pacific day** (`lib/event-time.ts`) — never open-ended. Editable via `PATCH /api/events/:id` |
 | `location` | `text` | |
 | `password` | `text` | **DEAD.** Nothing reads or writes it; kept only because dropping a column is irreversible. If password check-in is ever built, hash it — the old app stored it in plaintext |
 | `capacity` | `integer` | validated positive on create, displayed, **never enforced** at check-in |
 | `category` | `text` | default `'meeting'`; free text |
 | `status` | `text` | `'active' \| 'completed' \| 'cancelled'`, default `'active'`. Nothing ever sets `'completed'`, but readers must treat it as a legitimate past state (`/about` and `/attendance` count `active` + `completed`) |
 | `created_by` | `uuid` | FK → `profiles`, not null |
-| `recap` | `text` | nullable, no default (STEP 17). Officer-written "what happened" prose for the **public** `/about` page; NULL = "no recap". Only past events may carry one — enforced by `PATCH /api/events/:id/recap` |
+| `recap` | `text` | nullable, no default (STEP 17). Officer-written "what happened" prose for the **public** `/about` page; NULL = "no recap". Only past events may carry one — enforced by `PATCH /api/events/:id/recap`, and `PATCH /api/events/:id` refuses to move a meeting that started more than 12 h ago into the future |
 | `created_at` | `timestamptz` | |
 
 Indexed on `start_time`, `status`, `created_by`. Deletion is soft —

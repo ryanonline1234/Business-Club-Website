@@ -4,7 +4,7 @@ Where the project is **right now** and what to do next. Overwrite this file in
 place; do not append history to it — history lives in git and
 [REBUILD-PLAN.md](REBUILD-PLAN.md).
 
-_Last refreshed: 2026-09-30._
+_Last refreshed: 2026-10-01._
 
 ---
 
@@ -41,6 +41,13 @@ button. If an officer says an officer feature is missing, check for the gold
 
 ## What exists
 
+Events (2026-10-01): officers can **edit** an event in place (Edit details on
+the calendar — check-ins, recap and photos stay attached). Meetings **end the
+day of**: the form's End is a same-day time pre-filled to start + 1 h, and a
+blank end means midnight — never open-ended. All start/end/check-in rules live
+in `lib/event-time.ts`. The officer screens had an iPad pass (duplicate month
+buttons, the wrapping top bar at 1024px, and 13 other fixes).
+
 Check-in (2026-09-30): scanning the projected QR checks a signed-in member in
 **automatically** and shows a ✓ (reopening shows "You're checked in", never a
 second button — even after the 15-minute code expires; there's a "Not you?"
@@ -66,21 +73,28 @@ Nothing is half-finished; these are choices, roughly in the order that pays off.
 1. **Put real content on `/about`.** The design is built and empty. One past
    event with a recap, one photo, and officer bios turns the placeholder into
    the record. See [ABOUT-CONTENT-GUIDE.md](ABOUT-CONTENT-GUIDE.md) for what
-   good recaps/captions/bios look like.
-2. **A second Supabase project for local dev.** Today `npm run dev` reads and
+   good recaps/captions/bios look like. **Blocker on iPads:** the photo
+   uploader rejects anything over 4MB, which many full-size iPad camera photos
+   exceed — client-side downscaling is piece 7 of the meetings-archive scope
+   and can ship on its own first.
+2. **Meetings archive — scoped, not built.** `/meetings` + `/meetings/[id]`
+   with slides links (members-only, decided) and officer editing in one place.
+   [MEETINGS-ARCHIVE-SCOPE.md](MEETINGS-ARCHIVE-SCOPE.md) has the plan, STEP 20,
+   effort (~1–1.5 days minimum) and the open decisions.
+3. **A second Supabase project for local dev.** Today `npm run dev` reads and
    writes the live club database. This is the sharpest remaining edge now that
    real members are using the site.
-3. **Smoke-test CI.** Both production failures found so far (Astro's
+4. **Smoke-test CI.** Both production failures found so far (Astro's
    `checkOrigin` 403s, the malformed-cookie 500) were one-curl discoveries. A
    GitHub Action probing ~8 URLs against a preview deploy would have caught
    both.
-4. **Canvas announcements — blocked on access, not code.** Posting to a Canvas
+5. **Canvas announcements — blocked on access, not code.** Posting to a Canvas
    course is one API call; the gate is whether the club has a course shell and
    whether a student token can create announcements there. Three questions to
    answer before building: the course URL, who may post announcements in it,
    and whether that person can generate an access token. Fallback needing
    nobody's permission: an `.ics` feed off the events table.
-5. **Optional, designed but unbuilt:** spoken-code check-in fallback, live
+6. **Optional, designed but unbuilt:** spoken-code check-in fallback, live
    "who's arriving" panel in present mode, capacity enforcement, `audit_logs`
    writes, `AUTH_SECRET` rotation.
 

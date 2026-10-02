@@ -169,15 +169,27 @@ button,input,select,textarea{ font:inherit; color:inherit; }
 .nav a[aria-current]{ color:var(--ink); border-bottom-color:var(--lit); }
 
 .whoami{ display:flex; align-items:center; gap:9px; flex:none; }
-.whoami__name{ font-size:var(--t-14); color:var(--ink); line-height:1.2; }
+.whoami__name{
+  display:block; max-width:12rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  font-size:var(--t-14); color:var(--ink); line-height:1.2;
+}
 .whoami__role{
+  display:block; line-height:1.2;
   font-family:var(--f-cond); text-transform:uppercase; letter-spacing:var(--tr-2);
   font-size:var(--t-12); color:var(--gold-2);
 }
-@media (min-width:701px) and (max-width:960px){
+/* 701–1179px: the nav takes its own row. Below the 1180px cap whether one row
+   fits depends on the signed-in name (and the officer's "View as student"
+   button) — at 1024 an officer's nav used to wrap its own links instead. */
+@media (min-width:701px) and (max-width:1179px){
   .topbar__inner{ flex-wrap:wrap; }
   .nav{ order:3; width:100%; margin-left:-11px; }
   .whoami{ margin-left:auto; }
+  /* Officers: keep "View as student" beside the account controls, not
+     stranded next to the brand mark. Both can't be margin-left:auto, or
+     flexbox splits the free space and the button floats mid-row. */
+  .topbar__inner--viewas .viewas-enter{ margin-left:auto; }
+  .topbar__inner--viewas .whoami{ margin-left:0; }
 }
 @media (max-width:700px){
   .topbar .nav{ display:none; }
@@ -268,8 +280,10 @@ button,input,select,textarea{ font:inherit; color:inherit; }
    (order/width) are phone-only, so from 961px up the extra button simply
    overflowed the line and the container ejected .whoami onto a second,
    left-aligned row under the brand mark — measured 138px tall vs 76px at
-   1024 and 1100. From 701 to 960 .topbar__inner already wraps for everyone,
-   and above 960 the nav absorbs the squeeze by wrapping its own links. */
+   1024 and 1100. From 701 to 1179 .topbar__inner wraps for everyone and the
+   nav takes its own row. The nav must never wrap its own links: each link's
+   -13px margin-bottom makes a second row overlap the first, leaving the
+   active underline floating between rows. */
 @media (max-width:700px){
   .topbar__inner--viewas{ flex-wrap:wrap; }
   .topbar__inner--viewas .viewas-enter{
@@ -503,7 +517,7 @@ button,input,select,textarea{ font:inherit; color:inherit; }
   overflow-wrap:anywhere;
 }
 .rows td:last-child, .rows th:last-child{ padding-right:0; }
-.rows .num{ font-size:var(--t-16); color:var(--ink); }
+.rows .num{ font-size:var(--t-16); color:var(--ink); white-space:nowrap; }
 @media (max-width:700px){
   .rows thead{ position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%); }
   .rows tr{ display:block; padding:12px 0; border-bottom:1px solid var(--rule); }
@@ -613,7 +627,7 @@ button,input,select,textarea{ font:inherit; color:inherit; }
   border-left:3px solid var(--clay); background:var(--clay-bg);
   padding:16px 18px; border-radius:0 var(--r) var(--r) 0;
 }
-.nudge b{ display:block; font-family:var(--f-serif); font-size:var(--t-19); color:var(--ink); font-weight:600; }
+.nudge b, .home__rail .owned > b{ display:block; font-family:var(--f-serif); font-size:var(--t-19); color:var(--ink); font-weight:600; line-height:1.2; }
 .nudge p{ margin-top:5px; font-size:var(--t-14); color:var(--ink-2); }
 .nudge a{
   display:inline-flex; align-items:center; min-height:var(--tap); margin-top:6px;
@@ -805,18 +819,16 @@ button,input,select,textarea{ font:inherit; color:inherit; }
    CALENDAR / EVENTS + QR + PRESENT MODE
    ============================================================ */
 .eventgrid{ display:grid; gap:clamp(24px,3.2vw,40px); }
-/* The officer composer is a direct grid child (between the two column divs,
-   so phone stacking order is unchanged): capped so its line lengths stay
-   sane, and on desktop it spans a full-width row under both columns instead
-   of squeezing into the 336px month column. */
-.eventgrid > .composer{ max-width:680px; }
+/* The officer composer leads the detail column (phone order is unchanged:
+   agenda, composer, detail). It used to be a grid row under BOTH columns,
+   which on an iPad in landscape put "New event" two screens down. */
+.eventgrid .composer{ max-width:680px; margin-bottom:clamp(24px,3.2vw,40px); }
 @media (min-width:980px){
   /* 336 = 7 × 48: each month-grid day link meets the 48px tap floor on an
      iPad in landscape, where the grid is the day-level navigation. */
   .eventgrid{ grid-template-columns:minmax(0,336px) minmax(0,1fr); align-items:start; }
   .eventgrid > div:first-of-type{ grid-column:1; grid-row:1; }
   .eventgrid > div:last-of-type{ grid-column:2; grid-row:1; }
-  .eventgrid > .composer{ grid-column:1 / -1; grid-row:2; }
 }
 .month__head{
   display:flex; align-items:baseline; gap:10px; margin-bottom:12px;
@@ -849,6 +861,10 @@ button,input,select,textarea{ font:inherit; color:inherit; }
 /* ≥980px the month grid replaces the agenda's month header and prev/next —
    but the per-event list stays, because a grid day links only to its FIRST
    event, and a second event that day would otherwise be unreachable. */
+/* Prev/next month — under the grid, and under the agenda. NOT an inline
+   style: an inline display:flex outranked the ≥980px hide below and showed
+   two stacked "← Sep / Nov →" rows on iPad landscape. */
+.monthnav{ margin-top:16px; display:flex; gap:12px; }
 @media (min-width:980px){
   .agenda{ margin-top:24px; }
   .agenda > .section-head, .agenda > p, .agenda > .state{ display:none; }
@@ -873,13 +889,49 @@ button,input,select,textarea{ font:inherit; color:inherit; }
 }
 .facts dd{ margin:5px 0 0; color:var(--ink); font-size:var(--t-16); }
 
-.event-actions{ margin-top:24px; padding:4px 0 4px; }
+.event-actions{ margin-top:24px; padding-top:4px; padding-bottom:4px; }
 .event-actions__head{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:12px; }
 .event-actions__row{ display:flex; gap:12px; flex-wrap:wrap; }
-.event-actions__row > .btn, .event-actions__row > .confirm > summary.btn{ flex:1 1 180px; }
+/* Every action in the officer row — plain buttons AND the two disclosures
+   (Cancel's confirm, Edit details) — is the same kind of flex item, so on a
+   phone they stretch to equal widths together (the disclosures used to stay
+   narrow while the buttons stretched) and on a tablet they sit at their
+   natural width on one line. */
+.event-actions__row > .btn,
+.event-actions__row > .confirm,
+.event-actions__row > .editdetails{ flex:1 1 180px; min-width:0; }
+.event-actions__row > .confirm > summary.btn,
+.event-actions__row > .editdetails > summary.btn{ width:100%; }
 @media (min-width:620px){
-  .event-actions__row > .btn, .event-actions__row > .confirm > summary.btn{ flex:0 0 auto; }
+  .event-actions__row > .btn,
+  .event-actions__row > .confirm,
+  .event-actions__row > .editdetails{ flex:0 0 auto; }
 }
+/* Below 620, a three-item row (or any row with an open disclosure) would wrap
+   2 + 1 and stretch the lone Cancel to full width. Stack those rows instead. */
+@media (max-width:619px){
+  .event-actions__row:not(:has(> :nth-child(4))) > *,
+  .event-actions__row:has(> details[open]) > *{ flex-basis:100%; }
+}
+/* Four actions (Present, PDF, Edit, Cancel ≈ 650px with gaps) overflow the
+   row — narrowed by the .owned inset — up to ~735px (single column) and
+   ~1124px (detail column beside the month grid: iPad landscape). Lay them
+   out 2×2 rather than 3 + an orphaned Cancel. Only for four CLOSED items;
+   an open disclosure has its own row. */
+@media (min-width:620px) and (max-width:739px), (min-width:980px) and (max-width:1127px){
+  .event-actions__row:has(> :nth-child(4)):not(:has(> details[open])) > *{ flex:1 1 calc(50% - 6px); }
+}
+/* An open disclosure takes a full row of its own under the buttons, so the
+   other actions stay on one line instead of being shoved around by it. */
+.event-actions__row > .confirm[open]{ flex:1 1 100%; }
+.editdetails > summary{ list-style:none; cursor:pointer; }
+.editdetails > summary::-webkit-details-marker{ display:none; }
+.editdetails[open]{ order:10; flex:1 1 100%; }
+/* …and Cancel moves below the open form rather than sliding into the spot
+   the officer just tapped. */
+.editdetails[open] ~ .confirm{ order:11; }
+.editdetails[open] > summary{ display:none; }
+.editdetails__form{ margin:4px 0 0; }
 
 /* ---------- PRESENT MODE ----------
    A separate projected surface. It carries the code, the event name,
@@ -979,7 +1031,15 @@ button,input,select,textarea{ font:inherit; color:inherit; }
   font-size:clamp(12px, 1.6cqi, 20px); color:#6B5A2C;
 }
 /* Meeting sheets on /attendance — one row per meeting with its PDF. */
-.sheets-wrap{ margin-top:clamp(30px,3.6vw,42px); }
+/* "Older meetings" — the meeting sheets past the newest few. */
+.sheets__older{ margin-top:6px; }
+.sheets__older > summary{
+  list-style:none; cursor:pointer; display:flex; align-items:center; gap:8px;
+  min-height:var(--tap); font-size:var(--t-14); color:var(--ink-2);
+}
+.sheets__older > summary::-webkit-details-marker{ display:none; }
+.sheets__older > summary::before{ content:"+"; color:var(--gold-2); font-size:var(--t-19); line-height:1; }
+.sheets__older[open] > summary::before{ content:"–"; }
 .sheets__lede{ margin:-4px 0 12px; max-width:62ch; }
 .sheets{ list-style:none; margin:0; padding:0; }
 .sheets li{

@@ -212,20 +212,6 @@ Schema features with no code behind them. All inherited; none regressed.
 
 ## Smaller code truths
 
-### Check-in window constants are duplicated
-
-`start − 30 min / end + 2 h / 4 h assumed length` are enforced in
-`api/attendance/checkin.ts` and mirrored in `api/events/[id]/qr.ts` (close
-rule, so it won't mint a code every scan of which would be rejected),
-`pages/calendar.astro` (close rule for the Present button; open rule for
-"Your check-in" and the Attendance PDF button), `pages/attendance.astro`
-(open rule for Meeting sheets) and `pages/index.astro` (close rule for the
-"scan the code" prompt). They could not share a module during the rebuild
-because `src/lib` was owned by another work stream. If they ever drift,
-check-in gets confusing at the edges — lift them into `lib/` on the next
-touch of any of these files.
-
-
 ### `GET /api/auth/signout` still exists
 
 The UI signs out via POST forms, but GET is still exported for direct

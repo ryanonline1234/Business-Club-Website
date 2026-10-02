@@ -14,6 +14,7 @@
 import DashboardLayout from '../layouts/DashboardLayout.astro';
 import { requireApproved } from '../lib/auth';
 import { supabaseAdmin } from '../lib/supabase';
+import { CHECKIN_OPENS_BEFORE_MS } from '../lib/event-time';
 
 const session = await requireApproved(Astro.request, Astro.response.headers, Astro.redirect);
 
@@ -56,6 +57,8 @@ const meetingsHeld = meetingsHeldCount ?? 0;
 const LOG_LIMIT = 400;
 /** Meeting sheets listed on this page; older meetings' PDFs are on the calendar. */
 const SHEETS_LIMIT = 60;
+/** Listed openly above the log; the rest fold into "Older meetings". */
+const SHEETS_SHOWN = 6;
 
 interface LogRow {
   name: string;
@@ -179,7 +182,7 @@ if (session.isOfficer) {
   // newest first, each with a PDF; older ones are on each event's calendar
   // page. Cancelled meetings are left out of the list (the endpoint still
   // serves them). The embedded count is one query, not one per meeting.
-  const sheetsOpenBefore = new Date(Date.now() + 30 * 60 * 1000).toISOString();
+  const sheetsOpenBefore = new Date(Date.now() + CHECKIN_OPENS_BEFORE_MS).toISOString();
   const { data: sheetEvents, error: sheetsError } = await supabaseAdmin
     .from('events')
     .select('id, title, start_time, attendance(count)')
@@ -254,6 +257,71 @@ if (!session.isOfficer) {
   {session.isOfficer ? (
     <div class="home" style="margin-top:clamp(28px,3.6vw,42px)">
       <div class="home__main">
+        {/* Meeting sheets come FIRST: the PDF is usually what an officer opened
+            this page for, and the check-in log under it can run to 400 rows.
+            The newest few are listed; the rest fold into "Older meetings"
+            (native <details>, no script). */}
+        <section aria-labelledby="sheets-h" class="owned">
+          <div class="section-head">
+            <h2 id="sheets-h">Meeting sheets</h2>
+            <span class="spacer"></span>
+            <span class="flag">Officer only</span>
+          </div>
+          <p class="small muted sheets__lede">
+            One PDF per meeting, named for its date: every attendee with their email and
+            check-in time. It has members&rsquo; emails on it — share it with care.
+          </p>
+          {sheetsFailed ? (
+            <div class="state">
+              <b>Couldn&rsquo;t load the meetings</b>
+              <p>Reload the page to try again.</p>
+            </div>
+          ) : sheets.length > 0 ? (
+            <>
+              <ul class="sheets">
+                {sheets.slice(0, SHEETS_SHOWN).map((m) => (
+                  <li>
+                    <span class="sheets__when">{m.isToday ? <span class="hl">Today</span> : m.day}</span>
+                    <span class="sheets__title">{m.title}</span>
+                    <span class="sheets__n"><span class="num">{m.count}</span> in</span>
+                    <a
+                      class="btn btn--sm btn--ghost sheets__dl"
+                      href={`/api/events/${encodeURIComponent(m.id)}/attendance.pdf`}
+                      download
+                      aria-label={`Download the attendance PDF for ${m.title}, ${m.day}`}
+                    >PDF</a>
+                  </li>
+                ))}
+              </ul>
+              {sheets.length > SHEETS_SHOWN && (
+                <details class="sheets__older">
+                  <summary>Older meetings ({sheets.length - SHEETS_SHOWN})</summary>
+                  <ul class="sheets">
+                    {sheets.slice(SHEETS_SHOWN).map((m) => (
+                      <li>
+                        <span class="sheets__when">{m.day}</span>
+                        <span class="sheets__title">{m.title}</span>
+                        <span class="sheets__n"><span class="num">{m.count}</span> in</span>
+                        <a
+                          class="btn btn--sm btn--ghost sheets__dl"
+                          href={`/api/events/${encodeURIComponent(m.id)}/attendance.pdf`}
+                          download
+                          aria-label={`Download the attendance PDF for ${m.title}, ${m.day}`}
+                        >PDF</a>
+                      </li>
+                    ))}
+                  </ul>
+                </details>
+              )}
+            </>
+          ) : (
+            <div class="state">
+              <b>No meetings yet</b>
+              <p>Each meeting gets a downloadable sheet once its check-in opens.</p>
+            </div>
+          )}
+        </section>
+
         <section aria-labelledby="log-h" class="owned">
           <div class="section-head">
             <h2 id="log-h">Check-in log</h2>
@@ -330,45 +398,6 @@ if (!session.isOfficer) {
             </div>
           )}
         </section>
-
-        <section aria-labelledby="sheets-h" class="owned sheets-wrap">
-          <div class="section-head">
-            <h2 id="sheets-h">Meeting sheets</h2>
-            <span class="spacer"></span>
-            <span class="flag">Officer only</span>
-          </div>
-          <p class="small muted sheets__lede">
-            One PDF per meeting, named for its date: every attendee with their email and
-            check-in time. It has members&rsquo; emails on it — share it with care.
-          </p>
-          {sheetsFailed ? (
-            <div class="state">
-              <b>Couldn&rsquo;t load the meetings</b>
-              <p>Reload the page to try again.</p>
-            </div>
-          ) : sheets.length > 0 ? (
-            <ul class="sheets">
-              {sheets.map((m) => (
-                <li>
-                  <span class="sheets__when">{m.isToday ? <span class="hl">Today</span> : m.day}</span>
-                  <span class="sheets__title">{m.title}</span>
-                  <span class="sheets__n"><span class="num">{m.count}</span> in</span>
-                  <a
-                    class="btn btn--sm btn--ghost sheets__dl"
-                    href={`/api/events/${encodeURIComponent(m.id)}/attendance.pdf`}
-                    download
-                    aria-label={`Download the attendance PDF for ${m.title}, ${m.day}`}
-                  >PDF</a>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <div class="state">
-              <b>No meetings yet</b>
-              <p>Each meeting gets a downloadable sheet once its check-in opens.</p>
-            </div>
-          )}
-        </section>
       </div>
 
       <aside class="home__rail">
@@ -399,7 +428,6 @@ if (!session.isOfficer) {
             <h2 id="turn-h">Turnout, recent five</h2>
             <span class="spacer"></span>
             <span class="count">of {approvedCount}</span>
-            <span class="flag">Officer only</span>
           </div>
           {turnout.length > 0 ? (
             <>

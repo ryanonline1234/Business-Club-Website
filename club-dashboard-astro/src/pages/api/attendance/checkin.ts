@@ -2,6 +2,7 @@ import type { APIRoute } from 'astro';
 import { supabaseAdmin } from '../../../lib/supabase';
 import { verifyQRToken } from '../../../lib/qrcode';
 import { apiJson, apiRequireApproved } from '../../../lib/auth';
+import { checkinWindow } from '../../../lib/event-time';
 
 /**
  * POST /api/attendance/checkin — record the CALLER's attendance.
@@ -27,46 +28,17 @@ import { apiJson, apiRequireApproved } from '../../../lib/auth';
  * The check-in window.
  *
  *   opens  = start_time - 30 minutes
- *   closes = end_time + 2 hours, or start_time + 4 hours when end_time is null
+ *   closes = end_time + 2 hours, capped at the end of the start's Pacific
+ *            day; with no end_time, at the end of that day; an end_time on a
+ *            LATER day (legacy) closes at end_time itself, no grace
+ *            (meetings end the day of; 2026-10-01)
  *
- * These constants are duplicated in src/pages/api/events/[id]/qr.ts, which
- * refuses to mint a token for an event whose window has already closed. Keep
- * the two in sync; they cannot live in a shared module without editing
- * src/lib/**, which this change is not allowed to touch.
+ * The rule lives in src/lib/event-time.ts, shared with the QR endpoint and
+ * every page that shows check-in state, so they cannot drift apart.
  * ──────────────────────────────────────────────────────────────────────────── */
-const OPENS_BEFORE_START_MS = 30 * 60 * 1000;
-const CLOSES_AFTER_END_MS = 2 * 60 * 60 * 1000;
-const ASSUMED_LENGTH_MS = 4 * 60 * 60 * 1000;
 
 /** Postgres unique_violation — the attendance_event_member_unique backstop. */
 const PG_UNIQUE_VIOLATION = '23505';
-
-function parseTime(value: unknown): number | null {
-  if (typeof value !== 'string') return null;
-  const ms = Date.parse(value);
-  return Number.isNaN(ms) ? null : ms;
-}
-
-/**
- * Null when start_time is missing or unparseable — the caller treats that as a
- * server-side data problem rather than silently letting the check-in through.
- * An end_time at or before start_time is treated as absent: that is bad data,
- * and falling back to the 4-hour rule beats computing a window that closed
- * before it opened and locking everyone out of a real meeting.
- */
-function checkinWindow(
-  startTime: unknown,
-  endTime: unknown
-): { opensAt: number; closesAt: number } | null {
-  const start = parseTime(startTime);
-  if (start === null) return null;
-
-  const end = parseTime(endTime);
-  const closesAt =
-    end === null || end <= start ? start + ASSUMED_LENGTH_MS : end + CLOSES_AFTER_END_MS;
-
-  return { opensAt: start - OPENS_BEFORE_START_MS, closesAt };
-}
 
 export const POST: APIRoute = async ({ request }) => {
   const responseHeaders = new Headers();

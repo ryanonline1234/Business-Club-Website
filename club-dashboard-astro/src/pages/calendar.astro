@@ -30,6 +30,7 @@
 import DashboardLayout from '../layouts/DashboardLayout.astro';
 import { requireApproved } from '../lib/auth';
 import { supabaseAdmin } from '../lib/supabase';
+import { CHECKIN_OPENS_BEFORE_MS, checkinWindow, explicitEndMs, isHappeningNow, pacificParts } from '../lib/event-time';
 import { PUBLIC_SUPABASE_URL } from '../lib/env';
 
 const user = await requireApproved(Astro.request, Astro.response.headers, Astro.redirect);
@@ -81,32 +82,15 @@ const fmtTime = (iso: string) =>
   new Date(iso).toLocaleTimeString('en-US', { timeZone: TZ, hour: 'numeric', minute: '2-digit' });
 
 const nowMs = Date.now();
-/** Display-only assumed length for "happening now" when end_time is absent. */
-const DISPLAY_LENGTH_MS = 90 * 60 * 1000;
-/** Mirror of the QR endpoint's close rule, so we don't render a Present button
- *  that can only ever 409. */
-const CLOSES_AFTER_END_MS = 2 * 60 * 60 * 1000;
-const ASSUMED_LENGTH_MS = 4 * 60 * 60 * 1000;
 
+/* Start / end / check-in rules come from lib/event-time — the same module the
+   check-in and QR endpoints use, so the Present button can never offer a code
+   the endpoint would refuse. Meetings without an end_time end the day of. */
 const startMsOf = (e: EventRow) => Date.parse(e.start_time);
-const endMsOf = (e: EventRow) => {
-  const s = startMsOf(e);
-  const en = e.end_time ? Date.parse(e.end_time) : Number.NaN;
-  return !Number.isNaN(en) && en > s ? en : Number.NaN;
-};
-const isNow = (e: EventRow) => {
-  const s = startMsOf(e);
-  if (Number.isNaN(s) || e.status !== 'active') return false;
-  const en = endMsOf(e);
-  const until = Number.isNaN(en) ? s + DISPLAY_LENGTH_MS : en;
-  return nowMs >= s && nowMs <= until;
-};
-const checkinClosesAt = (e: EventRow) => {
-  const s = startMsOf(e);
-  if (Number.isNaN(s)) return Number.NaN;
-  const en = endMsOf(e);
-  return Number.isNaN(en) ? s + ASSUMED_LENGTH_MS : en + CLOSES_AFTER_END_MS;
-};
+/** The explicit end, or NaN when there is none (the meeting ends with its day). */
+const endMsOf = (e: EventRow) => explicitEndMs(e.start_time, e.end_time) ?? Number.NaN;
+const isNow = (e: EventRow) => e.status === 'active' && isHappeningNow(e.start_time, e.end_time, nowMs);
+const checkinClosesAt = (e: EventRow) => checkinWindow(e.start_time, e.end_time)?.closesAt ?? Number.NaN;
 
 /** "3:30 – 4:45 PM" — drop the first meridiem when both sides share it. */
 function timeRange(e: EventRow): string {
@@ -132,7 +116,9 @@ const eventParam = Astro.url.searchParams.get('event');
 
 const selected: EventRow | null =
   (eventParam ? events.find((e) => e.id === eventParam) : undefined) ??
-  events.find(isNow) ??
+  // Most recently started live event: a no-end meeting stays "now" until
+  // midnight, so with two today the later (actual) one should win.
+  [...events].reverse().find(isNow) ??
   events.find((e) => e.status === 'active' && startMsOf(e) >= nowMs) ??
   [...events].reverse().find((e) => e.status === 'active') ??
   events[events.length - 1] ??
@@ -231,7 +217,6 @@ if (selected) {
    Asked once the check-in window has opened (start − 30 min, the same rule
    POST /api/attendance/checkin enforces); before that there is nothing to
    report. Own row only. A failed read renders nothing rather than a false ✗. */
-const CHECKIN_OPENS_BEFORE_MS = 30 * 60 * 1000;
 const checkinHasOpened =
   selected !== null && nowMs >= startMsOf(selected) - CHECKIN_OPENS_BEFORE_MS;
 let myCheckin: { checkedIn: boolean; time: string | null } | null = null;
@@ -311,6 +296,26 @@ const photoUrl = (path: string) =>
     .join('/')}`;
 
 const selectedIsNow = selected ? isNow(selected) : false;
+
+/* Edit-details prefill, in Pacific wall time (the form's inputs are read in
+   the officer's own clock, which for this club is Pacific). The end is a
+   same-day TIME; a legacy end on another day prefills blank (= midnight). */
+const EDIT_CATEGORIES = ['meeting', 'workshop', 'speaker', 'social', 'deadline'];
+let editPrefill: { start: string; end: string; categories: string[] } | null = null;
+if (user.isOfficer && selected) {
+  const p2 = (n: number) => String(n).padStart(2, '0');
+  const sMs = Date.parse(selected.start_time);
+  const s = pacificParts(sMs);
+  const eMs = explicitEndMs(selected.start_time, selected.end_time);
+  const e = eMs === null ? null : pacificParts(eMs);
+  const sameDay = e !== null && e.y === s.y && e.m === s.m && e.d === s.d;
+  const current = (selected.category ?? '').trim() || 'meeting';
+  editPrefill = {
+    start: `${s.y}-${p2(s.m)}-${p2(s.d)}T${p2(s.h)}:${p2(s.mi)}`,
+    end: e && sameDay ? `${p2(e.h)}:${p2(e.mi)}` : '',
+    categories: EDIT_CATEGORIES.includes(current) ? EDIT_CATEGORIES : [current, ...EDIT_CATEGORIES],
+  };
+}
 const selectedWhen = selected
   ? `${fmtDayLong.format(new Date(selected.start_time))} · ${timeRange(selected)}`
   : '';
@@ -349,7 +354,7 @@ const canPresent =
             )
           )}
         </div>
-        <p style="margin-top:16px; display:flex; gap:12px;">
+        <p class="monthnav">
           <a class="btn btn--ghost btn--sm" href={`/calendar?month=${prevMonthStr}`}>← {prevLabel}</a>
           <span style="flex:1"></span>
           <a class="btn btn--ghost btn--sm" href={`/calendar?month=${nextMonthStr}`}>{nextLabel} →</a>
@@ -394,7 +399,7 @@ const canPresent =
             })}
           </ul>
         )}
-        <p style="margin-top:16px; display:flex; gap:12px;">
+        <p class="monthnav">
           <a class="btn btn--ghost btn--sm" href={`/calendar?month=${prevMonthStr}`}>← {prevLabel}</a>
           <span style="flex:1"></span>
           <a class="btn btn--ghost btn--sm" href={`/calendar?month=${nextMonthStr}`}>{nextLabel} →</a>
@@ -403,67 +408,66 @@ const canPresent =
 
     </div>
 
-    {user.isOfficer && (
-      <details class="composer">
-        <summary>New event</summary>
-        <form class="composer__form" id="event-form" novalidate>
-          <div class="composer__head">
-            <b>New event</b>
-            <span class="flag">Officer only</span>
-          </div>
-          <label class="field">
-            <span>Title</span>
-            <input class="input" type="text" name="title" required maxlength="200" autocomplete="off" />
-          </label>
-          <div class="composer__duo">
-            <label class="field">
-              <span>Starts</span>
-              <input class="input" type="datetime-local" name="start" required />
-              <span class="field__hint">Times are your local (Pacific) time.</span>
-            </label>
-            <label class="field">
-              <span>Ends</span>
-              <input class="input" type="datetime-local" name="end" />
-              <span class="field__hint">Optional — leave blank for open-ended.</span>
-            </label>
-          </div>
-          <div class="composer__duo">
-            <label class="field">
-              <span>Location</span>
-              <input class="input" type="text" name="location" maxlength="300" autocomplete="off" />
-            </label>
-            <label class="field">
-              <span>Capacity</span>
-              <input class="input" type="number" name="capacity" min="1" step="1" inputmode="numeric" />
-              <span class="field__hint">Optional. Leave blank for no cap.</span>
-            </label>
-          </div>
-          <div class="composer__duo">
-            <label class="field">
-              <span>Category</span>
-              <select class="select" name="category">
-                <option value="meeting" selected>Meeting</option>
-                <option value="workshop">Workshop</option>
-                <option value="speaker">Speaker</option>
-                <option value="social">Social</option>
-                <option value="deadline">Deadline</option>
-              </select>
-            </label>
-          </div>
-          <label class="field">
-            <span>Description</span>
-            <textarea class="textarea" name="description" maxlength="5000"></textarea>
-            <span class="field__hint">Optional. Plain text — members see it on the event page.</span>
-          </label>
-          <p id="event-form-error" class="small" role="alert" style="color:var(--clay); display:none;"></p>
-          <div class="composer__actions">
-            <button class="btn" type="submit">Create event</button>
-          </div>
-        </form>
-      </details>
-    )}
-
     <div>
+      {user.isOfficer && (
+        <details class="composer">
+          <summary>New event</summary>
+          <form class="composer__form" id="event-form" novalidate>
+            <div class="composer__head">
+              <b>New event</b>
+              <span class="flag">Officer only</span>
+            </div>
+            <label class="field">
+              <span>Title</span>
+              <input class="input" type="text" name="title" required maxlength="200" autocomplete="off" />
+            </label>
+            <div class="composer__duo">
+              <label class="field">
+                <span>Starts</span>
+                <input class="input" type="datetime-local" name="start" required />
+                <span class="field__hint">Pacific time.</span>
+              </label>
+              <label class="field">
+                <span>Ends</span>
+                <input class="input" type="time" name="end" />
+                <span class="field__hint js-end-hint">Same day as the start. Leave it blank and the meeting ends at midnight.</span>
+              </label>
+            </div>
+            <div class="composer__duo">
+              <label class="field">
+                <span>Location</span>
+                <input class="input" type="text" name="location" maxlength="300" autocomplete="off" />
+              </label>
+              <label class="field">
+                <span>Capacity</span>
+                <input class="input" type="number" name="capacity" min="1" step="1" inputmode="numeric" />
+                <span class="field__hint">Optional. Leave blank for no cap.</span>
+              </label>
+            </div>
+            <div class="composer__duo">
+              <label class="field">
+                <span>Category</span>
+                <select class="select" name="category">
+                  <option value="meeting" selected>Meeting</option>
+                  <option value="workshop">Workshop</option>
+                  <option value="speaker">Speaker</option>
+                  <option value="social">Social</option>
+                  <option value="deadline">Deadline</option>
+                </select>
+              </label>
+            </div>
+            <label class="field">
+              <span>Description</span>
+              <textarea class="textarea" name="description" maxlength="5000"></textarea>
+              <span class="field__hint">Optional. Plain text — members see it on the event page.</span>
+            </label>
+            <p id="event-form-error" class="small js-form-error" role="alert" style="color:var(--clay); display:none;"></p>
+            <div class="composer__actions">
+              <button class="btn" type="submit">Create event</button>
+            </div>
+          </form>
+        </details>
+      )}
       {selected === null ? (
         <div class="state state--rule">
           <b>Nothing on the calendar yet</b>
@@ -526,6 +530,60 @@ const canPresent =
                     download
                   >Attendance PDF</a>
                 )}
+                {editPrefill && (
+                  <details class="editdetails">
+                    <summary class="btn btn--ghost">Edit details</summary>
+                    <form class="composer__form editdetails__form" id="event-edit-form" data-event-id={selected.id} novalidate>
+                      <div class="composer__head">
+                        <b>Edit details</b>
+                        <span class="small muted">Check-ins, recap and photos stay attached.</span>
+                      </div>
+                      <label class="field">
+                        <span>Title</span>
+                        <input class="input" type="text" name="title" required maxlength="200" autocomplete="off" value={selected.title} />
+                      </label>
+                      <div class="composer__duo">
+                        <label class="field">
+                          <span>Starts</span>
+                          <input class="input" type="datetime-local" name="start" required value={editPrefill.start} />
+                          <span class="field__hint">Pacific time.</span>
+                        </label>
+                        <label class="field">
+                          <span>Ends</span>
+                          <input class="input" type="time" name="end" value={editPrefill.end} />
+                          <span class="field__hint js-end-hint">Same day. Blank = ends at midnight.</span>
+                        </label>
+                      </div>
+                      <div class="composer__duo">
+                        <label class="field">
+                          <span>Location</span>
+                          <input class="input" type="text" name="location" maxlength="300" autocomplete="off" value={selected.location ?? ''} />
+                        </label>
+                        <label class="field">
+                          <span>Capacity</span>
+                          <input class="input" type="number" name="capacity" min="1" step="1" inputmode="numeric" value={selected.capacity ?? ''} />
+                        </label>
+                      </div>
+                      <label class="field">
+                        <span>Category</span>
+                        <select class="select" name="category">
+                          {editPrefill.categories.map((c) => (
+                            <option value={c} selected={c === ((selected.category ?? '').trim() || 'meeting')}>{catLabel(c)}</option>
+                          ))}
+                        </select>
+                      </label>
+                      <label class="field">
+                        <span>Description</span>
+                        <textarea class="textarea" name="description" maxlength="5000">{selected.description ?? ''}</textarea>
+                      </label>
+                      <p class="small js-form-error" role="alert" style="color:var(--clay); display:none;"></p>
+                      <div class="composer__actions">
+                        <button class="btn" type="submit">Save changes</button>
+                        <button class="btn btn--ghost js-edit-close" type="button">Close</button>
+                      </div>
+                    </form>
+                  </details>
+                )}
                 <details class="confirm">
                   <summary class="btn btn--danger">Cancel event</summary>
                   <div class="confirm__row">
@@ -551,7 +609,7 @@ const canPresent =
               </div>
               <p class="small muted recapblock__pub">
                 What you save here is published on the club's public{' '}
-                <a class="textlink" href="/about">/about</a> page — anyone can see it, member or not.
+                <a href="/about">/about</a> page — anyone can see it, member or not.
               </p>
 
               <form id="recap-form" data-event-id={selected.id} novalidate>
@@ -659,10 +717,16 @@ const canPresent =
 <style>
   /* Approximations with existing tokens — no recap-block or photo-grid class
      exists in the design system (same pattern as members.astro's row-err). */
-  .recapblock{ margin-top:26px; padding:4px 0; }
+  .recapblock{ margin-top:26px; padding-top:4px; padding-bottom:4px; }
   .recapblock__head{ display:flex; align-items:baseline; gap:10px; flex-wrap:wrap; }
   .recapblock__head b{ font-family:var(--f-serif); font-size:var(--t-19); color:var(--ink); font-weight:600; }
   .recapblock__pub{ margin-top:6px; max-width:60ch; }
+  /* Inline link in running text: pad the hit area to ~48px without moving
+     the line (same pattern as login.astro .gate__about a). */
+  .recapblock__pub a{
+    color:var(--gold-2);
+    display:inline-block; padding:13px 4px; margin:-13px -4px;
+  }
   .recapblock form{ margin-top:18px; }
   .recapblock form > * + *{ margin-top:14px; }
   .recapblock__actions{ display:flex; }
@@ -689,101 +753,164 @@ const canPresent =
   /* Client JS is wiring only — no data is ever rendered into DOM HTML here.
      textContent + attribute assignment throughout. */
 
-  /* ── New event (officers) ─────────────────────────────────────────────── */
-  const form = document.getElementById('event-form') as HTMLFormElement | null;
-  if (form) {
-    // An empty datetime-local shows a ghost of today's date (WebKit renders it
-    // exactly like a set value), which the owner once read as real and
-    // submitted. Make the visible value the real value: when the composer
-    // opens, prefill Starts with the next round hour in the officer's own
-    // clock — the same local clock the submit logic below reads. "Ends" stays
-    // genuinely empty; its hint says so.
-    const startInput = form.querySelector('input[name="start"]') as HTMLInputElement | null;
-    // Tracks the exact string the prefill last wrote. On reopen, an untouched
-    // prefill is refreshed (a long-lived tab would otherwise submit a stale —
-    // possibly past — start time as if it were real); anything the officer
-    // typed or edited differs from this string and is never clobbered.
-    let lastPrefill = '';
-    const prefillStart = () => {
-      if (!startInput) return;
-      if (startInput.value && startInput.value !== lastPrefill) return;
-      const d = new Date();
-      d.setMinutes(0, 0, 0);
-      d.setHours(d.getHours() + 1);
-      const p2 = (n: number) => String(n).padStart(2, '0');
-      lastPrefill =
-        `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}T${p2(d.getHours())}:${p2(d.getMinutes())}`;
-      startInput.value = lastPrefill;
-    };
-    const composerEl = form.closest('details');
-    if (composerEl) {
-      composerEl.addEventListener('toggle', () => {
-        if (composerEl.open) prefillStart();
-      });
-      if (composerEl.open) prefillStart();
-    } else {
-      prefillStart();
-    }
+  /* ── Event forms (officers): New event + Edit event ──────────────────────
+     Both forms share field names and the rules below.
+     • "Starts" is a datetime-local, read in the officer's own clock (Pacific —
+       the field hint says so); toISOString() carries it to the server
+       unambiguously.
+     • "Ends" is a TIME on the start's day — meetings end the day of (owner
+       decision, 2026-10-01). It follows the start at +1 h until the officer
+       touches it. Blank means the meeting ends at midnight (lib/event-time on
+       the server); a time at or before the start is refused rather than
+       silently rolled into the next day.
+     An empty datetime-local shows a ghost of today's date in WebKit that reads
+     like a real value (the owner once submitted it), so the New event form
+     prefills Starts with the next round hour — the visible value is the real
+     value. An untouched prefill is refreshed on reopen; anything typed is
+     never clobbered. */
+  const p2 = (n: number) => String(n).padStart(2, '0');
 
-    const errEl = document.getElementById('event-form-error') as HTMLElement;
+  /* Form times are PACIFIC wall time on every device — the club's clock, and
+     what the server prefills — not the device's own zone. Same guess-and-
+     correct as lib/event-time on the server (Intl knows DST). */
+  const PT = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Los_Angeles', hourCycle: 'h23',
+    year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit',
+  });
+  const ptParts = (ms: number) => {
+    const p: Record<string, string> = {};
+    for (const x of PT.formatToParts(new Date(ms))) p[x.type] = x.value;
+    return { y: +p.year, m: +p.month, d: +p.day, h: +p.hour, mi: +p.minute, s: +p.second };
+  };
+  const ptOffset = (ms: number) => {
+    const w = ptParts(ms);
+    return Date.UTC(w.y, w.m - 1, w.d, w.h, w.mi, w.s) - Math.floor(ms / 1000) * 1000;
+  };
+  /** Pacific wall time → UTC ms. */
+  const ptWallToMs = (y: number, m: number, d: number, h: number, mi: number) => {
+    const guess = Date.UTC(y, m - 1, d, h, mi);
+    const first = guess - ptOffset(guess);
+    const second = guess - ptOffset(first);
+    return second !== first ? second : first;
+  };
+  /** "YYYY-MM-DDTHH:MM" (+ optional "HH:MM" on that date) → UTC ms, or NaN. */
+  const parseWall = (dateTime: string, time?: string): number => {
+    const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/.exec(dateTime);
+    if (!m) return Number.NaN;
+    const [hh, mm] = time ? time.split(':').map(Number) : [Number(m[4]), Number(m[5])];
+    if (Number.isNaN(hh) || Number.isNaN(mm)) return Number.NaN;
+    return ptWallToMs(Number(m[1]), Number(m[2]), Number(m[3]), hh, mm);
+  };
+
+  /** "HH:MM" one wall-clock hour after a datetime-local value; '' past midnight.
+   *  Wall-clock (not epoch) arithmetic, so the fall-back hour can't produce an
+   *  end equal to the start. */
+  const hourAfter = (startValue: string): string => {
+    const m = /T(\d{2}):(\d{2})/.exec(startValue);
+    if (!m) return '';
+    const h = Number(m[1]) + 1;
+    if (h > 23) return '';
+    return `${p2(h)}:${m[2]}`;
+  };
+
+  const readEventForm = (
+    f: HTMLFormElement
+  ): { ok: true; payload: Record<string, unknown> } | { ok: false; error: string } => {
+    const fd = new FormData(f);
+    const title = String(fd.get('title') ?? '').trim();
+    const startRaw = String(fd.get('start') ?? '');
+    const endRaw = String(fd.get('end') ?? '').trim();
+    if (!title || !startRaw) return { ok: false, error: 'A title and a start time are required.' };
+    const startMs = parseWall(startRaw);
+    if (Number.isNaN(startMs)) return { ok: false, error: 'The start time is not a valid date.' };
+    const startDate = new Date(startMs);
+    let endIso: string | null = null;
+    if (endRaw) {
+      const endMs = parseWall(startRaw, endRaw);
+      if (Number.isNaN(endMs)) return { ok: false, error: 'The end time is not valid.' };
+      const endDate = new Date(endMs);
+      if (endDate.getTime() <= startDate.getTime()) {
+        return {
+          ok: false,
+          error: 'The end time must be after the start — meetings end the same day. Leave it blank to end at midnight.',
+        };
+      }
+      endIso = endDate.toISOString();
+    }
+    return {
+      ok: true,
+      payload: {
+        title,
+        start_time: startDate.toISOString(),
+        end_time: endIso,
+        location: String(fd.get('location') ?? '').trim(),
+        description: String(fd.get('description') ?? '').trim(),
+        category: String(fd.get('category') ?? 'meeting'),
+        // '' means "no cap" to the endpoint; anything else must be a positive
+        // integer, which the endpoint validates.
+        capacity: String(fd.get('capacity') ?? '').trim(),
+      },
+    };
+  };
+
+  /** Keep Ends at Starts + 1 h until the officer edits Ends. Returns a re-sync hook. */
+  const wireEndToStart = (f: HTMLFormElement) => {
+    const startIn = f.querySelector('input[name="start"]') as HTMLInputElement | null;
+    const endIn = f.querySelector('input[name="end"]') as HTMLInputElement | null;
+    if (!startIn || !endIn) return () => {};
+    // Edit form: a stored end of exactly start + 1 h keeps following; any other
+    // stored end (or a stored blank = "midnight") is the officer's choice.
+    let endTouched = endIn.value !== hourAfter(startIn.value);
+    if (!startIn.value) endTouched = false;
+    // The hint states what will actually be saved, from the field's VALUE (a
+    // WebKit placeholder can look like a time while the value is empty).
+    const hint = f.querySelector('.js-end-hint') as HTMLElement | null;
+    const fmt12 = (hhmm: string) => {
+      const [h, m] = hhmm.split(':').map(Number);
+      if (Number.isNaN(h) || Number.isNaN(m)) return hhmm;
+      return `${((h + 11) % 12) + 1}:${String(m).padStart(2, '0')} ${h < 12 ? 'AM' : 'PM'}`;
+    };
+    const updateHint = () => {
+      if (!hint) return;
+      hint.textContent = endIn.value
+        ? `Ends ${fmt12(endIn.value)}, same day as the start.`
+        : 'No end time — the meeting ends at midnight that day.';
+    };
+    endIn.addEventListener('input', () => {
+      endTouched = true;
+      updateHint();
+    });
+    const sync = () => {
+      if (!endTouched) endIn.value = hourAfter(startIn.value);
+      updateHint();
+    };
+    updateHint();
+    startIn.addEventListener('input', sync);
+    startIn.addEventListener('change', sync);
+    return sync;
+  };
+
+  const bindEventForm = (f: HTMLFormElement, send: (payload: Record<string, unknown>) => Promise<Response>, failMsg: string) => {
+    const errEl = f.querySelector('.js-form-error') as HTMLElement | null;
     const showErr = (msg: string) => {
+      if (!errEl) return;
       errEl.textContent = msg;
       errEl.style.display = 'block';
     };
-    form.addEventListener('submit', async (ev) => {
+    f.addEventListener('submit', async (ev) => {
       ev.preventDefault();
-      errEl.style.display = 'none';
-
-      const fd = new FormData(form);
-      const title = String(fd.get('title') ?? '').trim();
-      const startRaw = String(fd.get('start') ?? '');
-      const endRaw = String(fd.get('end') ?? '');
-
-      if (!title || !startRaw) {
-        showErr('A title and a start time are required.');
+      if (errEl) errEl.style.display = 'none';
+      const read = readEventForm(f);
+      if (!read.ok) {
+        showErr(read.error);
         return;
       }
-      // datetime-local has no timezone — new Date() reads it in the officer's
-      // own zone, and toISOString() carries that to the server unambiguously.
-      const startDate = new Date(startRaw);
-      if (Number.isNaN(startDate.getTime())) {
-        showErr('The start time is not a valid date.');
-        return;
-      }
-      let endIso: string | null = null;
-      if (endRaw) {
-        const endDate = new Date(endRaw);
-        if (Number.isNaN(endDate.getTime())) {
-          showErr('The end time is not a valid date.');
-          return;
-        }
-        if (endDate.getTime() <= startDate.getTime()) {
-          showErr('The end time must be after the start.');
-          return;
-        }
-        endIso = endDate.toISOString();
-      }
-
-      const submitBtn = form.querySelector('button[type="submit"]') as HTMLButtonElement;
+      const submitBtn = f.querySelector('button[type="submit"]') as HTMLButtonElement;
       submitBtn.disabled = true;
       try {
-        const res = await fetch('/api/events/create', {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({
-            title,
-            start_time: startDate.toISOString(),
-            end_time: endIso,
-            location: String(fd.get('location') ?? '').trim(),
-            description: String(fd.get('description') ?? '').trim(),
-            category: String(fd.get('category') ?? 'meeting'),
-            // '' means "no cap" to the endpoint; anything else must be a
-            // positive integer, which the endpoint validates.
-            capacity: String(fd.get('capacity') ?? '').trim(),
-          }),
-        });
+        const res = await send(read.payload);
         if (!res.ok) {
-          let msg = 'Could not create the event.';
+          let msg = failMsg;
           try {
             const body = await res.json();
             if (body && typeof body.error === 'string') msg = body.error;
@@ -800,6 +927,72 @@ const canPresent =
         submitBtn.disabled = false;
       }
     });
+  };
+
+  const form = document.getElementById('event-form') as HTMLFormElement | null;
+  if (form) {
+    const startInput = form.querySelector('input[name="start"]') as HTMLInputElement | null;
+    const syncEnd = wireEndToStart(form);
+    let lastPrefill = '';
+    const prefillStart = () => {
+      if (!startInput) return;
+      if (startInput.value && startInput.value !== lastPrefill) return;
+      // The next round hour, in Pacific wall time (Date.UTC rolls the day).
+      const w = ptParts(Date.now());
+      const n = new Date(Date.UTC(w.y, w.m - 1, w.d, w.h + 1));
+      lastPrefill = `${n.getUTCFullYear()}-${p2(n.getUTCMonth() + 1)}-${p2(n.getUTCDate())}T${p2(n.getUTCHours())}:00`;
+      startInput.value = lastPrefill;
+      syncEnd();
+    };
+    const composerEl = form.closest('details');
+    if (composerEl) {
+      composerEl.addEventListener('toggle', () => {
+        if (composerEl.open) prefillStart();
+      });
+      if (composerEl.open) prefillStart();
+    } else {
+      prefillStart();
+    }
+    bindEventForm(
+      form,
+      (payload) =>
+        fetch('/api/events/create', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(payload),
+        }),
+      'Could not create the event.'
+    );
+  }
+
+  const editForm = document.getElementById('event-edit-form') as HTMLFormElement | null;
+  if (editForm) {
+    const editId = editForm.dataset.eventId ?? '';
+    wireEndToStart(editForm);
+    editForm.querySelector('.js-edit-close')?.addEventListener('click', () => {
+      const d = editForm.closest('details');
+      if (d) d.open = false;
+    });
+    bindEventForm(
+      editForm,
+      (payload) => {
+        // Times the officer didn't touch aren't re-sent: a title-only fix can
+        // never move the meeting, and a legacy end on another day (prefilled
+        // blank) isn't silently cleared.
+        const sIn = editForm.querySelector('input[name="start"]') as HTMLInputElement | null;
+        const eIn = editForm.querySelector('input[name="end"]') as HTMLInputElement | null;
+        if (sIn && eIn && sIn.value === sIn.defaultValue && eIn.value === eIn.defaultValue) {
+          delete payload.start_time;
+          delete payload.end_time;
+        }
+        return fetch(`/api/events/${encodeURIComponent(editId)}`, {
+          method: 'PATCH',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+      },
+      'Could not save the event.'
+    );
   }
 
   /* ── Cancel event (officers, inline confirm) ──────────────────────────── */
@@ -994,6 +1187,15 @@ const canPresent =
   });
 
   /* ── Present mode (officers) ──────────────────────────────────────────── */
+  // Strip ?present=1 unconditionally (even when Present isn't offered on this
+  // render), so a later location.reload() can never reopen the layer.
+  const presentParams = new URLSearchParams(location.search);
+  const arrivedToPresent = presentParams.get('present') === '1';
+  if (arrivedToPresent) {
+    presentParams.delete('present');
+    const qs = presentParams.toString();
+    history.replaceState(null, '', location.pathname + (qs ? `?${qs}` : '') + location.hash);
+  }
   const openBtn = document.getElementById('present-open') as HTMLButtonElement | null;
   const layer = document.getElementById('present-layer');
   if (openBtn && layer) {
@@ -1190,6 +1392,10 @@ const canPresent =
     });
 
     openBtn.addEventListener('click', openLayer);
+
+    // Arrived from the home page's "Present check-in code" (?present=1, already
+    // stripped above): open straight into Present mode.
+    if (arrivedToPresent) openLayer();
     exitBtn.addEventListener('click', closeLayer);
     document.addEventListener('keydown', (e) => {
       if (isOpen && e.key === 'Escape') closeLayer();
