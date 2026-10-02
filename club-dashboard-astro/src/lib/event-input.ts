@@ -17,6 +17,8 @@ export const MAX_TITLE = 200;
 export const MAX_DESCRIPTION = 5000;
 export const MAX_LOCATION = 300;
 export const MAX_CATEGORY = 60;
+import { parseSlidesUrl } from './slides-link';
+
 /** integer column ceiling in Postgres — larger values would 500 on write */
 const MAX_CAPACITY = 2147483647;
 
@@ -29,6 +31,8 @@ export interface EventFields {
   location?: string | null;
   category?: string;
   capacity?: number | null;
+  /** UPDATE ONLY (STEP 20). Members-only slides link; null clears it. */
+  slides_url?: string | null;
 }
 
 export type EventFieldsResult = { ok: true; fields: EventFields } | { ok: false; error: string };
@@ -104,6 +108,20 @@ export function parseEventFields(body: Record<string, unknown>, mode: 'create' |
       capacity = parsed;
     }
     fields.capacity = capacity;
+  }
+
+  // Slides link (STEP 20) — update only: it is set from the meeting page, and
+  // create's insert stays exactly the columns that existed before STEP 20.
+  // Validated by lib/slides-link (https + Google Slides/Docs/Drive hosts).
+  if (mode === 'update' && has('slides_url')) {
+    const raw = optionalText(body.slides_url);
+    if (raw === null) {
+      fields.slides_url = null;
+    } else {
+      const link = parseSlidesUrl(raw);
+      if (!link.ok) return { ok: false, error: link.error };
+      fields.slides_url = link.href;
+    }
   }
 
   return { ok: true, fields };

@@ -14,8 +14,9 @@ no-op and running it on an empty project builds everything from scratch.
    "relation does not exist" — that counts as zero rows.)
 2. **PART 1 → STEP 14** as one block.
 3. **STEP 15 alone** — verification. Read it before deploying any code.
-4. **STEPs 16–19 as one block** — the `/about` additions (`bio`, `recap`, the
-   `photos` table) plus STEP 19, the auto-approval backfill. Unlike the rest,
+4. **STEPs 16–20 as one block** — the `/about` additions (`bio`, `recap`, the
+   `photos` table), STEP 19 (the auto-approval backfill) and STEP 20 (the
+   members-only `events.slides_url`). Unlike the rest,
    these are safe **any time, in either order relative to the code deploy**:
    nullable columns older code never selects, a new table nothing else
    references, code that reads them fails soft, and STEP 19 only approves
@@ -25,7 +26,7 @@ no-op and running it on an empty project builds everything from scratch.
 
 Deploy order is **SQL first, then code** — the wrong order strands every user
 on `/pending`. See [DEPLOYMENT.md](DEPLOYMENT.md#deploy-order-sql-first-then-code).
-(That constraint is about STEPs 0–15; STEPs 16–19 are exempt, as above.)
+(That constraint is about STEPs 0–15; STEPs 16–20 are exempt, as above.)
 
 ---
 
@@ -91,6 +92,7 @@ clients as a 409 with fixed copy, never the raw Postgres message).
 | `category` | `text` | default `'meeting'`; free text |
 | `status` | `text` | `'active' \| 'completed' \| 'cancelled'`, default `'active'`. Nothing ever sets `'completed'`, but readers must treat it as a legitimate past state (`/about` and `/attendance` count `active` + `completed`) |
 | `created_by` | `uuid` | FK → `profiles`, not null |
+| `slides_url` | `text` | nullable, no default (STEP 20). One **members-only** slides link per meeting — Google Slides/Docs/Drive, https, ≤ 2048 (`lib/slides-link.ts` validates; a check constraint is the second line). Never selected by `/about` |
 | `recap` | `text` | nullable, no default (STEP 17). Officer-written "what happened" prose for the **public** `/about` page; NULL = "no recap". Only past events may carry one — enforced by `PATCH /api/events/:id/recap`, and `PATCH /api/events/:id` refuses to move a meeting that started more than 12 h ago into the future |
 | `created_at` | `timestamptz` | |
 
@@ -141,8 +143,8 @@ row is invisible.
 | `uploaded_by` | `uuid` | FK → `profiles`, not null. **The one non-public column** — see the RLS note below. Same NO ACTION posture as `events.created_by`: hard-deleting a profile with uploads fails on this key |
 | `created_at` | `timestamptz` | default `now()` |
 
-Indexed on `event_id` (serves "photos of this event" on `/about` and in the
-calendar's editor).
+Indexed on `event_id` (serves "photos of this event" on `/about` and on the
+meeting page, `/meetings/[id]`).
 
 ### The `club-photos` Storage bucket
 

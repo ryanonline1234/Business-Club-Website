@@ -1,0 +1,674 @@
+---
+/**
+ * /meetings/[id] — one meeting's page: the canonical home of its record.
+ *
+ * Everyone approved sees: title, category, when/where, the description, the
+ * slides link (members-only by owner decision — /about never selects it), the
+ * recap, the photos, their own check-in and the check-in count.
+ *
+ * Officers additionally get — each in an "Officer only" block, and each the ONE
+ * place that edit lives (docs/MEETINGS-ARCHIVE-SCOPE.md § "One place per edit
+ * control"):
+ *   • Edit details  → PATCH /api/events/:id   (every field + slides link)
+ *   • Recap         → PATCH /api/events/:id/recap   (past meetings; public)
+ *   • Photos        → POST /api/photos, DELETE /api/photos/:id (past; public)
+ * The calendar keeps only Present and Cancel, and links here.
+ *
+ * Reads FAIL SOFT for columns/tables that arrive by hand-applied SQL steps:
+ * events.slides_url (STEP 20), events.recap (STEP 17), photos (STEP 18) — a
+ * missing one renders as "nothing yet", never a 500.
+ *
+ * Rendering is server-side and escaped (invariant 3). The slides link is
+ * re-validated on render (lib/slides-link) and is always a plain link: no
+ * embed, no iframe (invariant 10).
+ */
+import DashboardLayout from '../../layouts/DashboardLayout.astro';
+import { requireApproved } from '../../lib/auth';
+import { supabaseAdmin } from '../../lib/supabase';
+import { checkinWindow, explicitEndMs, isHappeningNow, pacificParts } from '../../lib/event-time';
+import { slidesLink } from '../../lib/slides-link';
+import {
+  EVENT_CATEGORIES,
+  categoryLabel,
+  isMissingColumn,
+  isMissingRelation,
+  paragraphs,
+  photoUrl,
+} from '../../lib/meetings';
+
+const user = await requireApproved(Astro.request, Astro.response.headers, Astro.redirect);
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const TZ = 'America/Los_Angeles';
+const id = Astro.params.id ?? '';
+
+interface MeetingRow {
+  id: string;
+  title: string;
+  description: string | null;
+  start_time: string;
+  end_time: string | null;
+  location: string | null;
+  category: string | null;
+  capacity: number | null;
+  status: string;
+  created_by: string | null;
+  recap?: string | null;
+  slides_url?: string | null;
+}
+
+const BASE = 'id, title, description, start_time, end_time, location, category, capacity, status, created_by';
+let meeting: MeetingRow | null = null;
+let loadFailed = false;
+let hasSlidesColumn = true;
+
+if (UUID_RE.test(id)) {
+  // Newest columns first; on "column doesn't exist yet", retry without them.
+  const attempts = [`${BASE}, recap, slides_url`, `${BASE}, recap`, BASE];
+  for (const [i, cols] of attempts.entries()) {
+    const { data, error } = await supabaseAdmin.from('events').select(cols).eq('id', id).maybeSingle();
+    if (error && isMissingColumn(error) && i < attempts.length - 1) {
+      if (i === 0) hasSlidesColumn = false;
+      continue;
+    }
+    if (error) {
+      console.error('[pages/meetings/[id]] event read failed', { eventId: id, code: error.code, message: error.message });
+      loadFailed = true;
+    } else {
+      meeting = (data as unknown as MeetingRow) ?? null;
+    }
+    break;
+  }
+}
+
+// Cancelled meetings are hidden everywhere, exactly like an unknown id.
+if (meeting && meeting.status === 'cancelled') meeting = null;
+if (!meeting && !loadFailed) Astro.response.status = 404;
+
+const nowMs = Date.now();
+const fmtTime = (iso: string) =>
+  new Date(iso).toLocaleTimeString('en-US', { timeZone: TZ, hour: 'numeric', minute: '2-digit' });
+
+let view: null | {
+  when: string;
+  isPast: boolean;
+  isNow: boolean;
+  checkinOpened: boolean;
+  canPresent: boolean;
+  slides: ReturnType<typeof slidesLink>;
+  descriptionParas: string[];
+  recapParas: string[];
+  recapRaw: string;
+} = null;
+
+interface PhotoRow { id: string; storage_path: string; caption: string | null }
+let photos: PhotoRow[] = [];
+let checkinCount = 0;
+let myCheckin: { time: string | null } | null | undefined; // undefined = not asked / failed
+let creatorName: string | null = null;
+let editPrefill: { start: string; end: string; categories: string[]; category: string } | null = null;
+
+if (meeting) {
+  const startMs = Date.parse(meeting.start_time);
+  const endMs = explicitEndMs(meeting.start_time, meeting.end_time);
+  const win = checkinWindow(meeting.start_time, meeting.end_time);
+  const dayLong = new Date(meeting.start_time).toLocaleDateString('en-US', {
+    timeZone: TZ, weekday: 'long', month: 'long', day: 'numeric', year: 'numeric',
+  });
+  view = {
+    when: `${dayLong} · ${fmtTime(meeting.start_time)}${endMs !== null ? ` – ${fmtTime(new Date(endMs).toISOString())}` : ''}`,
+    isPast: startMs < nowMs,
+    isNow: meeting.status === 'active' && isHappeningNow(meeting.start_time, meeting.end_time, nowMs),
+    checkinOpened: win !== null && nowMs >= win.opensAt,
+    canPresent: user.isOfficer && meeting.status === 'active' && win !== null && nowMs <= win.closesAt,
+    slides: slidesLink(meeting.slides_url),
+    descriptionParas: paragraphs(meeting.description),
+    recapParas: paragraphs(meeting.recap),
+    recapRaw: meeting.recap ?? '',
+  };
+
+  const [photosRes, countRes, mineRes, creatorRes] = await Promise.all([
+    supabaseAdmin
+      .from('photos')
+      .select('id, storage_path, caption')
+      .eq('event_id', meeting.id)
+      .order('created_at', { ascending: true }),
+    supabaseAdmin.from('attendance').select('id', { count: 'exact', head: true }).eq('event_id', meeting.id),
+    view.checkinOpened
+      ? supabaseAdmin
+          .from('attendance')
+          .select('checked_in_at')
+          .eq('event_id', meeting.id)
+          .eq('member_id', user.id)
+          .maybeSingle()
+      : Promise.resolve(null),
+    meeting.created_by
+      ? supabaseAdmin.from('profiles').select('name').eq('id', meeting.created_by).maybeSingle()
+      : Promise.resolve(null),
+  ]);
+
+  if (photosRes.error) {
+    if (!isMissingRelation(photosRes.error)) {
+      console.error('[pages/meetings/[id]] photos read failed', { code: photosRes.error.code });
+    }
+  } else {
+    photos = (photosRes.data ?? []) as PhotoRow[];
+  }
+  checkinCount = countRes.count ?? 0;
+  if (mineRes && !mineRes.error) {
+    const at = (mineRes.data?.checked_in_at as string | null | undefined) ?? null;
+    myCheckin = mineRes.data ? { time: at ? fmtTime(at) : null } : null;
+  }
+  creatorName = (creatorRes?.data?.name as string | null | undefined) ?? null;
+
+  if (user.isOfficer) {
+    // Pacific wall time — the shared client form reads it back as Pacific on
+    // any device (src/scripts/event-form.ts). A legacy end on another day
+    // prefills blank, and the form leaves untouched times out of the PATCH.
+    const p2 = (n: number) => String(n).padStart(2, '0');
+    const s = pacificParts(startMs);
+    const e = endMs === null ? null : pacificParts(endMs);
+    const sameDay = e !== null && e.y === s.y && e.m === s.m && e.d === s.d;
+    const current = (meeting.category ?? '').trim() || 'meeting';
+    editPrefill = {
+      start: `${s.y}-${p2(s.m)}-${p2(s.d)}T${p2(s.h)}:${p2(s.mi)}`,
+      end: e && sameDay ? `${p2(e.h)}:${p2(e.mi)}` : '',
+      categories: EVENT_CATEGORIES.includes(current) ? EVENT_CATEGORIES : [current, ...EVENT_CATEGORIES],
+      category: current,
+    };
+  }
+}
+
+const title = meeting?.title ?? 'Meeting';
+---
+<DashboardLayout title={title} user={user}>
+  <p class="meeting__back"><a href="/meetings">← All meetings</a></p>
+
+  {loadFailed ? (
+    <div class="state state--rule">
+      <b>Couldn&rsquo;t load this meeting</b>
+      <p>Something went wrong reading it. Reload to try again.</p>
+      <a class="btn btn--sm btn--ghost" href={`/meetings/${encodeURIComponent(id)}`}>Reload</a>
+    </div>
+  ) : !meeting || !view ? (
+    <div class="state state--rule">
+      <b>Meeting not found</b>
+      <p>It may have been cancelled, or the link is wrong.</p>
+      <a class="btn btn--sm btn--ghost" href="/meetings">All meetings</a>
+    </div>
+  ) : (
+    <div class="home meeting">
+      <div class="home__main">
+        <header>
+          <p class="event-detail__cat">
+            {view.isNow && <span class="tag tag--now">Happening now</span>}
+            <span class="tag">{categoryLabel(meeting.category)}</span>
+          </p>
+          <h1 class="meeting__title">{meeting.title}</h1>
+          <p class="meeting__when">
+            {view.when}{meeting.location && <><span aria-hidden="true"> · </span>{meeting.location}</>}
+          </p>
+        </header>
+
+        {view.canPresent && (
+          <p class="meeting__present">
+            <a class="btn" href={`/calendar?event=${encodeURIComponent(meeting.id)}&present=1`}>Present check-in code</a>
+          </p>
+        )}
+
+        {view.slides ? (
+          <p class="meeting__slides">
+            <a class="btn" href={view.slides.href} target="_blank" rel="noopener noreferrer">Open slides</a>
+            <span class="small muted">{view.slides.label} · {view.slides.host}</span>
+          </p>
+        ) : (
+          user.isOfficer && (
+            <p class="small muted meeting__noslides">
+              No slides link yet{hasSlidesColumn ? ' — add one in Edit details below.' : ' — slides links arrive with database STEP 20.'}
+            </p>
+          )
+        )}
+
+        {view.descriptionParas.length > 0 && (
+          <section aria-label="About this meeting" class="meeting__desc">
+            {view.descriptionParas.map((p) => <p>{p}</p>)}
+          </section>
+        )}
+
+        {editPrefill && (
+          <section class="owned meeting__block" aria-labelledby="edit-h">
+            <div class="event-actions__head"><span class="flag">Officer only</span></div>
+            <details class="editdetails">
+              <summary class="btn btn--ghost" id="edit-h">Edit details</summary>
+              <form class="composer__form editdetails__form" id="event-edit-form" data-event-id={meeting.id} novalidate>
+                <div class="composer__head">
+                  <b>Edit details</b>
+                  <span class="small muted">Check-ins, recap and photos stay attached.</span>
+                </div>
+                <label class="field">
+                  <span>Title</span>
+                  <input class="input" type="text" name="title" required maxlength="200" autocomplete="off" value={meeting.title} />
+                </label>
+                <div class="composer__duo">
+                  <label class="field">
+                    <span>Starts</span>
+                    <input class="input" type="datetime-local" name="start" required value={editPrefill.start} />
+                    <span class="field__hint">Pacific time.</span>
+                  </label>
+                  <label class="field">
+                    <span>Ends</span>
+                    <input class="input" type="time" name="end" value={editPrefill.end} />
+                    <span class="field__hint js-end-hint">Same day. Blank = ends at midnight.</span>
+                  </label>
+                </div>
+                <div class="composer__duo">
+                  <label class="field">
+                    <span>Location</span>
+                    <input class="input" type="text" name="location" maxlength="300" autocomplete="off" value={meeting.location ?? ''} />
+                  </label>
+                  <label class="field">
+                    <span>Capacity</span>
+                    <input class="input" type="number" name="capacity" min="1" step="1" inputmode="numeric" value={meeting.capacity ?? ''} />
+                  </label>
+                </div>
+                <label class="field">
+                  <span>Category</span>
+                  <select class="select" name="category">
+                    {editPrefill.categories.map((c) => (
+                      <option value={c} selected={c === editPrefill!.category}>{categoryLabel(c)}</option>
+                    ))}
+                  </select>
+                </label>
+                {hasSlidesColumn && (
+                  <label class="field">
+                    <span>Slides link</span>
+                    <input
+                      class="input"
+                      type="url"
+                      name="slides"
+                      inputmode="url"
+                      autocapitalize="off"
+                      autocorrect="off"
+                      spellcheck="false"
+                      maxlength="2048"
+                      placeholder="https://docs.google.com/presentation/…"
+                      value={meeting.slides_url ?? ''}
+                    />
+                    <span class="field__hint">Google Slides, Docs or Drive share link. Members only — never shown on the public /about page. Clear it to remove.</span>
+                  </label>
+                )}
+                <label class="field">
+                  <span>Description</span>
+                  <textarea class="textarea" name="description" maxlength="5000">{meeting.description ?? ''}</textarea>
+                  <span class="field__hint">Members only. Each line break starts a new paragraph.</span>
+                </label>
+                <p class="small js-form-error" role="alert" style="color:var(--clay); display:none;"></p>
+                <div class="composer__actions">
+                  <button class="btn" type="submit">Save changes</button>
+                  <button class="btn btn--ghost js-edit-close" type="button">Close</button>
+                </div>
+              </form>
+            </details>
+          </section>
+        )}
+
+        {user.isOfficer && view.isPast ? (
+          <section class="owned meeting__block recapblock" aria-labelledby="recap-h">
+            <div class="recapblock__head">
+              <h2 id="recap-h">Recap</h2>
+              <span class="flag">Officer only</span>
+            </div>
+            <p class="small muted recapblock__pub">
+              The recap is published on the club&rsquo;s public <a href="/about">/about</a> page — anyone
+              can read it, member or not.
+            </p>
+            <form id="recap-form" data-event-id={meeting.id} novalidate>
+              <label class="field">
+                <span class="sr">Recap</span>
+                <textarea class="textarea" name="recap" maxlength="8000">{view.recapRaw}</textarea>
+                <span class="field__hint">Plain text — each line break starts a new paragraph. Save it empty to take the recap down.</span>
+              </label>
+              <p id="recap-error" class="small" role="alert" style="color:var(--clay); display:none;"></p>
+              <p class="recapblock__actions"><button class="btn" type="submit">Save recap</button></p>
+            </form>
+          </section>
+        ) : (
+          view.recapParas.length > 0 && (
+            <section class="meeting__recap" aria-labelledby="recap-h">
+              <div class="section-head"><h2 id="recap-h">What happened</h2></div>
+              {view.recapParas.map((p) => <p>{p}</p>)}
+            </section>
+          )
+        )}
+
+        {(photos.length > 0 || (user.isOfficer && view.isPast)) && (
+          <section class:list={['meeting__block', { owned: user.isOfficer && view.isPast }]} aria-labelledby="photos-h">
+            <div class="recapblock__head">
+              <h2 id="photos-h">Photos</h2>
+              {user.isOfficer && view.isPast && <span class="flag">Officer only</span>}
+            </div>
+            {user.isOfficer && view.isPast && (
+              <p class="small muted recapblock__pub">Photos are public — they appear on /about.</p>
+            )}
+            {photos.length > 0 && (
+              <ul class="photogrid">
+                {photos.map((p) => (
+                  <li data-photo-id={p.id}>
+                    <img src={photoUrl(p.storage_path)} alt={p.caption ?? 'Club photo'} loading="lazy" />
+                    {p.caption && <span class="photogrid__cap">{p.caption}</span>}
+                    {user.isOfficer && (
+                      <>
+                        <details class="confirm">
+                          <summary class="btn btn--sm btn--danger">Delete</summary>
+                          <div class="confirm__row">
+                            <span class="confirm__q">Delete this photo?</span>
+                            <button class="btn btn--sm btn--danger-go js-photo-delete" type="button" data-photo-id={p.id}>
+                              Delete it
+                            </button>
+                            <button class="btn btn--sm btn--ghost js-photo-keep" type="button">Keep</button>
+                          </div>
+                        </details>
+                        <span class="row-err" role="alert" style="display:none"></span>
+                      </>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+            {user.isOfficer && view.isPast && (
+              <form id="photo-form" data-event-id={meeting.id} novalidate>
+                <label class="field">
+                  <span>Add photos</span>
+                  <input class="input" type="file" name="file" accept="image/*" multiple />
+                  <span class="field__hint">
+                    Straight from the camera or photo library — big photos are shrunk on this device
+                    before upload (and their location data is removed).
+                  </span>
+                </label>
+                <label class="field">
+                  <span>Caption</span>
+                  <input class="input" type="text" name="caption" maxlength="300" autocomplete="off" />
+                  <span class="field__hint">Optional — applies to every photo in this upload. Shows under the photo on /about.</span>
+                </label>
+                <p id="photo-status" class="small muted" role="status" style="display:none;"></p>
+                <div id="photo-error" class="small" role="alert" style="color:var(--clay); display:none;"></div>
+                <p class="recapblock__actions"><button class="btn" type="submit" id="photo-submit">Upload</button></p>
+              </form>
+            )}
+          </section>
+        )}
+      </div>
+
+      <aside class="home__rail" aria-label="Meeting status">
+        <section aria-labelledby="status-h">
+          <div class="section-head"><h2 id="status-h">Check-in</h2></div>
+          <dl class="facts meeting__facts">
+            <div>
+              <dt>Checked in</dt>
+              <dd><span class="num">{checkinCount}</span>{meeting.capacity !== null && <> of <span class="num">{meeting.capacity}</span></>}</dd>
+            </div>
+            {myCheckin !== undefined && (
+              <div>
+                <dt>Your check-in</dt>
+                <dd>
+                  {myCheckin ? (
+                    <span class="checkstate checkstate--in">
+                      <span class="checkstate__mark" aria-hidden="true">✓</span>
+                      {view.isPast ? 'You were there' : 'Checked in'}{myCheckin.time ? ` · ${myCheckin.time}` : ''}
+                    </span>
+                  ) : (
+                    <span class="checkstate">
+                      <span class="checkstate__mark" aria-hidden="true">○</span>
+                      Not checked in
+                    </span>
+                  )}
+                </dd>
+              </div>
+            )}
+            <div><dt>Created by</dt><dd>{creatorName ?? '—'}</dd></div>
+          </dl>
+          <p class="meeting__railacts">
+            {user.isOfficer && view.checkinOpened && (
+              <a class="btn btn--ghost" href={`/api/events/${encodeURIComponent(meeting.id)}/attendance.pdf`} download>Attendance PDF</a>
+            )}
+            <a class="btn btn--ghost" href={`/calendar?event=${encodeURIComponent(meeting.id)}`}>View on calendar</a>
+          </p>
+        </section>
+      </aside>
+    </div>
+  )}
+</DashboardLayout>
+
+<script>
+  import { wireEditForm } from '../../scripts/event-form';
+
+  /* Wiring only — no data is ever rendered into DOM HTML here (invariant 3):
+     textContent, createElement and attribute assignment throughout. */
+
+  const editForm = document.getElementById('event-edit-form') as HTMLFormElement | null;
+  if (editForm) wireEditForm(editForm);
+
+  const errText = async (res: Response, fallback: string) => {
+    try {
+      const body = await res.json();
+      if (body && typeof body.error === 'string') return body.error as string;
+    } catch {
+      /* non-JSON error body */
+    }
+    return fallback;
+  };
+
+  /* ── Recap (officers, past meetings) ─────────────────────────────────── */
+  const recapForm = document.getElementById('recap-form') as HTMLFormElement | null;
+  if (recapForm) {
+    const recapErr = document.getElementById('recap-error') as HTMLElement;
+    recapForm.addEventListener('submit', async (ev) => {
+      ev.preventDefault();
+      recapErr.style.display = 'none';
+      const id = recapForm.dataset.eventId;
+      if (!id) return;
+      const textarea = recapForm.querySelector('textarea[name="recap"]') as HTMLTextAreaElement;
+      const submitBtn = recapForm.querySelector('button[type="submit"]') as HTMLButtonElement;
+      submitBtn.disabled = true;
+      try {
+        const res = await fetch(`/api/events/${encodeURIComponent(id)}/recap`, {
+          method: 'PATCH',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ recap: textarea.value }),
+        });
+        if (!res.ok) {
+          recapErr.textContent = await errText(res, 'Could not save the recap.');
+          recapErr.style.display = 'block';
+          return;
+        }
+        location.reload();
+      } catch {
+        recapErr.textContent = 'Network error — check your connection and try again.';
+        recapErr.style.display = 'block';
+      } finally {
+        submitBtn.disabled = false;
+      }
+    });
+  }
+
+  /* ── Photo upload (officers, past meetings) ──────────────────────────────
+     iPad camera photos are routinely bigger than the ~4.5MB request limit the
+     host enforces before the endpoint runs, so each photo is shrunk HERE
+     first: decoded, drawn to a canvas with its longest side ≤ 2048px (/about
+     shows ~800×600), and re-encoded as JPEG. Re-encoding also drops EXIF —
+     including GPS location — which the server would otherwise publish as-is
+     to a public bucket; and it turns a HEIC that Safari can decode into a JPEG
+     the server accepts. GIFs go up untouched (animation). The server keeps its
+     own magic-byte and size checks — this is convenience, not a control. */
+  const MAX_SIDE = 2048;
+  const JPEG_QUALITY = 0.85;
+  const HOST_LIMIT = 4 * 1024 * 1024;
+
+  const shrink = async (file: File): Promise<Blob> => {
+    // GIFs go up untouched (animation) — decided by the file's own bytes, not
+    // its name or declared type, so a renamed JPEG can't skip the re-encode.
+    if ((await file.slice(0, 4).text()) === 'GIF8') {
+      if (file.size > HOST_LIMIT) throw new Error('That GIF is over about 4MB — too big to upload.');
+      return file;
+    }
+    const url = URL.createObjectURL(file);
+    let canvas: HTMLCanvasElement | undefined;
+    try {
+      const img = new Image();
+      img.decoding = 'async';
+      img.src = url;
+      await img.decode();
+      const scale = Math.min(1, MAX_SIDE / Math.max(img.naturalWidth, img.naturalHeight));
+      const w = Math.max(1, Math.round(img.naturalWidth * scale));
+      const h = Math.max(1, Math.round(img.naturalHeight * scale));
+      canvas = document.createElement('canvas');
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) throw new Error('no canvas');
+      ctx.fillStyle = '#fff'; // transparent PNGs flatten onto white, not black
+      ctx.fillRect(0, 0, w, h);
+      ctx.drawImage(img, 0, 0, w, h);
+      const blob = await new Promise<Blob | null>((res) => canvas.toBlob(res, 'image/jpeg', JPEG_QUALITY));
+      if (!blob) throw new Error('encode failed');
+      return blob;
+    } catch {
+      // Never fall back to the original bytes: they keep EXIF — GPS included —
+      // and would land in a public bucket (and the server rejects HEIC anyway).
+      throw new Error('Couldn’t process that photo on this device. Try again, or export it as a JPEG.');
+    } finally {
+      URL.revokeObjectURL(url);
+      // Release the bitmap now — iOS caps total canvas memory, and a batch of
+      // camera photos would otherwise hit it.
+      if (canvas) {
+        canvas.width = 0;
+        canvas.height = 0;
+      }
+    }
+  };
+
+  const photoForm = document.getElementById('photo-form') as HTMLFormElement | null;
+  if (photoForm) {
+    const statusEl = document.getElementById('photo-status') as HTMLElement;
+    const errBox = document.getElementById('photo-error') as HTMLElement;
+    const btn = document.getElementById('photo-submit') as HTMLButtonElement;
+    const fileInput = photoForm.querySelector('input[type="file"]') as HTMLInputElement;
+    const captionInput = photoForm.querySelector('input[name="caption"]') as HTMLInputElement;
+
+    photoForm.addEventListener('submit', async (ev) => {
+      ev.preventDefault();
+      errBox.style.display = 'none';
+      errBox.replaceChildren();
+      const id = photoForm.dataset.eventId;
+      const files = Array.from(fileInput.files ?? []);
+      if (!id) return;
+      if (files.length === 0) {
+        errBox.textContent = 'Choose at least one photo first.';
+        errBox.style.display = 'block';
+        return;
+      }
+
+      btn.disabled = true;
+      const caption = captionInput.value.trim();
+      const failures: { name: string; why: string; file: File }[] = [];
+      let uploaded = 0;
+
+      for (const [i, file] of files.entries()) {
+        statusEl.textContent = files.length > 1 ? `Uploading ${i + 1} of ${files.length}…` : 'Uploading…';
+        statusEl.style.display = 'block';
+        try {
+          const blob = await shrink(file);
+          const fd = new FormData();
+          fd.append('file', blob, blob === file ? file.name : 'photo.jpg');
+          fd.append('event_id', id);
+          if (caption) fd.append('caption', caption);
+          // No content-type header: the browser sets the multipart boundary.
+          const res = await fetch('/api/photos', { method: 'POST', body: fd });
+          if (!res.ok) {
+            const why =
+              res.status === 413
+                ? 'Still too large for the host after shrinking.'
+                : await errText(res, 'Could not upload it.');
+            failures.push({ name: file.name, why, file });
+          } else {
+            uploaded += 1;
+          }
+        } catch (e) {
+          failures.push({ name: file.name, why: e instanceof Error ? e.message : 'Could not upload it.', file });
+        }
+      }
+
+      statusEl.style.display = 'none';
+      btn.disabled = false;
+      if (uploaded > 0 && failures.length > 0) {
+        // Leave only the failed files selected, so pressing Upload again can't
+        // re-post (and duplicate) the ones that already went up.
+        try {
+          const dt = new DataTransfer();
+          for (const f of failures) dt.items.add(f.file);
+          fileInput.files = dt.files;
+        } catch {
+          fileInput.value = '';
+        }
+      }
+      if (failures.length === 0) {
+        location.reload();
+        return;
+      }
+      // Itemise the failures (textContent only); successes appear on reload.
+      const head = document.createElement('p');
+      head.textContent =
+        uploaded > 0
+          ? `${uploaded} uploaded, ${failures.length} didn’t:`
+          : failures.length === 1 ? 'That photo didn’t upload:' : 'Those photos didn’t upload:';
+      const ul = document.createElement('ul');
+      for (const f of failures) {
+        const li = document.createElement('li');
+        li.textContent = `${f.name} — ${f.why}`;
+        ul.append(li);
+      }
+      errBox.append(head, ul);
+      if (uploaded > 0) {
+        const again = document.createElement('button');
+        again.type = 'button';
+        again.className = 'btn btn--sm btn--ghost';
+        again.textContent = 'Reload to see the uploaded photos';
+        again.addEventListener('click', () => location.reload());
+        errBox.append(again);
+      }
+      errBox.style.display = 'block';
+    });
+  }
+
+  /* ── Photo delete (officers, inline confirm per thumbnail) ────────────── */
+  document.querySelectorAll<HTMLElement>('.js-photo-keep').forEach((b) => {
+    b.addEventListener('click', () => b.closest('details')?.removeAttribute('open'));
+  });
+  document.querySelectorAll<HTMLButtonElement>('.js-photo-delete').forEach((b) => {
+    b.addEventListener('click', async () => {
+      const id = b.dataset.photoId;
+      if (!id) return;
+      const err = b.closest('li')?.querySelector<HTMLElement>('.row-err') ?? null;
+      if (err) err.style.display = 'none';
+      b.disabled = true;
+      try {
+        const res = await fetch(`/api/photos/${encodeURIComponent(id)}`, { method: 'DELETE' });
+        if (!res.ok) {
+          if (err) {
+            err.textContent = await errText(res, 'Could not delete the photo.');
+            err.style.display = 'block';
+          }
+          b.disabled = false;
+          return;
+        }
+        location.reload();
+      } catch {
+        if (err) {
+          err.textContent = 'Network error — check your connection and try again.';
+          err.style.display = 'block';
+        }
+        b.disabled = false;
+      }
+    });
+  });
+</script>

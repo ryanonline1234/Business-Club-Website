@@ -12,7 +12,8 @@ import { pacificDayKey } from '../../../../lib/event-time';
  * row's id, so attendance, recap and photos stay attached.
  *
  * A PARTIAL update: only the keys present in the body change. Accepted keys
- * are exactly the event fields of POST /api/events/create (lib/event-input);
+ * are the event fields of POST /api/events/create plus `slides_url`
+ * (lib/event-input; the link is validated by lib/slides-link);
  * status, created_by, recap and password are not settable here — an unknown
  * key is ignored. `end_time: null` (or '') clears the end: the meeting then
  * ends at the end of its Pacific day (lib/event-time).
@@ -108,6 +109,14 @@ export const PATCH: APIRoute = async ({ params, request }) => {
     .single();
   if (error) {
     console.error('[api/events/[id] PATCH] update failed', { eventId: id, message: error.message, code: error.code });
+    // 42703/PGRST204 = events.slides_url not added yet: name the fix.
+    if ('slides_url' in fields && (error.code === '42703' || error.code === 'PGRST204')) {
+      return apiJson(
+        500,
+        { error: 'Slides links need a database update — run STEP 20 of supabase-schema.sql.' },
+        responseHeaders
+      );
+    }
     return apiJson(500, { error: 'Could not save the event' }, responseHeaders);
   }
 

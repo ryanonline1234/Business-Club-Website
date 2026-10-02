@@ -10,8 +10,13 @@ interface Props {
 }
 const { currentPath } = Astro.props;
 
+// /meetings belongs to the Calendar tab (no sixth nav item — the officer
+// top bar has no room for one at iPad widths).
+const SECTION_ALIASES: Record<string, string[]> = { '/calendar': ['/meetings'] };
 const isActive = (href: string) =>
-  href === '/' ? currentPath === '/' : currentPath === href || currentPath.startsWith(href + '/');
+  href === '/'
+    ? currentPath === '/'
+    : [href, ...(SECTION_ALIASES[href] ?? [])].some((p) => currentPath === p || currentPath.startsWith(p + '/'));
 
 const current = (href: string) => (isActive(href) ? 'page' : undefined);
 ---

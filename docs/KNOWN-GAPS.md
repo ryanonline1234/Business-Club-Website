@@ -129,6 +129,8 @@ its queries name only the columns the public may see:
 - `photos` → `storage_path, caption, event_id` (never `uploaded_by`)
 - `profiles` → `name, role, bio`, filtered to **approved officers only** —
   never email, never member rows, never member counts, never attendance
+- **never `slides_url`** — slides links are members-only (owner decision,
+  2026-10-01); they render only on `/meetings/[id]`, behind `requireApproved`
 
 Adding a column to one of those selects, or loosening the officers filter, is
 a privacy decision, not a refactor — the page header in
@@ -233,8 +235,8 @@ query instead of one global fetch.
 `PATCH /api/events/:id/recap` and `POST /api/photos` check that the event
 exists and is past, not its status — so the raw API will happily save content
 against a cancelled event that `/about` will never show. Harmless (the
-content is simply invisible, and `/calendar` doesn't offer the editor for
-cancelled events, so no officer reaches it through the UI), but if an officer
+content is simply invisible, and `/meetings/[id]` treats a cancelled meeting
+as not found, so no officer reaches the editor through the UI), but if an officer
 ever reports "my recap isn't showing", check the event's status first.
 
 ### No pagination anywhere

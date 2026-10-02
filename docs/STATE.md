@@ -41,8 +41,16 @@ button. If an officer says an officer feature is missing, check for the gold
 
 ## What exists
 
+Meetings archive (2026-10-01): `/meetings` lists every meeting (upcoming,
+then past by school year); `/meetings/[id]` is each meeting's record —
+details, a **members-only slides link** (Google Slides/Docs/Drive), recap,
+photos — and the ONE place officers edit it (the calendar keeps Present and
+Cancel and links over). Photos are shrunk on the device before upload, so
+iPad camera photos work. **STEP 20 of `supabase-schema.sql` must be run** for
+slides links (everything else works without it).
+
 Events (2026-10-01): officers can **edit** an event in place (Edit details on
-the calendar — check-ins, recap and photos stay attached). Meetings **end the
+the meeting page — check-ins, recap and photos stay attached). Meetings **end the
 day of**: the form's End is a same-day time pre-filled to start + 1 h, and a
 blank end means midnight — never open-ended. All start/end/check-in rules live
 in `lib/event-time.ts`. The officer screens had an iPad pass (duplicate month
@@ -70,31 +78,30 @@ titles now, not permission levels.
 
 Nothing is half-finished; these are choices, roughly in the order that pays off.
 
-1. **Put real content on `/about`.** The design is built and empty. One past
-   event with a recap, one photo, and officer bios turns the placeholder into
-   the record. See [ABOUT-CONTENT-GUIDE.md](ABOUT-CONTENT-GUIDE.md) for what
-   good recaps/captions/bios look like. **Blocker on iPads:** the photo
-   uploader rejects anything over 4MB, which many full-size iPad camera photos
-   exceed — client-side downscaling is piece 7 of the meetings-archive scope
-   and can ship on its own first.
-2. **Meetings archive — scoped, not built.** `/meetings` + `/meetings/[id]`
-   with slides links (members-only, decided) and officer editing in one place.
-   [MEETINGS-ARCHIVE-SCOPE.md](MEETINGS-ARCHIVE-SCOPE.md) has the plan, STEP 20,
-   effort (~1–1.5 days minimum) and the open decisions.
-3. **A second Supabase project for local dev.** Today `npm run dev` reads and
+1. **Run STEP 20** of `supabase-schema.sql` in the Supabase SQL Editor —
+   one nullable column, safe any time. Until then the slides field is hidden
+   on meeting pages.
+2. **Put real content on `/about`.** The design is built and empty. One past
+   meeting with a recap, a photo or two, and officer bios turns the
+   placeholder into the record — recap and photos from `/meetings/[id]` now
+   (iPad photos included), bios from each officer's own row on `/members`. See [ABOUT-CONTENT-GUIDE.md](ABOUT-CONTENT-GUIDE.md).
+3. **Verify on a real iPad** what couldn't be checked from here: photo
+   orientation after the on-device shrink, HEIC from the Files app vs the
+   Photo Library ([MEETINGS-ARCHIVE-SCOPE.md](MEETINGS-ARCHIVE-SCOPE.md) §7).
+4. **A second Supabase project for local dev.** Today `npm run dev` reads and
    writes the live club database. This is the sharpest remaining edge now that
    real members are using the site.
-4. **Smoke-test CI.** Both production failures found so far (Astro's
+5. **Smoke-test CI.** Both production failures found so far (Astro's
    `checkOrigin` 403s, the malformed-cookie 500) were one-curl discoveries. A
    GitHub Action probing ~8 URLs against a preview deploy would have caught
    both.
-5. **Canvas announcements — blocked on access, not code.** Posting to a Canvas
+6. **Canvas announcements — blocked on access, not code.** Posting to a Canvas
    course is one API call; the gate is whether the club has a course shell and
    whether a student token can create announcements there. Three questions to
    answer before building: the course URL, who may post announcements in it,
    and whether that person can generate an access token. Fallback needing
    nobody's permission: an `.ics` feed off the events table.
-6. **Optional, designed but unbuilt:** spoken-code check-in fallback, live
+7. **Optional, designed but unbuilt:** spoken-code check-in fallback, live
    "who's arriving" panel in present mode, capacity enforcement, `audit_logs`
    writes, `AUTH_SECRET` rotation.
 

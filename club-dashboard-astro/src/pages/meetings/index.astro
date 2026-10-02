@@ -1,0 +1,254 @@
+---
+/**
+ * /meetings — the meetings archive: every meeting, listed and recorded.
+ *
+ * Upcoming first (soonest), then past meetings newest-first, grouped by
+ * school year (August–July, Pacific dates). Each row links to the meeting's
+ * own page (/meetings/[id]), where its record — description, slides, recap,
+ * photos — lives and, for officers, is edited.
+ *
+ * Who sees what (all server-side):
+ *   • everyone approved: date, title, category · location, and chips for what
+ *     the meeting has (Slides, N photos, Recap);
+ *   • members also see "✓ You were there" on the meetings they checked in to
+ *     (their OWN attendance rows only);
+ *   • officers also see each meeting's check-in count, gold "No recap" /
+ *     "No photos" flags on past meetings, a count of past meetings still
+ *     missing a recap (the empty /about record), and "Add a past meeting".
+ *
+ * Not listed: cancelled events (hidden everywhere) and `deadline` events
+ * (not meetings). Reads FAIL SOFT for slides_url (STEP 20), recap (STEP 17)
+ * and photos (STEP 18).
+ */
+import DashboardLayout from '../../layouts/DashboardLayout.astro';
+import { requireApproved } from '../../lib/auth';
+import { supabaseAdmin } from '../../lib/supabase';
+import { effectiveEndMs } from '../../lib/event-time';
+import { slidesLink } from '../../lib/slides-link';
+import { categoryLabel, isMissingColumn, isMissingRelation, schoolYearLabel } from '../../lib/meetings';
+
+const user = await requireApproved(Astro.request, Astro.response.headers, Astro.redirect);
+
+const TZ = 'America/Los_Angeles';
+const LIST_LIMIT = 500;
+const UPCOMING_SHOWN = 3;
+
+interface Row {
+  id: string;
+  title: string;
+  start_time: string;
+  end_time: string | null;
+  location: string | null;
+  category: string | null;
+  recap?: string | null;
+  slides_url?: string | null;
+  photos?: { count: number }[] | { count: number } | null;
+  attendance?: { count: number }[] | { count: number } | null;
+}
+
+const countOf = (v: Row['photos']) => (Array.isArray(v) ? v[0]?.count : v?.count) ?? 0;
+
+/* Newest columns first; retry without whatever a not-yet-applied SQL step
+   hasn't added. Officers also embed the attendance count. */
+const base = 'id, title, start_time, end_time, location, category';
+const officerEmbed = user.isOfficer ? ', attendance(count)' : '';
+const attempts = [
+  `${base}, recap, slides_url, photos(count)${officerEmbed}`,
+  `${base}, recap, photos(count)${officerEmbed}`,
+  `${base}, recap${officerEmbed}`,
+  `${base}${officerEmbed}`,
+];
+let rows: Row[] = [];
+let loadFailed = false;
+for (const [i, cols] of attempts.entries()) {
+  const { data, error } = await supabaseAdmin
+    .from('events')
+    .select(cols)
+    .in('status', ['active', 'completed'])
+    .or('category.is.null,category.neq.deadline')
+    .order('start_time', { ascending: false })
+    .limit(LIST_LIMIT);
+  if (error && (isMissingColumn(error) || isMissingRelation(error)) && i < attempts.length - 1) continue;
+  if (error) {
+    console.error('[pages/meetings] list read failed', { code: error.code, message: error.message });
+    loadFailed = true;
+  } else {
+    rows = (data ?? []) as unknown as Row[];
+  }
+  break;
+}
+const capped = rows.length === LIST_LIMIT;
+
+/* Members: which of these did I attend? Own rows only. */
+let attended = new Set<string>();
+if (rows.length > 0) {
+  // All of my own rows (a member's own attendance is small); the listed
+  // meetings are intersected in toView. No 500-id IN list in the URL.
+  const { data: mine, error: mineErr } = await supabaseAdmin
+    .from('attendance')
+    .select('event_id')
+    .eq('member_id', user.id);
+  if (mineErr) {
+    console.error('[pages/meetings] own-attendance read failed', { code: mineErr.code, message: mineErr.message });
+  }
+  attended = new Set((mine ?? []).map((m) => m.event_id as string));
+}
+
+const nowMs = Date.now();
+const fmtDayNum = new Intl.DateTimeFormat('en-US', { timeZone: TZ, day: '2-digit' });
+const fmtMonth = new Intl.DateTimeFormat('en-US', { timeZone: TZ, month: 'short' });
+const fmtTime = (iso: string) =>
+  new Date(iso).toLocaleTimeString('en-US', { timeZone: TZ, hour: 'numeric', minute: '2-digit' });
+const fmtWeekday = new Intl.DateTimeFormat('en-US', { timeZone: TZ, weekday: 'short' });
+
+interface View {
+  id: string;
+  start: string;
+  title: string;
+  day: string;
+  month: string;
+  sub: string;
+  isPast: boolean;
+  hasSlides: boolean;
+  photoCount: number;
+  hasRecap: boolean;
+  attended: boolean;
+  checkins: number;
+}
+
+const toView = (r: Row): View => {
+  const d = new Date(r.start_time);
+  const end = effectiveEndMs(r.start_time, r.end_time);
+  return {
+    id: r.id,
+    start: r.start_time,
+    title: r.title,
+    day: fmtDayNum.format(d),
+    month: fmtMonth.format(d),
+    sub: [`${fmtWeekday.format(d)} ${fmtTime(r.start_time)}`, categoryLabel(r.category), r.location]
+      .filter(Boolean)
+      .join(' · '),
+    isPast: end !== null && end < nowMs,
+    hasSlides: slidesLink(r.slides_url) !== null,
+    photoCount: countOf(r.photos),
+    hasRecap: (r.recap ?? '').trim() !== '',
+    attended: attended.has(r.id),
+    checkins: countOf(r.attendance),
+  };
+};
+
+const views = rows.map(toView);
+const upcoming = views.filter((v) => !v.isPast).reverse().slice(0, UPCOMING_SHOWN);
+const past = views.filter((v) => v.isPast);
+const missingRecap = past.filter((v) => !v.hasRecap).length;
+
+// Past rows are newest-first, so each school year is one contiguous run.
+const pastByYear: { label: string; items: View[] }[] = [];
+for (const v of past) {
+  const label = schoolYearLabel(v.start);
+  const last = pastByYear[pastByYear.length - 1];
+  if (last && last.label === label) last.items.push(v);
+  else pastByYear.push({ label, items: [v] });
+}
+const plural = (n: number, one: string, many: string) => (n === 1 ? one : many);
+---
+<DashboardLayout title="Meetings" user={user}>
+  <header class="meetings__head">
+    <h1>Meetings</h1>
+    <p class="muted">Every meeting — its slides, recap and photos.</p>
+  </header>
+
+  {user.isOfficer && (
+    <section class="owned meetings__officer" aria-label="Officer tools">
+      <div class="event-actions__head"><span class="flag">Officer only</span></div>
+      <p>
+        {missingRecap > 0
+          ? `${missingRecap} past ${plural(missingRecap, 'meeting has', 'meetings have')} no recap yet — recaps and photos are what fill the public /about page.`
+          : 'Every past meeting has a recap.'}
+      </p>
+      <p class="meetings__officeracts">
+        <a class="btn btn--ghost" href="/calendar?new=1">Add a past meeting</a>
+      </p>
+    </section>
+  )}
+
+  {loadFailed ? (
+    <div class="state state--rule">
+      <b>Couldn&rsquo;t load the meetings</b>
+      <p>Something went wrong reading them. Reload to try again.</p>
+      <a class="btn btn--sm btn--ghost" href="/meetings">Reload</a>
+    </div>
+  ) : views.length === 0 ? (
+    <div class="state state--rule">
+      <b>No meetings yet</b>
+      <p>
+        Meetings land here as they&rsquo;re scheduled on the calendar.
+        {user.isOfficer && ' Add past ones with “Add a past meeting” above.'}
+      </p>
+    </div>
+  ) : (
+    <Fragment>
+      {upcoming.length > 0 && (
+        <section aria-labelledby="up-h" class="meetings__group">
+          <div class="section-head">
+            <h2 id="up-h">Coming up</h2>
+            <span class="spacer"></span>
+            <a class="btn btn--sm btn--ghost" href="/calendar">Full calendar</a>
+          </div>
+          <ul class="rowlist">
+            {upcoming.map((m) => (
+              <li>
+                <a class="rowlink" href={`/meetings/${encodeURIComponent(m.id)}`}>
+                  <span class="datestamp datestamp--sm" aria-hidden="true"><b>{m.day}</b><i>{m.month}</i></span>
+                  <span class="rowlink__main">
+                    <span class="rowlink__title">{m.title}</span>
+                    <span class="rowlink__sub">{m.sub}</span>
+                    {m.hasSlides && <span class="meetings__chips"><span class="tag">Slides</span></span>}
+                  </span>
+                  <span class="chev" aria-hidden="true">→</span>
+                </a>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {pastByYear.map((g) => (
+        <section aria-label={`Past meetings, ${g.label}`} class="meetings__group">
+          <div class="section-head">
+            <h2>{g.label}</h2>
+            <span class="spacer"></span>
+            <span class="count"><span class="num">{g.items.length}</span> {plural(g.items.length, 'meeting', 'meetings')}</span>
+          </div>
+          <ul class="rowlist">
+            {g.items.map((m) => (
+              <li>
+                <a class="rowlink" href={`/meetings/${encodeURIComponent(m.id)}`}>
+                  <span class="datestamp datestamp--sm" aria-hidden="true"><b>{m.day}</b><i>{m.month}</i></span>
+                  <span class="rowlink__main">
+                    <span class="rowlink__title">{m.title}</span>
+                    <span class="rowlink__sub">{m.sub}</span>
+                    <span class="meetings__chips">
+                      {m.hasSlides && <span class="tag">Slides</span>}
+                      {m.photoCount > 0 && <span class="tag">{m.photoCount} {plural(m.photoCount, 'photo', 'photos')}</span>}
+                      {m.hasRecap && <span class="tag">Recap</span>}
+                      {m.attended && <span class="tag tag--moss">✓ You were there</span>}
+                      {user.isOfficer && <span class="tag">{m.checkins} checked in</span>}
+                      {user.isOfficer && !m.hasRecap && <span class="tag tag--gold">No recap</span>}
+                      {user.isOfficer && m.photoCount === 0 && <span class="tag tag--gold">No photos</span>}
+                    </span>
+                  </span>
+                  <span class="chev" aria-hidden="true">→</span>
+                </a>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ))}
+
+      {capped && (
+        <p class="small muted">Showing the {LIST_LIMIT} most recent meetings.</p>
+      )}
+    </Fragment>
+  )}
+</DashboardLayout>

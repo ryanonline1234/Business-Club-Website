@@ -53,20 +53,20 @@ checks. The role values remain as titles.
 | `GET` | `/api/auth/callback` | public | OAuth redirect |
 | `GET`/`POST` | `/api/auth/signout` | public + cross-site check | layout & `/pending` sign-out forms |
 | `POST` | `/api/events/create` | officer | `/calendar` composer |
-| `PATCH` | `/api/events/:id` | officer | `/calendar` event detail → Edit details |
+| `PATCH` | `/api/events/:id` | officer | `/meetings/[id]` → Edit details |
 | `DELETE` | `/api/events/:id/delete` | officer | `/calendar` cancel |
 | `GET` | `/api/events/:id/qr` | **officer** | `/calendar` Present mode |
 | `GET` | `/api/events/:id/checkins` | officer | `/calendar` Present mode live tally (polled) |
 | `GET` | `/api/events/:id/attendance.pdf` | officer | `/attendance` meeting sheets, `/calendar` event detail |
-| `PATCH` | `/api/events/:id/recap` | officer | `/calendar` recap editor (past events) |
+| `PATCH` | `/api/events/:id/recap` | officer | `/meetings/[id]` recap editor (past meetings) |
 | `POST` | `/api/attendance/checkin` | **approved** | `/checkin` |
 | `PATCH` | `/api/members/:id` | officer | `/members` role select |
 | `POST` | `/api/members/invite` | officer | `/members` add-members panel |
 | `PATCH` | `/api/members/:id/status` | officer | `/members` approval queue |
 | `PATCH` | `/api/profile/bio` | officer | `/members` own-row bio editor |
 | `POST` | `/api/preview` | **real** officer (ignores the preview) | topbar "View as student" / banner exit |
-| `POST` | `/api/photos` | officer | `/calendar` photo upload (multipart) |
-| `DELETE` | `/api/photos/:id` | officer | `/calendar` photo delete |
+| `POST` | `/api/photos` | officer | `/meetings/[id]` photo upload (multipart; shrunk on-device first) |
+| `DELETE` | `/api/photos/:id` | officer | `/meetings/[id]` photo delete |
 | `POST` | `/api/announcements/create` | officer | `/announcements` composer |
 | `DELETE` | `/api/announcements/:id` | officer | `/announcements` delete |
 
@@ -172,7 +172,13 @@ Edit an event **in place** — same row id, so its check-ins, recap and photos
 stay attached (cancel-and-recreate used to strand them). A **partial**
 update: only keys present in the body change, validated by the same rules as
 create (`lib/event-input.ts`). Accepted keys: `title`, `start_time`,
-`end_time`, `description`, `location`, `category`, `capacity`. `status`,
+`end_time`, `description`, `location`, `category`, `capacity`, and
+`slides_url` (update only — STEP 20). `slides_url` must be an `https:` link on
+`docs.google.com` or `drive.google.com` (exact hosts, no userinfo or port,
+≤ 2048 chars — `lib/slides-link.ts`); `''`/`null` clears it. Slides are
+**members-only**: rendered on `/meetings/[id]` (re-validated on render, a
+plain link, never embedded) and never selected by `/about`. Before STEP 20 is
+applied, saving with `slides_url` answers `500` "run STEP 20". `status`,
 `created_by`, `recap` and `password` are never settable here (unknown keys are
 ignored). `end_time: null` (or `''`) clears the end — the meeting then ends at
 the end of its Pacific day. End-after-start is checked on the **merged** event,
@@ -284,8 +290,9 @@ to NULL. **Interior newlines are preserved** — they are the paragraph breaks
 plain text and is rendered server-side, escaped.
 
 Recaps are history, not previews: only an event whose `start_time` is already
-in the past may carry one. Status is not checked here — `/calendar` only
-offers the editor for non-cancelled past events, and `/about` only shows
+in the past may carry one. Status is not checked here — `/meetings/[id]` treats
+a cancelled meeting as not found and only offers the editor on past meetings,
+and `/about` only shows
 `active`/`completed` ones, so a recap written to a cancelled event via the
 raw API simply never renders.
 
@@ -486,8 +493,10 @@ decides the order here and in DELETE.
 
 **Platform caveat:** Vercel caps request bodies at ~4.5MB and answers `413`
 with a **non-JSON body** before the endpoint runs, so the effective limit in
-production is lower than the endpoint's 8MB. The `/calendar` client
-pre-checks at 4MB and translates the 413 into friendly copy.
+production is lower than the endpoint's 8MB. The `/meetings/[id]` client
+shrinks each photo on-device first (re-encoded to JPEG, longest side ≤ 2048px,
+EXIF/GPS stripped — it never falls back to uploading the original); only GIFs
+go up untouched, pre-checked at 4MB, and a 413 becomes friendly copy.
 
 **Responses:** `201 { data }` (the row plus `url`, the public object URL) ·
 `400` with a named reason (not multipart / file missing / too large / not a

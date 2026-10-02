@@ -890,6 +890,7 @@ button,input,select,textarea{ font:inherit; color:inherit; }
 .facts dd{ margin:5px 0 0; color:var(--ink); font-size:var(--t-16); }
 
 .event-actions{ margin-top:24px; padding-top:4px; padding-bottom:4px; }
+.event-detail__more{ margin-top:20px; display:flex; }
 .event-actions__head{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:12px; }
 .event-actions__row{ display:flex; gap:12px; flex-wrap:wrap; }
 /* Every action in the officer row — plain buttons AND the two disclosures
@@ -1030,6 +1031,69 @@ button,input,select,textarea{ font:inherit; color:inherit; }
   font-family:var(--f-cond); text-transform:uppercase; letter-spacing:var(--tr-2);
   font-size:clamp(12px, 1.6cqi, 20px); color:#6B5A2C;
 }
+/* ============================================================
+   MEETINGS ARCHIVE — /meetings (list) and /meetings/[id] (one meeting)
+   ============================================================ */
+.meetings__head h1{ font-family:var(--f-serif); font-size:clamp(var(--t-24),4vw,var(--t-34)); color:var(--ink); font-weight:600; }
+.meetings__head p{ margin-top:6px; }
+.meetings__officer{ margin-top:22px; }
+.meetings__officer p{ max-width:64ch; color:var(--ink-2); font-size:var(--t-14); }
+.meetings__officeracts{ margin-top:12px; display:flex; gap:12px; flex-wrap:wrap; }
+.meetings__group{ margin-top:clamp(28px,3.6vw,42px); max-width:760px; }
+.meetings__chips{ display:flex; gap:6px; flex-wrap:wrap; margin-top:7px; }
+
+.meeting__back{ margin-bottom:14px; font-size:var(--t-14); }
+.meeting__back a{ color:var(--gold-2); display:inline-block; padding:13px 4px; margin:-13px -4px; }
+.meeting__title{
+  font-family:var(--f-serif); font-weight:600; color:var(--ink); line-height:1.15;
+  font-size:clamp(var(--t-24),4.4vw,var(--t-34)); overflow-wrap:anywhere;
+}
+.meeting__when{ margin-top:8px; color:var(--ink-2); font-size:var(--t-16); }
+.meeting__slides{ display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
+.meeting__desc{ max-width:64ch; }
+.meeting__desc p, .meeting__recap p{ font-size:var(--t-16); line-height:1.65; color:var(--ink-2); overflow-wrap:anywhere; }
+.meeting__desc p + p, .meeting__recap p + p{ margin-top:10px; }
+.meeting__recap{ max-width:64ch; }
+.meeting__railacts{ margin-top:16px; display:flex; flex-direction:column; gap:10px; align-items:stretch; }
+.meeting__railacts .btn{ justify-content:center; }
+@media (min-width:620px) and (max-width:939px){
+  .meeting__railacts{ flex-direction:row; flex-wrap:wrap; align-items:center; }
+}
+.meeting__present{ display:flex; }
+
+/* Officer editing blocks (recap, photos) — moved from the calendar. */
+.recapblock__head{ display:flex; align-items:baseline; gap:10px; flex-wrap:wrap; }
+.recapblock__head b, .recapblock__head h2{
+  font-family:var(--f-serif); font-size:var(--t-19); color:var(--ink); font-weight:600;
+}
+.recapblock__pub{ margin-top:6px; max-width:60ch; }
+/* Inline link in running text: pad the hit area to ~48px without moving the
+   line (same pattern as login.astro .gate__about a). */
+.recapblock__pub a{ color:var(--gold-2); display:inline-block; padding:13px 4px; margin:-13px -4px; }
+.meeting__block form{ margin-top:18px; }
+.meeting__block form > * + *{ margin-top:14px; }
+.recapblock__actions{ display:flex; }
+.photogrid{
+  margin-top:16px; list-style:none; padding:0;
+  display:grid; gap:16px 14px;
+  grid-template-columns:repeat(auto-fill, minmax(150px, 1fr));
+}
+.photogrid img{
+  display:block; width:100%; aspect-ratio:4/3; object-fit:cover;
+  border:1px solid var(--rule); border-radius:var(--r); background:var(--paper-2);
+}
+.photogrid__cap{
+  display:block; margin-top:6px; font-size:var(--t-14); color:var(--ink-2);
+  line-height:1.5; overflow-wrap:anywhere;
+}
+.photogrid .confirm{ display:block; margin-top:8px; }
+/* An open delete-confirm stays inside its tile (spanning the tile would
+   enlarge the photo and push the confirm off-screen); it just stacks tighter. */
+.photogrid .confirm__row{ gap:6px 8px; }
+.row-err{ display:block; font-size:var(--t-14); color:var(--clay-2); margin-top:6px; }
+#photo-error ul{ margin:6px 0 10px; padding-left:18px; }
+#photo-error li{ margin-bottom:4px; overflow-wrap:anywhere; }
+
 /* Meeting sheets on /attendance — one row per meeting with its PDF. */
 /* "Older meetings" — the meeting sheets past the newest few. */
 .sheets__older{ margin-top:6px; }
@@ -1048,7 +1112,11 @@ button,input,select,textarea{ font:inherit; color:inherit; }
 }
 .sheets li:last-child{ border-bottom:0; }
 .sheets__when{ font-family:var(--f-serif); font-size:var(--t-14); color:var(--gold-2); font-variant-numeric:lining-nums; }
-.sheets__title{ color:var(--ink); min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.sheets__title{
+  color:var(--ink); min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  display:block; padding:12px 0; /* the title links to the meeting page: a full-height tap target */
+}
+a.sheets__title:hover{ color:var(--gold-2); }
 .sheets__n{ font-size:var(--t-14); color:var(--ink-3); white-space:nowrap; }
 /* Phones: the title takes its own line so the PDF button keeps a full tap target. */
 @media (max-width:480px){

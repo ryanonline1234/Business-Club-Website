@@ -282,7 +282,7 @@ if (!session.isOfficer) {
                 {sheets.slice(0, SHEETS_SHOWN).map((m) => (
                   <li>
                     <span class="sheets__when">{m.isToday ? <span class="hl">Today</span> : m.day}</span>
-                    <span class="sheets__title">{m.title}</span>
+                    <a class="sheets__title" href={`/meetings/${encodeURIComponent(m.id)}`}>{m.title}</a>
                     <span class="sheets__n"><span class="num">{m.count}</span> in</span>
                     <a
                       class="btn btn--sm btn--ghost sheets__dl"
@@ -300,7 +300,7 @@ if (!session.isOfficer) {
                     {sheets.slice(SHEETS_SHOWN).map((m) => (
                       <li>
                         <span class="sheets__when">{m.day}</span>
-                        <span class="sheets__title">{m.title}</span>
+                        <a class="sheets__title" href={`/meetings/${encodeURIComponent(m.id)}`}>{m.title}</a>
                         <span class="sheets__n"><span class="num">{m.count}</span> in</span>
                         <a
                           class="btn btn--sm btn--ghost sheets__dl"

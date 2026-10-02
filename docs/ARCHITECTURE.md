@@ -21,7 +21,7 @@ ended up unauthenticated in the old app — do not hand-roll a new one.
 - **No external runtime resources, with one exception.** Fonts are
   self-hosted via `@fontsource` packages (Barlow Condensed, Libre
   Baskerville), bundled at build time. No CDNs, no Google Fonts URLs. The
-  exception is club photos: `/about` and `/calendar` load them in `<img>`
+  exception is club photos: `/about` and `/meetings/[id]` load them in `<img>`
   straight from the public `club-photos` Supabase Storage bucket.
 
 Astro config ([`club-dashboard-astro/astro.config.mjs`](../club-dashboard-astro/astro.config.mjs)):
@@ -59,12 +59,19 @@ club-dashboard-astro/
 │   │   ├── supabase.ts                 ← both Supabase clients
 │   │   ├── auth.ts                     ← ALL guards, page and API
 │   │   ├── next-redirect.ts            ← the ?next= carrier cookie + open-redirect check
-│   │   └── qrcode.ts                   ← signed check-in tokens (jose JWT + QR PNG)
+│   │   ├── qrcode.ts                   ← signed check-in tokens (jose JWT + QR PNG)
+│   │   ├── event-time.ts               ← ALL start / end / check-in-window rules (Pacific)
+│   │   ├── event-input.ts              ← event field validation (create + edit)
+│   │   ├── slides-link.ts              ← slides-link allow-list + label (Google only)
+│   │   ├── meetings.ts                 ← archive helpers (photo URLs, school year)
+│   │   └── attendance-pdf.ts           ← the per-meeting attendance PDF
+│   ├── scripts/event-form.ts           ← client half of the event forms (Pacific times)
 │   └── pages/
 │       ├── index.astro                 ← home dashboard
 │       ├── login.astro  pending.astro  checkin.astro   ← standalone (no layout)
 │       ├── about.astro  join.astro     ← PUBLIC, standalone: showcase + recruiting QR
 │       ├── calendar.astro  attendance.astro
+│       ├── meetings/index.astro  meetings/[id].astro   ← archive + one page per meeting
 │       ├── members.astro   announcements.astro
 │       └── api/                        ← JSON endpoints (see docs/API.md)
 ```

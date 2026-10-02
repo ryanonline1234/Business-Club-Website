@@ -95,7 +95,7 @@ Full setup (Supabase project, Google OAuth, Vercel) is in
 | [docs/KNOWN-GAPS.md](docs/KNOWN-GAPS.md) | What the rebuild fixed, what's still open, accepted trades |
 | [docs/REBUILD-PLAN.md](docs/REBUILD-PLAN.md) | The rebuild spec this code implements, with status |
 | [docs/ABOUT-CONTENT-GUIDE.md](docs/ABOUT-CONTENT-GUIDE.md) | How `/about` turns database rows into "the record," and what good recaps/captions/bios look like |
-| [docs/MEETINGS-ARCHIVE-SCOPE.md](docs/MEETINGS-ARCHIVE-SCOPE.md) | Scoped, not built: a meetings list + per-meeting pages with slides links, and the iPad photo-upload fix |
+| [docs/MEETINGS-ARCHIVE-SCOPE.md](docs/MEETINGS-ARCHIVE-SCOPE.md) | Built 2026-10-01 (caption editing not yet): the meetings list + per-meeting pages with slides links, the iPad photo-upload fix, and the owner decisions behind them |
 
 ---
 
@@ -107,8 +107,10 @@ Full setup (Supabase project, Google OAuth, Vercel) is in
 | `/about` | **public** | The club's showcase for non-members: past events with officer-written recaps and photos, officer bios, link to the school's clubs page. Its own Bold Graphic design, not the portal's Warm system; renders a designed empty state until officers add recaps, photos and bios |
 | `/login` | public | Google sign-in; fixed error copy keyed by `?error=` |
 | `/pending` | any session | Waiting room: pending / declined / server-error states |
-| `/calendar` | approved | Month grid + agenda; each event shows **your own** check-in state once check-in opens. Officers get the event composer (end = a same-day time; blank = midnight), **Edit details** (in place — check-ins stay attached), cancel, the attendance PDF, and Present mode (projected QR, auto-refreshing, with a live check-in count) |
+| `/calendar` | approved | Month grid + agenda; each event shows **your own** check-in state once check-in opens. Officers get the event composer (end = a same-day time; blank = midnight; `?new=1` opens it), cancel, the attendance PDF, and Present mode (projected QR, auto-refreshing, with a live check-in count) |
 | `/attendance` | approved | Officers see the club log, turnout, and **meeting sheets** (a date-named PDF per meeting: attendees, emails, check-in times); members see **only their own** history |
+| `/meetings` | approved | The meetings archive: upcoming, then past meetings by school year, each with Slides / photos / Recap chips; members see "✓ You were there", officers see check-in counts and "No recap / No photos" flags |
+| `/meetings/[id]` | approved | One meeting's record: details, **slides link (members-only)**, recap, photos, your check-in. Officers edit **here** — Edit details (every field + slides), Recap, Photos (shrunk on-device before upload) — the one place each of those lives |
 | `/members` | approved | Roster with check-in counts; emails, approval queue, role select and add-by-email are officer-only. `?add=1#add-members` opens the add-by-email panel |
 | `/announcements` | approved | Server-rendered feed; officers compose and delete |
 | `/checkin?token=…` | public | QR landing page. Checks a signed-in member in **automatically** (no tap) and says so with a ✓; reopening it shows "You're checked in" instead of a button — even after the 15-minute code has expired (someone with no check-in gets the details-free "invalid" page). Sign-in round-trips back to the scan via `?next=` |

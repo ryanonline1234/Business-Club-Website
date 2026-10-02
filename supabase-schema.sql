@@ -15,7 +15,7 @@
 --                            empty project builds everything from scratch.
 --     3. STEP 15 alone     — verification. READ THE ROWS IT RETURNS, before
 --                            deploying any code.
---     4. STEPs 16-19       — paste as one block, safe any time, in either
+--     4. STEPs 16-20       — paste as one block, safe any time, in either
 --                            order relative to the code deploy (see their
 --                            banners). One caveat: STEP 19 re-approves EVERY
 --                            school-domain row sitting at 'pending' — not
@@ -749,3 +749,34 @@ update public.profiles
    set status = 'approved'
  where status = 'pending'
    and public.is_school_email(email);
+
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- MEETINGS ARCHIVE — STEP 20
+--
+-- ✅ SAFE TO RUN ANY TIME, repeatedly, on a live database, on EITHER side of
+--   the code deploy: one nullable column, no default, no backfill, so nothing
+--   that reads `events` today changes and nobody can be locked out. The
+--   /meetings code fails soft without it (reads retry without slides_url;
+--   PATCH /api/events/:id answers "run STEP 20" if an officer saves a link).
+-- ═══════════════════════════════════════════════════════════════════════════
+
+-- ── STEP 20: one slides link per meeting — MEMBERS ONLY ─────────────────────
+-- Read by /meetings and /meetings/[id], which are requireApproved. NOT
+-- selected by /about — its select lists are the public boundary
+-- (docs/KNOWN-GAPS.md), and slides stay members-only (owner decision,
+-- 2026-10-01). RLS needs no change: STEP 14's approved-members read on events
+-- already covers the column.
+-- The host allow-list (Google Slides / Docs / Drive) lives in
+-- src/lib/slides-link.ts, which changes more often than schema; this
+-- constraint is only the second line of defence: https, bounded length.
+alter table public.events
+  add column if not exists slides_url text;
+
+alter table public.events
+  drop constraint if exists events_slides_url_check;
+
+alter table public.events
+  add constraint events_slides_url_check
+  check (slides_url is null
+         or (slides_url like 'https://%' and length(slides_url) <= 2048));

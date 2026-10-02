@@ -1,7 +1,14 @@
 # Meetings archive — scope
 
-_Scoped 2026-10-01. Not built. Owner decision so far: **slides links are
-members-only** (not on the public `/about`)._
+_Scoped and **built 2026-10-01** (pieces 1–7 and 9; caption editing, piece 8,
+is not built, and piece 7's real-iPad check — orientation, HEIC — is still
+open; see STATE.md). Owner decisions: editing lives on the meeting page; **one**
+slides link per meeting; **Google Slides / Docs / Drive only**; slides
+**members-only**; "registered" means listed and recorded (no sign-ups). The
+other open decisions went with the recommendations below: description and
+recap stay separate, no sixth nav item, `deadline` events aren't listed,
+photos stay public, photos are shrunk to 2048px. This document is kept as the
+design record; the code is the source of truth._
 
 The ask: a place where meetings are registered and listed, where you can go
 back to a past meeting, open its slides, and where officers can edit its
@@ -79,7 +86,7 @@ links and downloads may repeat.
 |---|---|---|
 | Present check-in code | Calendar (live, time-critical) | unchanged |
 | Cancel event | Calendar | unchanged |
-| Edit details (all fields + slides) | `/meetings/[id]` | **Today it lives on the calendar** (built 2026-10-01). When the archive ships it **moves**, and the calendar shows a "Meeting page →" link instead — never two edit forms for one event |
+| Edit details (all fields + slides) | `/meetings/[id]` | Moved here 2026-10-01; the calendar shows a "Meeting page" link instead — never two edit forms for one event |
 | Recap, photos | `/meetings/[id]` | Block replaced by "Recap, slides & photos →" (~240 lines leave `calendar.astro`) |
 | Attendance PDF (download) | meeting page, `/attendance`, calendar | stays |
 
@@ -92,10 +99,10 @@ actually needs a second kind of link (recording, worksheet) — the owner's
 
 **Validation** (`src/lib/slides-link.ts`, server is the authority):
 `new URL(raw.trim())`; protocol exactly `https:`; no userinfo, no port;
-≤ 2048 chars; store `url.href`. Host allow-list with exact-or-dot-suffix
-matching (so `evilgoogle.com` and `docs.google.com.evil.com` fail):
-`docs.google.com` (Google Slides for `/presentation/`, else Google Docs),
-`drive.google.com` (Google Drive), `canva.com` + subdomains (Canva). The label
+≤ 2048 chars; store `url.href`. Host allow-list, **exact** host match only
+(so `evilgoogle.com` and `docs.google.com.evil.com` fail): `docs.google.com`
+(Google Slides for `/presentation/`, Docs / Sheets / Forms by path) and
+`drive.google.com` (Google Drive) — Google only, by owner decision. The label
 is derived from the host server-side, never typed — a link can't claim to be
 something it isn't.
 
@@ -141,12 +148,14 @@ file header ("STEPs 16–20"), DATA-MODEL, KNOWN-GAPS.
 - Optional, S: **`PATCH /api/photos/:id { caption }`** — with multi-photo
   upload, captioning afterwards beats typing one per file.
 
-## 7. Photos from an iPad — the part that's broken today
+## 7. Photos from an iPad (built 2026-10-01)
 
-Today the calendar's uploader rejects anything over 4MB in the browser with
-"Resize it and try again" — which many full-size iPad camera photos exceed,
-and an iPad has no easy way to resize. (Vercel's ~4.5MB request limit is the
-real ceiling behind that check.)
+Before this shipped, the calendar's uploader rejected anything over 4MB in the
+browser with "Resize it and try again" — which many full-size iPad camera
+photos exceed, and an iPad has no easy way to resize. (Vercel's ~4.5MB request
+limit is the real ceiling behind that check.) The meeting page now shrinks
+photos on the device instead, and never falls back to uploading an original
+(which would keep its EXIF, GPS included):
 
 - `accept="image/*" multiple`, **no** `capture` attribute (iPadOS then offers
   Take Photo / Photo Library / Choose File).
@@ -164,7 +173,7 @@ real ceiling behind that check.)
   `.photogrid li:has(> .confirm[open]){ grid-column:1 / -1 }`.
 
 **Verify on a real iPad:** orientation after canvas re-encode, HEIC from Files
-vs Photo Library, whether iOS already strips GPS, Canva short-link shapes.
+vs Photo Library, whether iOS already strips GPS.
 
 ## 8. Effort
 
@@ -182,27 +191,21 @@ S ≈ up to 2h, M ≈ half a day.
 | 8 | Caption edit (optional) | S |
 | 9 | Docs: STATE, API, KNOWN-GAPS, ABOUT-CONTENT-GUIDE ("write the recap in /calendar" changes) | S |
 
-**Minimum (1–6, 9): ~1–1.5 days. Plus 7–8: ~0.5–1 day.** Piece 7 can ship
-first on its own — it fixes the existing calendar uploader today.
+**Minimum (1–6, 9): ~1–1.5 days. Plus 7–8: ~0.5–1 day.**
 
 ## 9. Open decisions
 
-1. **Where are events edited once this ships?** Recommended: `/meetings/[id]`
-   for every field; the calendar keeps Present and Cancel and links over.
-   (Cheaper alternative: the list links to `/calendar?event=…` and editing
-   stays on the calendar.)
+1. ~~Where are events edited~~ — decided: `/meetings/[id]` for every field;
+   the calendar keeps Present and Cancel and links over.
 2. **Description vs recap** — keep both, clearly labelled (members-only "what
    this meeting is" vs public "what happened")? Recommended: keep both.
-3. **One slides link, or several links** (recording, worksheet, form)?
-   Recommended: one now.
+3. ~~One slides link, or several~~ — decided: one.
 4. ~~Slides visibility~~ — decided: members only.
-5. **Allowed link hosts** — Google Docs/Drive and Canva; add Microsoft
-   (OneDrive/SharePoint), Pitch, Prezi?
+5. ~~Allowed link hosts~~ — decided: Google Slides / Docs / Drive only.
 6. **Navigation** — no sixth nav item (recommended), or rename "Calendar" to
    "Meetings" and make it the hub?
 7. **What counts as a meeting** — exclude `deadline` events from the archive?
 8. **Photos public** (recommended) or members-only photos (private bucket +
    signed URLs — large)?
 9. **Photo size** — is downscaling to 2048px fine, or do you need originals?
-10. **"Registered"** — read here as recorded and listed. If you meant members
-    signing up for meetings in advance (RSVP), that's a separate scope.
+10. ~~"Registered"~~ — decided: listed and recorded, not sign-ups.

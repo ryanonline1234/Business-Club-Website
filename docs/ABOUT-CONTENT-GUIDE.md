@@ -20,8 +20,8 @@ should live up to that: real events, real numbers, real photos.
 | Masthead, live PT clock, season, tape, seal | Computed | Nothing |
 | SEC. 00 · The Pitch (manifesto) | Hardcoded copy + **newest photo with no `event_id`** as the duotone plate | Upload one great atmospheric shot *unattached* |
 | Giant numeral + stats strip | Counts of events / photos / officers | Nothing — derived |
-| Broadsheet write-ups (drop cap, big date slab, № numbering) | Past events **with `recap` text**, newest first | Write the recap in `/calendar` → past event → Recap & photos |
-| Photo stamps inside a write-up | `photos` rows with that `event_id` | Upload + attach, give each a short `caption` |
+| Broadsheet write-ups (drop cap, big date slab, № numbering) | Past events **with `recap` text**, newest first | Write the recap on the meeting's page: `/meetings` → the meeting → Recap |
+| Photo stamps inside a write-up | `photos` rows with that `event_id` | Upload on the meeting's page (`/meetings/[id]` → Photos), give each a short `caption` |
 | "More from the season" compact rows | Past events **without** a recap | Automatic |
 | "Around the club" drag-rail | The *other* unattached photos | More unattached uploads |
 | SEC. 02 · Officers | `profiles` where role admin/treasurer, status approved | Each officer writes `bio` on `/members` |
@@ -61,7 +61,9 @@ every dollar twice. The ledger in the photos above is his handwriting."*
 
 **Photos** — everything renders in gold duotone (full color on hover), so
 ordinary phone photos land on-palette automatically. Shoot candid and
-horizontal; everything crops to 4:3. Upload cap 4 MB (Vercel body limit).
+horizontal; everything crops to 4:3. Upload straight from an iPad or phone —
+the meeting page shrinks photos on the device first (longest side 2048px,
+location data removed), so the host's ~4.5 MB request limit isn't a problem.
 **Never publish AI-generated photos** — the mock's images were props; the
 page's entire premise is that the record is real.
 
