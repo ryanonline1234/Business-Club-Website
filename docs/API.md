@@ -176,8 +176,9 @@ create (`lib/event-input.ts`). Accepted keys: `title`, `start_time`,
 `slides_url` (update only — STEP 20). `slides_url` must be an `https:` link on
 `docs.google.com` or `drive.google.com` (exact hosts, no userinfo or port,
 ≤ 2048 chars — `lib/slides-link.ts`); `''`/`null` clears it. Slides are
-**members-only**: rendered on `/meetings/[id]` (re-validated on render, a
-plain link, never embedded) and never selected by `/about`. Before STEP 20 is
+**public** since 2026-10-26 (members-only before): rendered on the public
+`/meetings/[id]` (re-validated on render, a plain link, never embedded) and
+never selected by `/about`. Before STEP 20 is
 applied, saving with `slides_url` answers `500` "run STEP 20". `status`,
 `created_by`, `recap` and `password` are never settable here (unknown keys are
 ignored). `end_time: null` (or `''`) clears the end — the meeting then ends at

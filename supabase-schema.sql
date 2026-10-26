@@ -761,12 +761,12 @@ update public.profiles
 --   PATCH /api/events/:id answers "run STEP 20" if an officer saves a link).
 -- ═══════════════════════════════════════════════════════════════════════════
 
--- ── STEP 20: one slides link per meeting — MEMBERS ONLY ─────────────────────
--- Read by /meetings and /meetings/[id], which are requireApproved. NOT
--- selected by /about — its select lists are the public boundary
--- (docs/KNOWN-GAPS.md), and slides stay members-only (owner decision,
--- 2026-10-01). RLS needs no change: STEP 14's approved-members read on events
--- already covers the column.
+-- ── STEP 20: one slides link per meeting ───────────────────────────────────
+-- Read by /meetings and /meetings/[id] through supabaseAdmin. Members-only
+-- when added (2026-10-01); PUBLIC since 2026-10-26, when the meeting pages
+-- became public (owner decision) — a comment-only change, nothing to re-run.
+-- NOT selected by /about. RLS needs no change: the anon key never reads
+-- events, and STEP 14's approved-members read already covers the column.
 -- The host allow-list (Google Slides / Docs / Drive) lives in
 -- src/lib/slides-link.ts, which changes more often than schema; this
 -- constraint is only the second line of defence: https, bounded length.

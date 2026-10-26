@@ -7,9 +7,16 @@
  * own page (/meetings/[id]), where its record — description, slides, recap,
  * photos — lives and, for officers, is edited.
  *
+ * PUBLIC SINCE 2026-10-26 (owner decision): NO GUARD, like /meetings/[id] —
+ * the list is how a signed-out visitor finds a meeting's slides and
+ * activities. Anyone not signed in AND approved gets the public view, and for
+ * them THE SELECT LIST IS THE PRIVACY BOUNDARY: PUBLIC_BASE only (never
+ * location), and no attendance reads.
+ *
  * Who sees what (all server-side):
- *   • everyone approved: date, title, category · location, and chips for what
- *     the meeting has (Slides, N photos, Recap);
+ *   • everyone: date, title, category, and chips for what the meeting has
+ *     (Slides, Activity, N photos, Recap);
+ *   • approved members also see each meeting's location;
  *   • members also see "✓ You were there" on the meetings they checked in to
  *     (their OWN attendance rows only);
  *   • officers also see each meeting's check-in count, gold "No recap" /
@@ -21,13 +28,18 @@
  * and photos (STEP 18).
  */
 import DashboardLayout from '../../layouts/DashboardLayout.astro';
-import { requireApproved } from '../../lib/auth';
+import { getSession } from '../../lib/auth';
 import { supabaseAdmin } from '../../lib/supabase';
 import { effectiveEndMs } from '../../lib/event-time';
 import { slidesLink } from '../../lib/slides-link';
+import { activitiesForMeeting } from '../../lib/activities';
 import { categoryLabel, isMissingColumn, isMissingRelation, schoolYearLabel } from '../../lib/meetings';
 
-const user = await requireApproved(Astro.request, Astro.response.headers, Astro.redirect);
+/* No guard — public page (see the header). `user` is null unless the visitor
+   is signed in AND approved. */
+const session = await getSession(Astro.request, Astro.response.headers);
+const user = session?.isApproved ? session : null;
+const isOfficer = !!user?.isOfficer;
 
 const TZ = 'America/Los_Angeles';
 const LIST_LIMIT = 500;
@@ -38,7 +50,7 @@ interface Row {
   title: string;
   start_time: string;
   end_time: string | null;
-  location: string | null;
+  location?: string | null; // members only — not in the public select
   category: string | null;
   recap?: string | null;
   slides_url?: string | null;
@@ -50,8 +62,9 @@ const countOf = (v: Row['photos']) => (Array.isArray(v) ? v[0]?.count : v?.count
 
 /* Newest columns first; retry without whatever a not-yet-applied SQL step
    hasn't added. Officers also embed the attendance count. */
-const base = 'id, title, start_time, end_time, location, category';
-const officerEmbed = user.isOfficer ? ', attendance(count)' : '';
+const PUBLIC_BASE = 'id, title, start_time, end_time, category';
+const base = user ? `${PUBLIC_BASE}, location` : PUBLIC_BASE;
+const officerEmbed = isOfficer ? ', attendance(count)' : '';
 const attempts = [
   `${base}, recap, slides_url, photos(count)${officerEmbed}`,
   `${base}, recap, photos(count)${officerEmbed}`,
@@ -81,7 +94,7 @@ const capped = rows.length === LIST_LIMIT;
 
 /* Members: which of these did I attend? Own rows only. */
 let attended = new Set<string>();
-if (rows.length > 0) {
+if (user && rows.length > 0) {
   // All of my own rows (a member's own attendance is small); the listed
   // meetings are intersected in toView. No 500-id IN list in the URL.
   const { data: mine, error: mineErr } = await supabaseAdmin
@@ -110,6 +123,7 @@ interface View {
   sub: string;
   isPast: boolean;
   hasSlides: boolean;
+  activityCount: number;
   photoCount: number;
   hasRecap: boolean;
   attended: boolean;
@@ -130,6 +144,7 @@ const toView = (r: Row): View => {
       .join(' · '),
     isPast: end !== null && end < nowMs,
     hasSlides: slidesLink(r.slides_url) !== null,
+    activityCount: activitiesForMeeting(r.id, isOfficer).length,
     photoCount: countOf(r.photos),
     hasRecap: (r.recap ?? '').trim() !== '',
     attended: attended.has(r.id),
@@ -155,10 +170,10 @@ const plural = (n: number, one: string, many: string) => (n === 1 ? one : many);
 <DashboardLayout title="Meetings" user={user}>
   <header class="meetings__head">
     <h1>Meetings</h1>
-    <p class="muted">Every meeting — its slides, recap and photos.</p>
+    <p class="muted">Every meeting — its slides, activities, recap and photos.</p>
   </header>
 
-  {user.isOfficer && (
+  {isOfficer && (
     <section class="owned meetings__officer" aria-label="Officer tools">
       <div class="event-actions__head"><span class="flag">Officer only</span></div>
       <p>
@@ -183,7 +198,7 @@ const plural = (n: number, one: string, many: string) => (n === 1 ? one : many);
       <b>No meetings yet</b>
       <p>
         Meetings land here as they&rsquo;re scheduled on the calendar.
-        {user.isOfficer && ' Add past ones with “Add a past meeting” above.'}
+        {isOfficer && ' Add past ones with “Add a past meeting” above.'}
       </p>
     </div>
   ) : (
@@ -193,7 +208,7 @@ const plural = (n: number, one: string, many: string) => (n === 1 ? one : many);
           <div class="section-head">
             <h2 id="up-h">Coming up</h2>
             <span class="spacer"></span>
-            <a class="btn btn--sm btn--ghost" href="/calendar">Full calendar</a>
+            {user && <a class="btn btn--sm btn--ghost" href="/calendar">Full calendar</a>}
           </div>
           <ul class="rowlist">
             {upcoming.map((m) => (
@@ -203,7 +218,12 @@ const plural = (n: number, one: string, many: string) => (n === 1 ? one : many);
                   <span class="rowlink__main">
                     <span class="rowlink__title">{m.title}</span>
                     <span class="rowlink__sub">{m.sub}</span>
-                    {m.hasSlides && <span class="meetings__chips"><span class="tag">Slides</span></span>}
+                    {(m.hasSlides || m.activityCount > 0) && (
+                      <span class="meetings__chips">
+                        {m.hasSlides && <span class="tag">Slides</span>}
+                        {m.activityCount > 0 && <span class="tag">{plural(m.activityCount, 'Activity', `${m.activityCount} activities`)}</span>}
+                      </span>
+                    )}
                   </span>
                   <span class="chev" aria-hidden="true">→</span>
                 </a>
@@ -230,12 +250,13 @@ const plural = (n: number, one: string, many: string) => (n === 1 ? one : many);
                     <span class="rowlink__sub">{m.sub}</span>
                     <span class="meetings__chips">
                       {m.hasSlides && <span class="tag">Slides</span>}
+                      {m.activityCount > 0 && <span class="tag">{plural(m.activityCount, 'Activity', `${m.activityCount} activities`)}</span>}
                       {m.photoCount > 0 && <span class="tag">{m.photoCount} {plural(m.photoCount, 'photo', 'photos')}</span>}
                       {m.hasRecap && <span class="tag">Recap</span>}
                       {m.attended && <span class="tag tag--moss">✓ You were there</span>}
-                      {user.isOfficer && <span class="tag">{m.checkins} checked in</span>}
-                      {user.isOfficer && !m.hasRecap && <span class="tag tag--gold">No recap</span>}
-                      {user.isOfficer && m.photoCount === 0 && <span class="tag tag--gold">No photos</span>}
+                      {isOfficer && <span class="tag">{m.checkins} checked in</span>}
+                      {isOfficer && !m.hasRecap && <span class="tag tag--gold">No recap</span>}
+                      {isOfficer && m.photoCount === 0 && <span class="tag tag--gold">No photos</span>}
                     </span>
                   </span>
                   <span class="chev" aria-hidden="true">→</span>

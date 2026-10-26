@@ -21,8 +21,11 @@ ended up unauthenticated in the old app — do not hand-roll a new one.
 - **No external runtime resources, with one exception.** Fonts are
   self-hosted via `@fontsource` packages (Barlow Condensed, Libre
   Baskerville), bundled at build time. No CDNs, no Google Fonts URLs. The
-  exception is club photos: `/about` and `/meetings/[id]` load them in `<img>`
-  straight from the public `club-photos` Supabase Storage bucket.
+  meeting activities' fonts are self-hosted too, as plain files in
+  `public/activity-assets/` (see [Meeting activities](#meeting-activities)).
+  The exception is club photos: `/about`, `/meetings` and `/meetings/[id]`
+  load them in `<img>` straight from the public `club-photos` Supabase
+  Storage bucket.
 
 Astro config ([`club-dashboard-astro/astro.config.mjs`](../club-dashboard-astro/astro.config.mjs)):
 
@@ -48,9 +51,12 @@ mutation. Our own origin check in `lib/auth.ts` does the job — see
 club-dashboard-astro/
 ├── astro.config.mjs
 ├── public/styles/global.css        ← the entire stylesheet, hand-written
+├── public/activity-assets/         ← self-hosted fonts for the meeting activities
 ├── src/
 │   ├── middleware.ts                   ← converts thrown redirects (see below)
+│   ├── activities/<slug>/              ← meeting activities: plain HTML/CSS/JS, reviewed code
 │   ├── layouts/DashboardLayout.astro   ← shell: topbar + nav + <slot/> + thumb bar
+│   │                                     (user={null}: the signed-out shell)
 │   ├── components/
 │   │   ├── TopRail.astro               ← desktop nav (removed under 700px)
 │   │   └── ThumbBar.astro              ← fixed phone nav (the only nav under 700px)
@@ -64,6 +70,7 @@ club-dashboard-astro/
 │   │   ├── event-input.ts              ← event field validation (create + edit)
 │   │   ├── slides-link.ts              ← slides-link allow-list + label (Google only)
 │   │   ├── meetings.ts                 ← archive helpers (photo URLs, school year)
+│   │   ├── activities.ts               ← activity registry: audience + which meetings
 │   │   └── attendance-pdf.ts           ← the per-meeting attendance PDF
 │   ├── scripts/event-form.ts           ← client half of the event forms (Pacific times)
 │   └── pages/
@@ -71,7 +78,8 @@ club-dashboard-astro/
 │       ├── login.astro  pending.astro  checkin.astro   ← standalone (no layout)
 │       ├── about.astro  join.astro     ← PUBLIC, standalone: showcase + recruiting QR
 │       ├── calendar.astro  attendance.astro
-│       ├── meetings/index.astro  meetings/[id].astro   ← archive + one page per meeting
+│       ├── meetings/index.astro  meetings/[id].astro   ← PUBLIC archive + one page per meeting
+│       ├── activities/[slug]/[...path].ts             ← serves src/activities (guard per audience)
 │       ├── members.astro   announcements.astro
 │       └── api/                        ← JSON endpoints (see docs/API.md)
 ```
@@ -247,10 +255,13 @@ Google OAuth through Supabase Auth, PKCE flow. Four gates; gate 1 is a hint,
    [KNOWN-GAPS.md](KNOWN-GAPS.md#the-grandfathered-admin-vs-step-9)).
 3. **The session layer** — the guards above, on every route.
 4. **Page level** — the only public routes are `/login`, `/checkin`,
-   `/about`, `/join`, and `/api/auth/*`; `/pending` needs a session but not
-   approval. `/about` reads through `supabaseAdmin` with no guard, so its
-   select lists are the privacy boundary — see
+   `/about`, `/join`, `/meetings`, `/meetings/[id]`, the `'public'`
+   activities under `/activities/`, and `/api/auth/*`; `/pending` needs a
+   session but not approval. `/about` and the two meeting pages read through
+   `supabaseAdmin` with no guard, so for a visitor who is not signed in and
+   approved their select lists are the privacy boundary — see
    [KNOWN-GAPS.md](KNOWN-GAPS.md#abouts-select-lists-are-a-privacy-boundary--do-not-widen-them-casually).
+   The meeting pages read the session only to decide how much to show.
 
 Error redirects carry a **fixed code only** (`?error=domain | auth-error`) —
 never provider error text, which used to leak into browser history and
@@ -288,6 +299,11 @@ carries the destination through Google in a 10-minute httpOnly cookie
 callback. `safeNextPath()` is the open-redirect defence: same-origin
 root-relative paths only, `//` and `/\` rejected, auth routes excluded.
 Pending users always land on `/pending` regardless of `next`.
+
+The page guards take an optional last argument, `nextPath`: when a signed-out
+visitor is turned away they go to `/login?next=<nextPath>` instead of plain
+`/login`. Only the officer-only activities pass it today, so an officer who
+opens the Website Lab signed out comes straight back to it.
 
 ---
 
@@ -397,6 +413,43 @@ way to admin in an admin's browser. The rule now:
 - `/checkin` additionally charset-gates the token
   (`/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/`) before it reaches an
   inline `define:vars` script, so no `<`/`>` can ever appear there.
+
+---
+
+## Meeting activities
+
+The interactive pages a meeting runs — the Website Hunt game, the Website Lab
+presenter view — are served from this site at `/activities/<slug>/` (they
+started life as Claude artifacts; moved 2026-10-26).
+
+- **Files:** `src/activities/<slug>/`, plain HTML/CSS/JS with an
+  `index.html`, written as standalone pages with relative links. They are
+  bundled into the server at build time (`import.meta.glob(…, ?raw)` in
+  `lib/activities.ts`) and served by `pages/activities/[slug]/[...path].ts`.
+  A request can only name a file in that bundle — there is no filesystem read
+  and so no path to traverse (`..` and `%2e%2e` resolve to another activity's
+  guarded path or a 404).
+- **Registry:** `ACTIVITIES` in `lib/activities.ts` — title, one-line summary,
+  `audience`, and the `events.id` of each meeting that lists it. Meeting pages
+  and the `/meetings` chips read it; there is no database column (owner
+  decision, 2026-10-26: adding an activity already takes a commit).
+- **Audience:** `'public'` — no guard, for members on phones mid-meeting, so
+  it must hold nothing secret. `'officers'` — `requireOfficer` with
+  `nextPath`, before any byte is served, for presenter views and answer keys.
+  The Website Hunt is public; the Website Lab (all 36 answers in its page
+  source) is officers-only.
+- **Response headers:** a CSP of `default-src 'self'` with
+  `connect-src 'none'` and `form-action 'none'` (activity scripts cannot call
+  the API or post anywhere), `x-robots-tag: noindex` (the demo businesses are
+  fictional), `nosniff`, and CDN caching for public activities only.
+- **Fonts:** `public/activity-assets/fonts.css` + latin-subset woff2 files
+  copied from the `@fontsource` / `@fontsource-variable` packages, declared
+  under the family names the pages already use. Add a face there when a new
+  activity needs one; never link Google Fonts.
+- **Trust (AGENTS.md invariant 11):** activities run on this origin beside the
+  session cookie, so they are code — reviewed and committed. Their own scripts
+  may use `innerHTML` on static strings (the demo sites do); they never see
+  member data, because nothing about the activity route reads any.
 
 ---
 

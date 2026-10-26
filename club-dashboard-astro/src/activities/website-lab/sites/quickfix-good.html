@@ -1,0 +1,384 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>QuickFix Phone Repair | Screen &amp; battery repair in Riverton</title>
+<meta name="description" content="Phone screen and battery repair at 88 Harbor Avenue, Riverton. Most repairs in under an hour, 90-day warranty, no fix no fee. Walk in or book online.">
+<link rel="stylesheet" href="/activity-assets/fonts.css">
+<link rel="stylesheet" href="lab.css">
+<!-- The fixed version of QuickFix (a made-up business) for the Website Lab activity. -->
+<style>
+  :root {
+    --ink: #15202b;
+    --ink-soft: #4c5a69;
+    --cloud: #f4f6f9;
+    --paper: #ffffff;
+    --blue: #0f5e9c;
+    --blue-dark: #0b4473;
+    --coral: #ff7a59;
+    --line: #dde3ea;
+    --display: "Manrope", "Segoe UI", Arial, sans-serif;
+    --body: "Nunito Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body { margin: 0; background: var(--cloud); color: var(--ink); font-family: var(--body); font-size: 17px; line-height: 1.6; }
+  a { color: inherit; }
+  :focus-visible { outline: 3px solid var(--coral); outline-offset: 3px; border-radius: 4px; }
+  .wrap { max-width: 1120px; margin: 0 auto; padding-inline: 20px; }
+  h1, h2, h3 { font-family: var(--display); line-height: 1.15; margin: 0; text-wrap: balance; }
+  h2 { font-size: clamp(28px, 3.4vw, 36px); font-weight: 800; }
+
+  .chrome {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    background: #eceff3;
+    border-bottom: 1px solid #cfd5dc;
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    font-size: 14px;
+  }
+  .dots { display: flex; gap: 6px; }
+  .dots i { width: 12px; height: 12px; border-radius: 50%; background: #c8ccd0; display: block; }
+  .url { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; background: #fff; border-radius: 999px; padding: 6px 14px; color: #333; white-space: nowrap; overflow: hidden; }
+  .sim { font-size: 11px; color: #6b7280; white-space: nowrap; }
+
+  header { background: var(--paper); border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 10; }
+  header .wrap { display: flex; align-items: center; gap: 24px; padding-block: 12px; }
+  .logo { display: flex; align-items: center; gap: 10px; font: 800 20px/1 var(--display); text-decoration: none; }
+  nav { display: flex; gap: 22px; margin-left: auto; }
+  nav a { text-decoration: none; font-weight: 600; font-size: 16px; }
+  nav a:hover { color: var(--blue); text-decoration: underline; text-underline-offset: 4px; }
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 12px 20px;
+    border-radius: 10px;
+    font: 700 16px/1.2 var(--display);
+    text-decoration: none;
+    border: 2px solid var(--blue);
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .btn-primary { background: var(--blue); color: #fff; }
+  .btn-primary:hover { background: var(--blue-dark); border-color: var(--blue-dark); }
+  .btn-ghost { background: var(--paper); color: var(--blue); }
+  .btn-ghost:hover { background: #e8f1f9; }
+
+  .hero .wrap { display: grid; grid-template-columns: 1.15fr 0.85fr; gap: 48px; align-items: center; padding-block: 56px; }
+  .hero h1 { font-size: clamp(34px, 4.6vw, 52px); font-weight: 800; }
+  .lede { font-size: 19.5px; color: var(--ink-soft); margin: 18px 0 26px; max-width: 32em; }
+  .ctas { display: flex; flex-wrap: wrap; gap: 12px; }
+  .facts { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+  .fact { background: var(--paper); border: 1px solid var(--line); border-radius: 14px; padding: 18px; }
+  .fact b { display: block; font: 800 24px/1.2 var(--display); color: var(--blue-dark); }
+  .fact span { font-size: 15px; color: var(--ink-soft); }
+
+  section { padding-block: 60px; }
+  .section-head { margin-bottom: 24px; max-width: 46em; }
+  .section-head p { margin: 8px 0 0; color: var(--ink-soft); }
+
+  .table-scroll { overflow-x: auto; background: var(--paper); border: 1px solid var(--line); border-radius: 14px; }
+  table.prices { width: 100%; min-width: 560px; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+  .prices th, .prices td { padding: 14px 18px; border-bottom: 1px solid var(--line); text-align: right; }
+  .prices th:first-child, .prices td:first-child { text-align: left; }
+  .prices thead th { font: 700 13.5px/1.2 var(--body); text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-soft); background: #f8fafc; }
+  .prices tbody tr:last-child td { border-bottom: 0; }
+  .prices td:first-child { font-weight: 700; }
+  .price-note { font-size: 15.5px; color: var(--ink-soft); margin: 14px 0 0; }
+
+  .split { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; align-items: start; }
+  .card { background: var(--paper); border: 1px solid var(--line); border-radius: 16px; padding: 26px; }
+  .owner { display: grid; grid-template-columns: 120px 1fr; gap: 20px; align-items: center; }
+  .owner svg { width: 120px; height: 120px; border-radius: 12px; }
+
+  .reviews { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+  blockquote { margin: 0; background: var(--paper); border: 1px solid var(--line); border-radius: 14px; padding: 20px; display: grid; gap: 10px; align-content: start; }
+  blockquote p { margin: 0; }
+  blockquote footer { font-size: 15px; color: var(--ink-soft); }
+  .reply { background: var(--cloud); border-radius: 10px; padding: 10px 12px; font-size: 15px; }
+  .stars { color: #b26a00; letter-spacing: 2px; }
+
+  form { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 16px; }
+  label { display: grid; gap: 6px; font-weight: 600; font-size: 15.5px; }
+  input, select { font: 400 17px/1.3 var(--body); padding: 11px 12px; border: 1.5px solid #b8c2cd; border-radius: 8px; background: #fff; color: var(--ink); width: 100%; }
+  .full { grid-column: 1 / -1; }
+  .privacy { display: flex; gap: 10px; align-items: flex-start; background: #eaf3fb; border-radius: 10px; padding: 12px 14px; font-size: 15.5px; }
+  .confirm { background: #eaf3fb; color: var(--blue-dark); border-radius: 10px; padding: 12px 14px; font-weight: 700; }
+
+  .visit dl { display: grid; grid-template-columns: auto 1fr; gap: 8px 18px; margin: 16px 0 0; }
+  .visit dt { font-weight: 700; }
+  .visit dd { margin: 0; color: var(--ink-soft); }
+  .map {
+    position: relative;
+    min-height: 260px;
+    border-radius: 16px;
+    overflow: hidden;
+    border: 1px solid var(--line);
+    background:
+      linear-gradient(90deg, transparent 38%, #fff 38% 43%, transparent 43%),
+      linear-gradient(0deg, transparent 52%, #fff 52% 58%, transparent 58%),
+      linear-gradient(160deg, #cfe3f1 0 22%, transparent 22%),
+      #e7ebe3;
+  }
+  .pin { position: absolute; left: 40.5%; top: 45%; transform: translate(-50%, -100%); background: var(--coral); color: var(--ink); padding: 6px 12px; border-radius: 999px; font: 800 14px/1.2 var(--display); white-space: nowrap; }
+  .map-label { position: absolute; font-size: 12px; color: #5f6b5a; font-weight: 700; }
+
+  .policies { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+  .policies h3 { font-size: 20px; margin-bottom: 6px; }
+  .policies p { margin: 0; color: var(--ink-soft); font-size: 16px; }
+
+  footer.site { background: var(--ink); color: #c5cfda; }
+  footer.site .wrap { display: flex; flex-wrap: wrap; gap: 10px 28px; justify-content: space-between; padding-block: 26px; font-size: 15.5px; }
+  footer.site a { color: #fff; font-weight: 700; }
+
+  .cookie {
+    position: fixed;
+    left: 16px;
+    bottom: 80px;
+    z-index: 50;
+    max-width: 380px;
+    background: var(--paper);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 16px;
+    box-shadow: 0 12px 30px rgba(21, 32, 43, 0.18);
+    font-size: 15px;
+  }
+  .cookie p { margin: 0 0 12px; }
+  .cookie .row { display: flex; gap: 10px; }
+  .cookie .btn { flex: 1; padding: 10px 14px; font-size: 15px; }
+
+  @media (max-width: 880px) {
+    nav { display: none; }
+    header .btn { margin-left: auto; }
+    .hero .wrap, .split { grid-template-columns: 1fr; }
+    .reviews, .policies { grid-template-columns: 1fr; }
+    form { grid-template-columns: 1fr; }
+    .sim { display: none; }
+    .cookie { right: 16px; max-width: none; }
+  }
+  @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+</style>
+</head>
+<body>
+
+<div class="chrome" data-lab="1">
+  <span class="dots" aria-hidden="true"><i></i><i></i><i></i></span>
+  <span class="url">
+    <svg width="14" height="14" viewBox="0 0 24 24" aria-label="Secure connection"><path d="M7 10V7a5 5 0 0 1 10 0v3" fill="none" stroke="#333" stroke-width="2"/><rect x="5" y="10" width="14" height="11" rx="2" fill="#333"/></svg>
+    quickfixrepair.com
+  </span>
+  <span class="sim">(pretend address bar)</span>
+</div>
+
+<header>
+  <div class="wrap">
+    <a class="logo" href="#top">
+      <svg width="28" height="28" viewBox="0 0 28 28" aria-hidden="true"><rect x="7" y="2" width="14" height="24" rx="3" fill="#0f5e9c"/><path d="M11 13l3 3 5-6" stroke="#ff7a59" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      QuickFix Phone Repair
+    </a>
+    <nav aria-label="Main">
+      <a href="#prices">Prices</a>
+      <a href="#book">Book a repair</a>
+      <a href="#visit">Visit</a>
+      <a href="#warranty">Warranty</a>
+    </nav>
+    <a class="btn btn-primary" href="#book">Book a repair</a>
+  </div>
+</header>
+
+<main id="top">
+  <section class="hero" style="padding:0">
+    <div class="wrap">
+      <div>
+        <h1 data-lab="3">Cracked screen? Most phone screens fixed in under an hour.</h1>
+        <p class="lede">Walk in or book a time at our shop at <b>88 Harbor Avenue, Riverton</b>. Every repair comes with a 90-day warranty, and if we can’t fix it, you don’t pay.</p>
+        <div class="ctas">
+          <a class="btn btn-primary" href="#book">Book a repair</a>
+          <a class="btn btn-ghost" href="#prices">See prices</a>
+        </div>
+      </div>
+      <div class="facts" data-lab="5">
+        <div class="fact"><b>4.7 ★</b><span>486 reviews on Google</span></div>
+        <div class="fact"><b>90 days</b><span>Warranty on parts and labor</span></div>
+        <div class="fact"><b>No fix, no fee</b><span>Free diagnosis, every time</span></div>
+        <div class="fact"><b>Since 2016</b><span>Same owner, same street</span></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="prices" style="padding-top:20px">
+    <div class="wrap">
+      <div class="section-head">
+        <h2>Repair prices</h2>
+        <p>Prices include parts, labor and tax. You’ll get the exact price before we start.</p>
+      </div>
+      <div class="table-scroll" data-lab="6">
+        <table class="prices">
+          <thead><tr><th>Phone</th><th>Screen</th><th>Battery</th><th>Charging port</th></tr></thead>
+          <tbody>
+            <tr><td>iPhone 16 / 16 Plus</td><td>$249</td><td>$99</td><td>$119</td></tr>
+            <tr><td>iPhone 15 / 15 Plus</td><td>$219</td><td>$99</td><td>$109</td></tr>
+            <tr><td>iPhone 13 / 14</td><td>$179</td><td>$89</td><td>$99</td></tr>
+            <tr><td>Samsung Galaxy S24 / S25</td><td>$239</td><td>$99</td><td>$109</td></tr>
+            <tr><td>Google Pixel 8 / 9</td><td>$199</td><td>$89</td><td>$99</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="price-note">Phone not listed? Call <a href="tel:+15555550178"><b>(555) 555-0178</b></a> for a quote in under 2 minutes.</p>
+    </div>
+  </section>
+
+  <section style="padding-top:0">
+    <div class="wrap split">
+      <div class="card owner" data-lab="7">
+        <svg viewBox="0 0 120 120" role="img" aria-label="Placeholder for a real photo of owner Dana Ortiz at the repair bench">
+          <rect width="120" height="120" fill="#dbe7f2"/>
+          <circle cx="60" cy="48" r="22" fill="#6b4a3a"/>
+          <path d="M18 120c3-30 20-46 42-46s39 16 42 46z" fill="#0f5e9c"/>
+          <rect x="38" y="92" width="44" height="6" rx="3" fill="#ff7a59"/>
+        </svg>
+        <div>
+          <h3 style="font-size:22px">Dana Ortiz, owner</h3>
+          <p style="margin:6px 0 0;color:var(--ink-soft)">“I’ve fixed phones on Harbor Avenue since 2016. You’ll see me at the bench, and I’ll show you what was wrong before you pay.”</p>
+        </div>
+      </div>
+      <div class="card" id="warranty" data-lab="11">
+        <h3 style="font-size:22px">Fair, simple policies</h3>
+        <p style="margin:8px 0 0;color:var(--ink-soft)"><b style="color:var(--ink)">Pay after the repair</b>, by card, Apple Pay, Google Pay or cash. <b style="color:var(--ink)">90-day warranty</b> on every part we install. If the same problem comes back, we fix it free or refund you.</p>
+      </div>
+    </div>
+  </section>
+
+  <section style="padding-top:0" id="reviews">
+    <div class="wrap">
+      <div class="section-head">
+        <h2>Reviews</h2>
+        <p>4.7 average from 486 reviews on Google. Here are three recent ones.</p>
+      </div>
+      <div class="reviews" data-lab="8">
+        <blockquote>
+          <span class="stars" aria-label="5 out of 5 stars">★★★★★</span>
+          <p>“Dropped my Pixel on the way to work and had a new screen by lunch. They showed me the price before starting.”</p>
+          <footer>Aisha B. · October 2026</footer>
+        </blockquote>
+        <blockquote>
+          <span class="stars" aria-label="5 out of 5 stars">★★★★★</span>
+          <p>“They told me the battery was fine and I just needed a new cable. Saved me $90. Honest shop.”</p>
+          <footer>Tom W. · September 2026</footer>
+        </blockquote>
+        <blockquote>
+          <span class="stars" aria-label="3 out of 5 stars">★★★☆☆</span>
+          <p>“Repair was good, but I waited 40 minutes past my booking time on a busy Saturday.”</p>
+          <footer>Kim L. · August 2026</footer>
+          <div class="reply"><b>Reply from Dana:</b> Sorry about the wait, Kim. We’ve added a second technician on Saturdays so it doesn’t happen again.</div>
+        </blockquote>
+      </div>
+    </div>
+  </section>
+
+  <section id="book" style="background:var(--paper);border-block:1px solid var(--line)">
+    <div class="wrap split">
+      <div>
+        <h2>Book a repair</h2>
+        <p style="color:var(--ink-soft)">Pick a time and we’ll have the part ready. Walk-ins are welcome too.</p>
+        <div class="privacy" data-lab="10">
+          <svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true" style="flex:none;margin-top:2px"><path d="M12 2l8 3v6c0 5-3.4 9.4-8 11-4.6-1.6-8-6-8-11V5z" fill="#0f5e9c"/></svg>
+          <span>We will never ask for your passcode, payment details or security answers online. We test your phone with you at the counter.</span>
+        </div>
+      </div>
+      <form id="book-form" novalidate>
+        <label for="k-name">Name<input id="k-name" autocomplete="name" placeholder="Alex Kim"></label>
+        <label for="k-phone">Mobile number<input id="k-phone" autocomplete="tel" placeholder="(555) 555-0100"></label>
+        <label for="k-device">Phone
+          <select id="k-device"><option>iPhone 16 / 16 Plus</option><option>iPhone 15 / 15 Plus</option><option>iPhone 13 / 14</option><option>Samsung Galaxy S24 / S25</option><option>Google Pixel 8 / 9</option><option>Something else</option></select>
+        </label>
+        <label for="k-repair">Repair
+          <select id="k-repair"><option>Screen</option><option>Battery</option><option>Charging port</option><option>Not sure, please check it</option></select>
+        </label>
+        <label class="full" for="k-time">Time
+          <select id="k-time"><option>Today, 2:00 pm</option><option>Today, 4:30 pm</option><option>Tomorrow, 10:00 am</option><option>Tomorrow, 1:00 pm</option></select>
+        </label>
+        <button class="btn btn-primary full" type="submit">Book my repair</button>
+        <p class="full" style="margin:0;font-size:14px;color:var(--ink-soft)">Demo site: nothing is booked.</p>
+        <div class="confirm full" id="book-confirm" hidden></div>
+      </form>
+    </div>
+  </section>
+
+  <section class="visit" id="visit">
+    <div class="wrap split">
+      <div data-lab="9">
+        <h2>Visit the shop</h2>
+        <dl>
+          <dt>Address</dt><dd>88 Harbor Avenue, Riverton (next to the post office)</dd>
+          <dt>Hours</dt><dd>Mon–Sat 9 am – 7 pm · Sun 11 am – 5 pm</dd>
+          <dt>Phone</dt><dd><a href="tel:+15555550178">(555) 555-0178</a></dd>
+          <dt>Parking</dt><dd>Free 30-minute spots out front</dd>
+        </dl>
+      </div>
+      <div class="map" role="img" aria-label="Map: QuickFix is on Harbor Avenue at Pine Street, next to the post office">
+        <span class="map-label" style="left:44%;top:6%">Pine St</span>
+        <span class="map-label" style="left:62%;top:60%">Harbor Ave</span>
+        <span class="pin">QuickFix</span>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer class="site">
+  <div class="wrap" data-lab="12">
+    <span>© 2026 QuickFix Phone Repair · 88 Harbor Avenue, Riverton</span>
+    <span><a href="#warranty">Warranty</a> · <a href="#book">Privacy</a> · <a href="tel:+15555550178">(555) 555-0178</a></span>
+  </div>
+</footer>
+
+<div class="cookie" id="cookie" data-lab="2">
+  <p>We use one cookie to remember your booking. No ads, no tracking.</p>
+  <div class="row">
+    <button class="btn btn-primary" type="button" id="c-yes">Accept</button>
+    <button class="btn btn-ghost" type="button" id="c-no">Reject</button>
+  </div>
+</div>
+
+<script id="lab-data" type="application/json">
+{
+  "mode": "good",
+  "round": 3,
+  "site": "QuickFix Phone Repair",
+  "pair": "quickfix-bad.html",
+  "items": [
+    { "n": 1, "title": "Secure, simple web address", "why": "The padlock means HTTPS, and quickfixrepair.com is short, easy to remember, and doesn't look like spam." },
+    { "n": 2, "title": "A small cookie notice with a real choice", "why": "\"Accept\" and \"Reject\" are equally easy to press, it says what the cookie does, and it doesn't cover the page." },
+    { "n": 3, "title": "Calm, correct headline", "why": "It names the problem (cracked screen) and the promise (under an hour). No caps, no typos, no exclamation points." },
+    { "n": 4, "title": "No fake urgency", "why": "No countdown and no \"only 2 slots left\". The booking form shows real available times instead." },
+    { "n": 5, "title": "Trust you can check", "why": "A Google rating with the number of reviews, a written warranty and \"no fix, no fee\". Real promises instead of drawn-on badges." },
+    { "n": 6, "title": "Real prices, no asterisks", "why": "A clear table by phone model, including parts, labor and tax. Customers know what they'll pay before walking in." },
+    { "n": 7, "title": "A real person", "why": "The owner's name, face and story. People hand their phones to people, not to logos." },
+    { "n": 8, "title": "Believable reviews", "why": "Different people, different dates, specific details, and even a 3-star review with a helpful reply from the owner." },
+    { "n": 9, "title": "Full address, hours and parking", "why": "Everything you need to walk in: street address, landmark, hours, phone number and a map." },
+    { "n": 10, "title": "A safe, short booking form", "why": "Name, number, phone model, repair and time. A clear promise never to ask for passcodes or payment details online." },
+    { "n": 11, "title": "Normal payments and a fair warranty", "why": "Pay after the repair by card, phone or cash, with a 90-day warranty and refunds if the fix doesn't hold." },
+    { "n": 12, "title": "Clearly current", "why": "© 2026, reviews from the last few months, and today's booking times. Visitors can see the shop is open and active." }
+  ]
+}
+</script>
+<script>
+  ['c-yes', 'c-no'].forEach(function (id) {
+    document.getElementById(id).addEventListener('click', function () { document.getElementById('cookie').hidden = true; });
+  });
+  document.getElementById('book-form').addEventListener('submit', function (e) {
+    e.preventDefault();
+    var name = document.getElementById('k-name').value.trim() || 'there';
+    var box = document.getElementById('book-confirm');
+    box.textContent = 'Thanks, ' + name + '! You’re booked for ' + document.getElementById('k-repair').value.toLowerCase() + ' repair, ' + document.getElementById('k-time').value + '. (Demo site: nothing was booked.)';
+    box.hidden = false;
+  });
+</script>
+<script src="lab.js"></script>
+</body>
+</html>

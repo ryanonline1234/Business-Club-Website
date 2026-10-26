@@ -1,0 +1,265 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Website Hunt · Mitty Business Club</title>
+<link rel="stylesheet" href="/activity-assets/fonts.css">
+<style>
+  /* Layout: a scavenger-hunt card for phones. Rules, three rounds, then the hints. Same palette as the presenter's Website Lab. */
+  :root {
+    --paper: #f3f5f9;
+    --card: #ffffff;
+    --ink: #13213c;
+    --ink-soft: #4a5874;
+    --line: #dbe1eb;
+    --mark: #ffc94d;
+    --mark-ink: #13213c;
+    --blue: #2f5fd0;
+    --pen: #c92a2a;
+    --chip: #e8edf6;
+    --display: "Bricolage Grotesque", "Arial Black", Arial, sans-serif;
+    --body: "Public Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+    --hand: "Caveat", "Comic Sans MS", cursive;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --paper: #0f1626;
+      --card: #172139;
+      --ink: #e8edf7;
+      --ink-soft: #a7b3c9;
+      --line: #2a3654;
+      --mark: #ffc94d;
+      --mark-ink: #13213c;
+      --blue: #8cadff;
+      --pen: #ff7b7b;
+      --chip: #212d49;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --paper: #0f1626;
+    --card: #172139;
+    --ink: #e8edf7;
+    --ink-soft: #a7b3c9;
+    --line: #2a3654;
+    --mark: #ffc94d;
+    --mark-ink: #13213c;
+    --blue: #8cadff;
+    --pen: #ff7b7b;
+    --chip: #212d49;
+    color-scheme: dark;
+  }
+
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--body);
+    font-size: 16.5px;
+    line-height: 1.55;
+  }
+  .page { max-width: 880px; margin: 0 auto; padding-inline: 20px; padding-block: 36px 64px; }
+  a { color: var(--blue); }
+  :focus-visible { outline: 3px solid var(--mark); outline-offset: 2px; border-radius: 4px; }
+  h1, h2, h3 { font-family: var(--display); line-height: 1.1; margin: 0; text-wrap: balance; }
+  h2 { font-size: clamp(24px, 3vw, 30px); font-weight: 800; letter-spacing: -0.01em; }
+  section { margin-top: 48px; }
+  .section-head { display: grid; gap: 6px; margin-bottom: 16px; }
+  .section-head p { margin: 0; color: var(--ink-soft); }
+  .eyebrow { font-size: 12.5px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-soft); }
+
+  .mast { display: grid; grid-template-columns: 1fr auto; gap: 20px; align-items: end; border-bottom: 2px solid var(--ink); padding-bottom: 24px; }
+  .mast h1 { font-size: clamp(44px, 8vw, 76px); font-weight: 800; letter-spacing: -0.02em; }
+  .mast p { margin: 12px 0 0; font-size: 18.5px; color: var(--ink-soft); max-width: 32em; }
+  .count {
+    font-family: var(--hand);
+    color: var(--pen);
+    font-size: 30px;
+    line-height: 1;
+    text-align: center;
+    border: 4px solid var(--pen);
+    border-radius: 50%;
+    width: 120px;
+    height: 120px;
+    display: grid;
+    place-content: center;
+    transform: rotate(-8deg);
+  }
+  .count b { font-size: 60px; line-height: 0.9; display: block; }
+
+  .rules { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+  .rules li { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; display: grid; grid-template-columns: 34px 1fr; gap: 12px; align-items: start; }
+  .rules svg { width: 26px; height: 26px; margin-top: 1px; }
+  .rules b { display: block; }
+  .rules span { color: var(--ink-soft); font-size: 15.5px; }
+
+  .rounds { display: grid; gap: 12px; }
+  .round {
+    display: grid;
+    grid-template-columns: 76px minmax(0, 1fr) auto;
+    gap: 18px;
+    align-items: center;
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 18px 20px;
+  }
+  .round .num { font-family: var(--display); font-weight: 800; font-size: 14px; color: var(--ink-soft); }
+  .round .num b { display: block; font-size: 40px; line-height: 1; color: var(--ink); }
+  .round h3 { font-size: 21px; }
+  .round p { margin: 3px 0 0; color: var(--ink-soft); font-size: 15px; }
+  .found { display: inline-block; margin-top: 8px; font-size: 13px; font-weight: 700; background: var(--chip); color: var(--ink); border-radius: 999px; padding: 3px 10px; font-variant-numeric: tabular-nums; }
+  .found.has { background: var(--mark); color: var(--mark-ink); }
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 12px 18px;
+    border-radius: 999px;
+    font-weight: 700;
+    font-size: 15.5px;
+    text-decoration: none;
+    white-space: nowrap;
+    background: var(--ink);
+    color: var(--paper);
+    border: 2px solid var(--ink);
+  }
+  .btn:hover { opacity: 0.9; }
+
+  .hints { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .hint { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; }
+  .hint b { display: block; font-size: 16px; }
+  .hint span { display: block; color: var(--ink-soft); font-size: 14.5px; }
+
+  footer { margin-top: 48px; padding-top: 18px; border-top: 1px solid var(--line); font-size: 14px; color: var(--ink-soft); }
+
+  @media (max-width: 640px) {
+    .mast { grid-template-columns: 1fr; }
+    .count { width: 100px; height: 100px; font-size: 26px; }
+    .count b { font-size: 50px; }
+    .round { grid-template-columns: 1fr; gap: 10px; }
+    .round .num { display: flex; align-items: baseline; gap: 8px; }
+    .round .num b { font-size: 28px; }
+    .round .btn { justify-self: start; }
+    .hints { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <header class="mast">
+    <div>
+      <span class="eyebrow">Business Club · Team competition</span>
+      <h1>Website Hunt</h1>
+      <p>Three local businesses, three websites, 12 mistakes hidden on each. Find as many as you can before time runs out.</p>
+    </div>
+    <div class="count" aria-label="36 mistakes hidden in total"><b>36</b>to find</div>
+  </header>
+
+  <section>
+    <div class="section-head">
+      <h2>How to play</h2>
+    </div>
+    <ul class="rules">
+      <li>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3.5" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="17" cy="9" r="2.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M3 20c0-3.5 2.7-6 6-6s6 2.5 6 6M15 14.5c3 0 6 2 6 5.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        <div><b>Play as a team.</b><span>Open the round your presenter calls. They'll tell you how much time you have.</span></div>
+      </li>
+      <li>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M16 16l5 5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        <div><b>Look like a customer.</b><span>Scroll the whole page, tap the buttons, and try it on a phone. Ask: would I trust this business with my money?</span></div>
+      </li>
+      <li>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="3" width="14" height="18" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><path d="M9 8h6M9 12h6M9 16h4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        <div><b>Write down every mistake.</b><span>Use the “My list” button at the bottom of each website. Your list stays on your device.</span></div>
+      </li>
+      <li>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4h10v4a5 5 0 0 1-10 0z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M7 6H4a3 3 0 0 0 3 4M17 6h3a3 3 0 0 1-3 4M12 13v4M8 20h8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        <div><b>Score points.</b><span>When time's up, read your list out. 1 point for each mistake on the answer key. Most points after three rounds wins. Tie-breaker: the best one-sentence fix.</span></div>
+      </li>
+    </ul>
+  </section>
+
+  <section>
+    <div class="section-head">
+      <h2>The three rounds</h2>
+      <p>All three businesses are made up.</p>
+    </div>
+    <div class="rounds">
+      <article class="round">
+        <div class="num">Round<b>1</b></div>
+        <div>
+          <h3>Crumb &amp; Co. Bakery</h3>
+          <p>A neighborhood bakery in downtown Riverton.</p>
+          <span class="found" data-key="crumb">0 on your list</span>
+        </div>
+        <a class="btn" href="sites/crumb.html">Open the website</a>
+      </article>
+      <article class="round">
+        <div class="num">Round<b>2</b></div>
+        <div>
+          <h3>Summit Lawn Care</h3>
+          <p>A lawn mowing and yard care company.</p>
+          <span class="found" data-key="summit">0 on your list</span>
+        </div>
+        <a class="btn" href="sites/summit.html">Open the website</a>
+      </article>
+      <article class="round">
+        <div class="num">Round<b>3</b></div>
+        <div>
+          <h3>QuickFix Phone Repair</h3>
+          <p>A phone screen and battery repair shop.</p>
+          <span class="found" data-key="quickfix">0 on your list</span>
+        </div>
+        <a class="btn" href="sites/quickfix.html">Open the website</a>
+      </article>
+    </div>
+  </section>
+
+  <section>
+    <div class="section-head">
+      <h2>Stuck? Check these eight things</h2>
+      <p>The same questions as the report card. Every mistake breaks at least one.</p>
+    </div>
+    <div class="hints">
+      <div class="hint"><b>Clear in 5 seconds</b><span>Can you tell what they sell, who it's for, and where?</span></div>
+      <div class="hint"><b>Obvious next step</b><span>Is there one clear button that works: order, book, call, get a quote?</span></div>
+      <div class="hint"><b>Contact basics</b><span>Phone, address or service area, and hours easy to find?</span></div>
+      <div class="hint"><b>Easy to get around</b><span>Short menu in plain words? Prices within 2 clicks?</span></div>
+      <div class="hint"><b>Works on a phone</b><span>No pinching or sideways scrolling, and it loads fast?</span></div>
+      <div class="hint"><b>Trustworthy</b><span>Real photos and reviews, secure, no typos, nothing fake?</span></div>
+      <div class="hint"><b>Easy to read</b><span>Strong contrast, one or two fonts, not cluttered?</span></div>
+      <div class="hint"><b>Respects the visitor</b><span>No pop-up ambush, surprise sound, fake urgency or nosy forms?</span></div>
+    </div>
+  </section>
+
+  <footer>
+    These websites were made for a Business Club activity. The businesses, people, phone numbers and addresses are all fictional.
+  </footer>
+</div>
+
+<script>
+(function () {
+  function update() {
+    document.querySelectorAll('.found').forEach(function (chip) {
+      var n = 0;
+      try {
+        var v = JSON.parse(localStorage.getItem('website-hunt-' + chip.getAttribute('data-key')));
+        n = Array.isArray(v) ? v.length : 0;
+      } catch (e) { n = 0; }
+      chip.textContent = n === 1 ? '1 on your list' : n + ' on your list';
+      chip.classList.toggle('has', n > 0);
+    });
+  }
+  update();
+  window.addEventListener('pageshow', update);
+  document.addEventListener('visibilitychange', function () { if (!document.hidden) update(); });
+})();
+</script>
+
+</body></html>

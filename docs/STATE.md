@@ -4,7 +4,7 @@ Where the project is **right now** and what to do next. Overwrite this file in
 place; do not append history to it — history lives in git and
 [REBUILD-PLAN.md](REBUILD-PLAN.md).
 
-_Last refreshed: 2026-10-01._
+_Last refreshed: 2026-10-26._
 
 ---
 
@@ -16,10 +16,12 @@ _Last refreshed: 2026-10-01._
 | Vercel project | `mitty-business-club` (team `ryanonline1234s-projects`) |
 | Repo | `ryanonline1234/Business-Club-Website` (renamed 2026-08-13 from `Business-Club-Finance-Helper`) |
 | Branch | `rebuild/mbc-portal` — **identical to `main`**; deploys go out from either |
-| Schema | `supabase-schema.sql` STEPs 0–19 all applied and verified |
+| Schema | `supabase-schema.sql` STEPs 0–20 all applied (STEP 20's `events.slides_url` confirmed present 2026-10-26) |
 
-The app is in real use: **98 profiles** (93 members, 5 admins), 2 events
-(both cancelled), 0 check-ins, 0 announcements, 0 photos. 55 of those
+The app is in real use. As of 2026-10-26: **116 profiles** (5 officers), 2 real
+meetings (Sep 30 and Oct 14, 2026; plus 2 cancelled tests), 50 check-ins,
+0 announcements, 0 photos, 0 recaps, and **no slides links set** on either
+meeting. 55 of the profiles
 profiles were pre-registered on 2026-09-25 from the "Business Club Attendance
 26/27" sheet (both tabs; 20 more people on it had already signed in) — by a
 one-off service-role script that mirrors `POST /api/members/invite` exactly
@@ -41,13 +43,23 @@ button. If an officer says an officer feature is missing, check for the gold
 
 ## What exists
 
+Public meetings + activities (2026-10-26): `/meetings` and `/meetings/[id]`
+are **public** — anyone with a meeting's link sees its title, time, **slides
+link** and **activities**, plus recap and photos; signing in adds location,
+description and check-ins, and officers keep every edit control. Meeting
+activities are served from the site at `/activities/<slug>/` instead of
+Claude artifacts: **Website Hunt** (public — the team game, no answers) and
+**Website Lab** (officers only — the presenter view with the answer key),
+both attached to the Oct 14 meeting. Registry: `src/lib/activities.ts`; how
+they're served and why they're code, not uploads:
+[ARCHITECTURE.md](ARCHITECTURE.md#meeting-activities), AGENTS.md invariant 11.
+
 Meetings archive (2026-10-01): `/meetings` lists every meeting (upcoming,
 then past by school year); `/meetings/[id]` is each meeting's record —
-details, a **members-only slides link** (Google Slides/Docs/Drive), recap,
-photos — and the ONE place officers edit it (the calendar keeps Present and
-Cancel and links over). Photos are shrunk on the device before upload, so
-iPad camera photos work. **STEP 20 of `supabase-schema.sql` must be run** for
-slides links (everything else works without it).
+details, a slides link (Google Slides/Docs/Drive), recap, photos — and the
+ONE place officers edit it (the calendar keeps Present and Cancel and links
+over). Photos are shrunk on the device before upload, so iPad camera photos
+work.
 
 Events (2026-10-01): officers can **edit** an event in place (Edit details on
 the meeting page — check-ins, recap and photos stay attached). Meetings **end the
@@ -78,30 +90,36 @@ titles now, not permission levels.
 
 Nothing is half-finished; these are choices, roughly in the order that pays off.
 
-1. **Run STEP 20** of `supabase-schema.sql` in the Supabase SQL Editor —
-   one nullable column, safe any time. Until then the slides field is hidden
-   on meeting pages.
-2. **Put real content on `/about`.** The design is built and empty. One past
+1. **Paste slides links** into both meetings (meeting page → Edit details),
+   shared as "Anyone with the link" now that they're public. Sep 30: the
+   "First Business Club Meeting" deck in Drive. Oct 14: the "Website Report
+   Card" deck is a Claude Slides artifact — send it to Google Slides first.
+2. **Signed-in check of the 2026-10-26 change.** It was verified signed out
+   only (public pages, Hunt end to end, Lab → sign-in redirect, traversal
+   probes). An officer should open the Oct 14 meeting and see both activities
+   (Lab tagged "Officer only"), open the Lab, and see the new public-slides
+   hint in Edit details; a member should see the Hunt but not the Lab.
+3. **Put real content on `/about`.** The design is built and empty. One past
    meeting with a recap, a photo or two, and officer bios turns the
    placeholder into the record — recap and photos from `/meetings/[id]` now
    (iPad photos included), bios from each officer's own row on `/members`. See [ABOUT-CONTENT-GUIDE.md](ABOUT-CONTENT-GUIDE.md).
-3. **Verify on a real iPad** what couldn't be checked from here: photo
+4. **Verify on a real iPad** what couldn't be checked from here: photo
    orientation after the on-device shrink, HEIC from the Files app vs the
    Photo Library ([MEETINGS-ARCHIVE-SCOPE.md](MEETINGS-ARCHIVE-SCOPE.md) §7).
-4. **A second Supabase project for local dev.** Today `npm run dev` reads and
+5. **A second Supabase project for local dev.** Today `npm run dev` reads and
    writes the live club database. This is the sharpest remaining edge now that
    real members are using the site.
-5. **Smoke-test CI.** Both production failures found so far (Astro's
+6. **Smoke-test CI.** Both production failures found so far (Astro's
    `checkOrigin` 403s, the malformed-cookie 500) were one-curl discoveries. A
    GitHub Action probing ~8 URLs against a preview deploy would have caught
    both.
-6. **Canvas announcements — blocked on access, not code.** Posting to a Canvas
+7. **Canvas announcements — blocked on access, not code.** Posting to a Canvas
    course is one API call; the gate is whether the club has a course shell and
    whether a student token can create announcements there. Three questions to
    answer before building: the course URL, who may post announcements in it,
    and whether that person can generate an access token. Fallback needing
    nobody's permission: an `.ics` feed off the events table.
-7. **Optional, designed but unbuilt:** spoken-code check-in fallback, live
+8. **Optional, designed but unbuilt:** spoken-code check-in fallback, live
    "who's arriving" panel in present mode, capacity enforcement, `audit_logs`
    writes, `AUTH_SECRET` rotation.
 

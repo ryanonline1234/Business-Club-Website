@@ -6,6 +6,11 @@
  * phone thumb bar. Theme plumbing is color-scheme: light dark plus the
  * light-dark() variable pairs in global.css — no toggle, the OS decides.
  *
+ * `user={null}` is the SIGNED-OUT shell, used only by the public meeting
+ * pages (/meetings, /meetings/[id]): brand mark + a "Member sign-in" button
+ * that returns to the current page. No nav rail, no thumb bar — every link in
+ * them leads to a page that would bounce a visitor to /login.
+ *
  * Fonts are self-hosted: the @fontsource imports below are bundled by
  * Astro into local woff2 files (no external requests at runtime).
  */
@@ -32,7 +37,7 @@ interface Props {
         way back to officer view. */
     actualIsOfficer: boolean;
     viewingAsStudent: boolean;
-  };
+  } | null;
 }
 
 /* Default subtitle = the current school term in America/Los_Angeles.
@@ -50,23 +55,27 @@ const term = month >= 8 ? 'Fall' : month <= 5 ? 'Spring' : 'Summer';
 const { title, subtitle = `${term} ${year}`.trim(), user } = Astro.props;
 
 const roleLabel =
-  user.role === 'admin' ? 'Admin' : user.role === 'treasurer' ? 'Treasurer' : 'Member';
-const displayName = user.name?.trim() || user.email;
-const initials =
-  (user.name ?? '')
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean)
-    .map((w) => w[0]!.toUpperCase())
-    .slice(0, 2)
-    .join('') || user.email.slice(0, 2).toUpperCase();
+  user?.role === 'admin' ? 'Admin' : user?.role === 'treasurer' ? 'Treasurer' : 'Member';
+const displayName = user ? user.name?.trim() || user.email : '';
+const initials = user
+  ? (user.name ?? '')
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean)
+      .map((w) => w[0]!.toUpperCase())
+      .slice(0, 2)
+      .join('') || user.email.slice(0, 2).toUpperCase()
+  : '';
 
 const currentPath = Astro.url.pathname;
+/* Signed-out shell: sign in, then land back on this page. /login re-validates
+   `next` through safeNextPath (invariant 8). */
+const signinHref = `/login?next=${encodeURIComponent(currentPath)}`;
 
 /* Officer preview. Both flags come from the real profiles role, so the exit
    banner survives the downgrade that hides everything else officer-shaped. */
-const previewing = user.viewingAsStudent;
-const canEnterPreview = user.actualIsOfficer && !previewing;
+const previewing = user?.viewingAsStudent ?? false;
+const canEnterPreview = !!user?.actualIsOfficer && !previewing;
 ---
 <!doctype html>
 <html lang="en">
@@ -121,22 +130,28 @@ const canEnterPreview = user.actualIsOfficer && !previewing;
         <svg width="30" height="30" viewBox="0 0 40 40" aria-hidden="true"><use href="#monogram"/></svg>
         <span class="mark__word">Mitty Business Club<span>{subtitle}</span></span>
       </a>
-      <TopRail currentPath={currentPath} />
-      {canEnterPreview && (
-        <button type="button" class="viewas-enter" data-preview-mode="student">
-          View as student
-        </button>
+      {user ? (
+        <Fragment>
+          <TopRail currentPath={currentPath} />
+          {canEnterPreview && (
+            <button type="button" class="viewas-enter" data-preview-mode="student">
+              View as student
+            </button>
+          )}
+          <div class="whoami">
+            <span class="avatar" aria-hidden="true">{initials}</span>
+            <span class="whoami__meta">
+              <span class="whoami__name">{displayName}</span>
+              <span class="whoami__role">{roleLabel}</span>
+            </span>
+            <form method="post" action="/api/auth/signout" class="signout">
+              <button type="submit" class="signout__btn">Sign out</button>
+            </form>
+          </div>
+        </Fragment>
+      ) : (
+        <a class="btn btn--sm btn--ghost topbar__signin" href={signinHref}>Member sign-in</a>
       )}
-      <div class="whoami">
-        <span class="avatar" aria-hidden="true">{initials}</span>
-        <span class="whoami__meta">
-          <span class="whoami__name">{displayName}</span>
-          <span class="whoami__role">{roleLabel}</span>
-        </span>
-        <form method="post" action="/api/auth/signout" class="signout">
-          <button type="submit" class="signout__btn">Sign out</button>
-        </form>
-      </div>
     </div>
   </header>
 
@@ -144,7 +159,7 @@ const canEnterPreview = user.actualIsOfficer && !previewing;
     <slot />
   </main>
 
-  <ThumbBar currentPath={currentPath} />
+  {user && <ThumbBar currentPath={currentPath} />}
 
   <script>
     /* The "View as student" (enter) control only — the exit is a plain form and

@@ -1,0 +1,366 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Summit Lawn Care | Lawn mowing in Riverton, Oakdale &amp; Pine Hill</title>
+<meta name="description" content="Weekly lawn mowing from $45, plus cleanups, aeration and mulch in Riverton, Oakdale and Pine Hill. Licensed and insured. Free quote within 24 hours.">
+<link rel="stylesheet" href="/activity-assets/fonts.css">
+<link rel="stylesheet" href="lab.css">
+<!-- The fixed version of Summit Lawn Care (a made-up business) for the Website Lab activity. -->
+<style>
+  :root {
+    --green: #1e5b3a;
+    --green-dark: #143f28;
+    --ink: #17261d;
+    --ink-soft: #46574c;
+    --leaf: #f3f7f0;
+    --paper: #ffffff;
+    --sun: #f2c14e;
+    --line: #dfe6da;
+    --display: "Archivo", "Arial Black", Arial, sans-serif;
+    --body: "Source Sans 3", system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    background: var(--leaf);
+    color: var(--ink);
+    font-family: var(--body);
+    font-size: 18px;
+    line-height: 1.55;
+  }
+  a { color: inherit; }
+  :focus-visible { outline: 3px solid var(--sun); outline-offset: 3px; border-radius: 4px; }
+  .wrap { max-width: 1140px; margin: 0 auto; padding-inline: 20px; }
+  h1, h2, h3 { font-family: var(--display); line-height: 1.12; margin: 0; text-wrap: balance; }
+  h2 { font-size: clamp(28px, 3.4vw, 38px); font-weight: 800; }
+
+  header {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    background: var(--paper);
+    border-bottom: 1px solid var(--line);
+  }
+  header .wrap { display: flex; align-items: center; gap: 24px; padding-block: 12px; }
+  .logo { display: flex; align-items: center; gap: 10px; font: 800 20px/1 var(--display); text-decoration: none; color: var(--green-dark); }
+  nav { display: flex; gap: 22px; margin-left: auto; }
+  nav a { text-decoration: none; font-weight: 600; font-size: 16px; }
+  nav a:hover { color: var(--green); text-decoration: underline; text-underline-offset: 4px; }
+  .phone { font-weight: 700; text-decoration: none; white-space: nowrap; }
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 13px 22px;
+    border-radius: 10px;
+    font: 700 16px/1.2 var(--body);
+    text-decoration: none;
+    border: 2px solid var(--green);
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .btn-primary { background: var(--sun); border-color: var(--sun); color: var(--ink); }
+  .btn-primary:hover { background: #f6d07a; border-color: #f6d07a; }
+  .btn-outline { background: transparent; color: var(--paper); border-color: rgba(255,255,255,0.7); }
+  .btn-outline:hover { background: rgba(255,255,255,0.1); }
+
+  .hero { background: var(--green); color: #eaf3ec; }
+  .hero .wrap {
+    display: grid;
+    grid-template-columns: 1.1fr 0.9fr;
+    gap: 48px;
+    align-items: center;
+    padding-block: 56px;
+  }
+  .hero h1 { color: #fff; font-size: clamp(34px, 4.6vw, 54px); font-weight: 800; }
+  .hero .lede { font-size: 20px; margin: 18px 0 26px; color: #d6e8dc; max-width: 32em; }
+  .hero .lede b { color: #fff; }
+  .ctas { display: flex; flex-wrap: wrap; gap: 12px; }
+  .trust {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px 22px;
+    margin-top: 28px;
+    padding: 0;
+    list-style: none;
+    font-size: 15.5px;
+    color: #d6e8dc;
+  }
+  .trust li { display: flex; align-items: center; gap: 8px; }
+  .trust li::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--sun); }
+
+  .quote-card {
+    background: var(--paper);
+    color: var(--ink);
+    border-radius: 16px;
+    padding: 26px;
+    box-shadow: 0 18px 40px rgba(10, 40, 25, 0.25);
+  }
+  .quote-card h2 { font-size: 24px; }
+  .quote-card p.sub { margin: 4px 0 18px; color: var(--ink-soft); font-size: 16px; }
+  form { display: grid; gap: 14px; }
+  label { display: grid; gap: 6px; font-weight: 600; font-size: 15.5px; }
+  input, select {
+    font: 400 17px/1.3 var(--body);
+    padding: 11px 12px;
+    border: 1.5px solid #b9c6b5;
+    border-radius: 8px;
+    background: #fff;
+    color: var(--ink);
+    width: 100%;
+  }
+  .quote-card .btn { width: 100%; }
+  .small { font-size: 14.5px; color: var(--ink-soft); margin: 0; }
+  .confirm { background: #eaf3ec; color: var(--green-dark); border-radius: 8px; padding: 12px 14px; font-weight: 600; }
+
+  section { padding-block: 64px; }
+  .section-head { margin-bottom: 26px; max-width: 46em; }
+  .section-head p { margin: 8px 0 0; color: var(--ink-soft); }
+
+  .price-table { width: 100%; border-collapse: collapse; background: var(--paper); border-radius: 14px; overflow: hidden; font-variant-numeric: tabular-nums; }
+  .price-table th, .price-table td { text-align: left; padding: 16px 20px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  .price-table th { font: 700 14px/1.2 var(--body); text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-soft); background: #f8faf6; }
+  .price-table td:last-child, .price-table th:last-child { text-align: right; white-space: nowrap; }
+  .price-table td b { display: block; font-size: 18px; }
+  .price-table td span { color: var(--ink-soft); font-size: 15.5px; }
+  .price-table .amt { font-weight: 700; font-size: 18px; }
+  .table-scroll { overflow-x: auto; border-radius: 14px; border: 1px solid var(--line); }
+
+  .area { background: var(--paper); border-block: 1px solid var(--line); }
+  .area .wrap { display: grid; grid-template-columns: 1fr 1fr; gap: 48px; align-items: start; }
+  .towns { display: flex; flex-wrap: wrap; gap: 10px; padding: 0; list-style: none; margin: 18px 0; }
+  .towns li { background: var(--leaf); border: 1px solid var(--line); border-radius: 999px; padding: 6px 14px; font-weight: 600; }
+  .steps { list-style: none; padding: 0; margin: 0; display: grid; gap: 18px; counter-reset: s; }
+  .steps li { display: grid; grid-template-columns: 44px 1fr; gap: 14px; align-items: start; }
+  .steps li::before {
+    counter-increment: s;
+    content: counter(s);
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+    background: var(--green);
+    color: #fff;
+    font: 800 18px/1 var(--display);
+  }
+  .steps b { display: block; }
+  .steps span { color: var(--ink-soft); font-size: 16.5px; }
+
+  .reviews { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+  blockquote { margin: 0; background: var(--paper); border: 1px solid var(--line); border-radius: 14px; padding: 22px; display: grid; gap: 10px; align-content: start; }
+  blockquote p { margin: 0; }
+  blockquote footer { font-size: 15px; color: var(--ink-soft); }
+  .stars { color: #b07d0a; letter-spacing: 2px; }
+
+  .team { display: grid; grid-template-columns: 220px 1fr; gap: 32px; align-items: center; background: var(--paper); border: 1px solid var(--line); border-radius: 16px; padding: 28px; }
+  .avatar { width: 100%; max-width: 220px; aspect-ratio: 1; border-radius: 12px; background: #d7e6d4; }
+
+  footer.site { background: var(--green-dark); color: #cfe0d4; }
+  footer.site .wrap { display: flex; flex-wrap: wrap; gap: 10px 32px; justify-content: space-between; padding-block: 28px; font-size: 16px; }
+  footer.site a { color: #fff; font-weight: 700; }
+
+  @media (max-width: 880px) {
+    nav { display: none; }
+    header .phone { margin-left: auto; }
+    header .btn { display: none; }
+    .hero .wrap, .area .wrap, .team { grid-template-columns: 1fr; }
+    .reviews { grid-template-columns: 1fr; }
+  }
+  @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <a class="logo" href="#top">
+      <svg width="30" height="30" viewBox="0 0 30 30" aria-hidden="true"><path d="M2 24 L11 9 L16 16 L20 11 L28 24 Z" fill="#1e5b3a"/><circle cx="22" cy="7" r="3" fill="#f2c14e"/></svg>
+      Summit Lawn Care
+    </a>
+    <nav aria-label="Main" data-lab="3">
+      <a href="#prices">Services &amp; prices</a>
+      <a href="#area">Service area</a>
+      <a href="#reviews">Reviews</a>
+    </nav>
+    <a class="phone" href="tel:+15555550163" data-lab="6">(555) 555-0163</a>
+    <a class="btn btn-primary" href="#quote">Get a free quote</a>
+  </div>
+</header>
+
+<main id="top">
+  <section class="hero" style="padding:0">
+    <div class="wrap">
+      <div>
+        <h1 data-lab="1">Lawn mowing and yard care in Riverton, Oakdale and Pine Hill.</h1>
+        <p class="lede"><b>Weekly mowing from $45 a visit.</b> Cleanups, aeration and mulch too. Licensed and insured, family-owned since 2012.</p>
+        <div class="ctas">
+          <a class="btn btn-primary" href="#quote" data-lab="12">Get a free quote</a>
+          <a class="btn btn-outline" href="tel:+15555550163">Call (555) 555-0163</a>
+        </div>
+        <ul class="trust" data-lab="2">
+          <li>4.9 stars from 128 Google reviews</li>
+          <li>Quote within 24 hours</li>
+          <li>No contracts</li>
+        </ul>
+      </div>
+      <div class="quote-card" id="quote">
+        <h2>Get a free quote</h2>
+        <p class="sub">Takes 30 seconds. We reply within one business day.</p>
+        <form id="quote-form" novalidate data-lab="7">
+          <label for="q-name">Name
+            <input id="q-name" autocomplete="name" placeholder="Sam Rivera">
+          </label>
+          <label for="q-contact">Phone or email
+            <input id="q-contact" autocomplete="tel" placeholder="(555) 555-0100">
+          </label>
+          <label for="q-address">Street address
+            <input id="q-address" autocomplete="street-address" placeholder="18 Birch Lane, Oakdale">
+          </label>
+          <label for="q-service">Service
+            <select id="q-service">
+              <option>Weekly mowing</option>
+              <option>Every-other-week mowing</option>
+              <option>Fall cleanup</option>
+              <option>Aeration</option>
+              <option>Not sure yet</option>
+            </select>
+          </label>
+          <button class="btn btn-primary" type="submit">Send my quote request</button>
+          <p class="small">Demo site: nothing is sent.</p>
+          <div class="confirm" id="quote-confirm" hidden></div>
+        </form>
+      </div>
+    </div>
+  </section>
+
+  <section id="prices">
+    <div class="wrap">
+      <div class="section-head">
+        <h2>Services and prices</h2>
+        <p>Starting prices for a typical quarter-acre yard. We confirm your exact price before any work starts.</p>
+      </div>
+      <div class="table-scroll" data-lab="5">
+        <table class="price-table">
+          <thead><tr><th>Service</th><th>Starting at</th></tr></thead>
+          <tbody>
+            <tr><td><b>Weekly mowing</b><span>Mow, edge, trim and blow off walks and driveway</span></td><td class="amt">$45 / visit</td></tr>
+            <tr><td><b>Every-other-week mowing</b><span>Same service, every two weeks</span></td><td class="amt">$55 / visit</td></tr>
+            <tr><td><b>Spring or fall cleanup</b><span>Leaves, beds, branches, hauled away</span></td><td class="amt">$180</td></tr>
+            <tr><td><b>Core aeration</b><span>Best in early fall; overseeding available</span></td><td class="amt">$95</td></tr>
+            <tr><td><b>Mulch installation</b><span>Includes mulch and edging</span></td><td class="amt">$70 / cubic yard</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <section class="area" id="area">
+    <div class="wrap">
+      <div data-lab="4">
+        <h2>Where we work</h2>
+        <ul class="towns">
+          <li>Riverton</li><li>Oakdale</li><li>Pine Hill</li><li>North Riverton</li><li>Cedar Falls (east side)</li>
+        </ul>
+        <p class="small" style="font-size:16.5px">Not on the list? Call us at <a href="tel:+15555550163"><b>(555) 555-0163</b></a>. If you are close by, we can usually still help.</p>
+      </div>
+      <div>
+        <h2>How it works</h2>
+        <ol class="steps" style="margin-top:18px">
+          <li><div><b>Ask for a quote</b><span>Use the form or call. Takes about a minute.</span></div></li>
+          <li><div><b>We measure your yard for free</b><span>Usually within 2 days. You don't need to be home.</span></div></li>
+          <li><div><b>Mowing starts that week</b><span>Same day each week. Pay by card after each visit.</span></div></li>
+        </ol>
+      </div>
+    </div>
+  </section>
+
+  <section id="reviews">
+    <div class="wrap">
+      <div class="section-head">
+        <h2>What customers say</h2>
+        <p>4.9 average from 128 reviews on Google</p>
+      </div>
+      <div class="reviews" data-lab="9">
+        <blockquote>
+          <span class="stars" aria-label="5 out of 5 stars">★★★★★</span>
+          <p>“They show up every Tuesday like clockwork and the edging is perfect. Texts me if rain pushes them a day.”</p>
+          <footer>Dana K., Oakdale · September 2026</footer>
+        </blockquote>
+        <blockquote>
+          <span class="stars" aria-label="5 out of 5 stars">★★★★★</span>
+          <p>“Fall cleanup took one afternoon. Price matched the quote exactly, no surprises.”</p>
+          <footer>Luis M., Riverton · November 2025</footer>
+        </blockquote>
+        <blockquote>
+          <span class="stars" aria-label="4 out of 5 stars">★★★★☆</span>
+          <p>“Great crew and fair prices. Booking was easy. The first visit missed a corner of the back yard, but they came back the next day to fix it.”</p>
+          <footer>Grace P., Pine Hill · June 2026</footer>
+        </blockquote>
+      </div>
+    </div>
+  </section>
+
+  <section style="padding-top:0">
+    <div class="wrap">
+      <div class="team" data-lab="10">
+        <svg class="avatar" viewBox="0 0 220 220" role="img" aria-label="Placeholder for a real photo of owner Marcus Reyes with his crew">
+          <rect width="220" height="220" fill="#d7e6d4"/>
+          <circle cx="110" cy="86" r="38" fill="#8a5a3c"/>
+          <path d="M40 220c4-50 34-78 70-78s66 28 70 78z" fill="#1e5b3a"/>
+          <rect x="74" y="44" width="72" height="22" rx="10" fill="#f2c14e"/>
+        </svg>
+        <div>
+          <h2 style="font-size:28px">Hi, I’m Marcus.</h2>
+          <p>I started Summit in 2012 with one mower and a pickup truck. Today our crew of six takes care of about 300 yards a week. Every crew member is trained, background-checked and covered by our insurance.</p>
+          <p class="small">On a real site this is a real photo of Marcus and the crew.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer class="site">
+  <div class="wrap" data-lab="11">
+    <span>© 2026 Summit Lawn Care · Licensed &amp; insured · Mon–Sat, 7 am – 6 pm</span>
+    <span>Call or text <a href="tel:+15555550163">(555) 555-0163</a></span>
+  </div>
+</footer>
+
+<script id="lab-data" type="application/json">
+{
+  "mode": "good",
+  "round": 2,
+  "site": "Summit Lawn Care",
+  "pair": "summit-bad.html",
+  "items": [
+    { "n": 1, "title": "Says exactly what they do and where", "why": "\"Lawn mowing and yard care in Riverton, Oakdale and Pine Hill.\" A homeowner knows in two seconds if this is for them." },
+    { "n": 2, "title": "The first screen does the selling", "why": "Headline, starting price, trust points and the quote form all fit on the first screen, with no scrolling needed." },
+    { "n": 3, "title": "Plain-word navigation", "why": "Services & prices, Service area, Reviews. The menu is visible on desktop, not hidden behind an icon." },
+    { "n": 4, "title": "Service area listed", "why": "A list of towns, plus what to do if yours isn't on it. This also helps the business show up in local Google searches." },
+    { "n": 5, "title": "Starting prices shown", "why": "\"From $45 a visit\" filters out people outside the budget and gives everyone else the confidence to ask for a quote." },
+    { "n": 6, "title": "Phone number always visible", "why": "Tap-to-call in the header, the hero and the footer, for people who would rather talk than fill in a form." },
+    { "n": 7, "title": "A 4-field quote form", "why": "Name, phone or email, address, service. That's all they need to call back. Shorter forms get finished more often." },
+    { "n": 8, "title": "Readable text", "why": "Regular-weight body text in a dark color with strong contrast. Easy to read on a phone outside in the sun." },
+    { "n": 9, "title": "Specific, named reviews", "why": "First names, towns and dates. One review is 4 stars and mentions a problem that was fixed, which makes all of them more believable." },
+    { "n": 10, "title": "The real owner, not a stock photo", "why": "Customers are letting a crew onto their property. Seeing the owner's face and story builds that trust." },
+    { "n": 11, "title": "Current and active", "why": "© 2026, real business hours and no dead social feed. Everything on the page looks maintained." },
+    { "n": 12, "title": "One clear call to action", "why": "\"Get a free quote\" appears in the header and the hero and goes straight to the form." }
+  ]
+}
+</script>
+<script>
+  document.getElementById('quote-form').addEventListener('submit', function (e) {
+    e.preventDefault();
+    var name = document.getElementById('q-name').value.trim() || 'there';
+    var box = document.getElementById('quote-confirm');
+    box.textContent = 'Thanks, ' + name + '! We would call you back within one business day. (Demo site: nothing was sent.)';
+    box.hidden = false;
+  });
+</script>
+<script src="lab.js"></script>
+</body>
+</html>

@@ -2,9 +2,18 @@
 /**
  * /meetings/[id] — one meeting's page: the canonical home of its record.
  *
- * Everyone approved sees: title, category, when/where, the description, the
- * slides link (members-only by owner decision — /about never selects it), the
- * recap, the photos, their own check-in and the check-in count.
+ * PUBLIC SINCE 2026-10-26 (owner decision): NO GUARD — a link to a meeting
+ * works for anyone, so members can open the slides and activities mid-meeting
+ * without signing in. The session is read only to decide how much to show.
+ * Anyone not signed in AND approved (signed out, pending, declined) gets the
+ * public view, and for them THE SELECT LIST IS THE PRIVACY BOUNDARY, as on
+ * /about: PUBLIC_COLS only — never description, location, capacity or
+ * created_by — and no attendance or profiles reads at all.
+ *
+ * Everyone sees: title, category, date and time, the slides link, the
+ * meeting's public activities (lib/activities.ts), the recap and the photos.
+ * Approved members also see: location, the description, their own check-in
+ * and the check-in count.
  *
  * Officers additionally get — each in an "Officer only" block, and each the ONE
  * place that edit lives (docs/MEETINGS-ARCHIVE-SCOPE.md § "One place per edit
@@ -12,6 +21,7 @@
  *   • Edit details  → PATCH /api/events/:id   (every field + slides link)
  *   • Recap         → PATCH /api/events/:id/recap   (past meetings; public)
  *   • Photos        → POST /api/photos, DELETE /api/photos/:id (past; public)
+ *   • Officer-only activities (presenter views, answer keys)
  * The calendar keeps only Present and Cancel, and links here.
  *
  * Reads FAIL SOFT for columns/tables that arrive by hand-applied SQL steps:
@@ -23,10 +33,11 @@
  * embed, no iframe (invariant 10).
  */
 import DashboardLayout from '../../layouts/DashboardLayout.astro';
-import { requireApproved } from '../../lib/auth';
+import { getSession } from '../../lib/auth';
 import { supabaseAdmin } from '../../lib/supabase';
 import { checkinWindow, explicitEndMs, isHappeningNow, pacificParts } from '../../lib/event-time';
 import { slidesLink } from '../../lib/slides-link';
+import { activitiesForMeeting, activityHref } from '../../lib/activities';
 import {
   EVENT_CATEGORIES,
   categoryLabel,
@@ -36,7 +47,11 @@ import {
   photoUrl,
 } from '../../lib/meetings';
 
-const user = await requireApproved(Astro.request, Astro.response.headers, Astro.redirect);
+/* No guard — public page (see the header). `user` is null unless the visitor
+   is signed in AND approved; everything member- or officer-shaped below keys
+   off it. */
+const session = await getSession(Astro.request, Astro.response.headers);
+const user = session?.isApproved ? session : null;
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const TZ = 'America/Los_Angeles';
@@ -45,19 +60,21 @@ const id = Astro.params.id ?? '';
 interface MeetingRow {
   id: string;
   title: string;
-  description: string | null;
   start_time: string;
   end_time: string | null;
-  location: string | null;
   category: string | null;
-  capacity: number | null;
   status: string;
-  created_by: string | null;
+  // Members-only columns — absent from the public select.
+  description?: string | null;
+  location?: string | null;
+  capacity?: number | null;
+  created_by?: string | null;
   recap?: string | null;
   slides_url?: string | null;
 }
 
-const BASE = 'id, title, description, start_time, end_time, location, category, capacity, status, created_by';
+const PUBLIC_COLS = 'id, title, start_time, end_time, category, status';
+const BASE = user ? `${PUBLIC_COLS}, description, location, capacity, created_by` : PUBLIC_COLS;
 let meeting: MeetingRow | null = null;
 let loadFailed = false;
 let hasSlidesColumn = true;
@@ -120,21 +137,24 @@ if (meeting) {
     isPast: startMs < nowMs,
     isNow: meeting.status === 'active' && isHappeningNow(meeting.start_time, meeting.end_time, nowMs),
     checkinOpened: win !== null && nowMs >= win.opensAt,
-    canPresent: user.isOfficer && meeting.status === 'active' && win !== null && nowMs <= win.closesAt,
+    canPresent: !!user?.isOfficer && meeting.status === 'active' && win !== null && nowMs <= win.closesAt,
     slides: slidesLink(meeting.slides_url),
     descriptionParas: paragraphs(meeting.description),
     recapParas: paragraphs(meeting.recap),
     recapRaw: meeting.recap ?? '',
   };
 
+  // Attendance and profiles are members-only reads: never made for the public view.
   const [photosRes, countRes, mineRes, creatorRes] = await Promise.all([
     supabaseAdmin
       .from('photos')
       .select('id, storage_path, caption')
       .eq('event_id', meeting.id)
       .order('created_at', { ascending: true }),
-    supabaseAdmin.from('attendance').select('id', { count: 'exact', head: true }).eq('event_id', meeting.id),
-    view.checkinOpened
+    user
+      ? supabaseAdmin.from('attendance').select('id', { count: 'exact', head: true }).eq('event_id', meeting.id)
+      : Promise.resolve(null),
+    user && view.checkinOpened
       ? supabaseAdmin
           .from('attendance')
           .select('checked_in_at')
@@ -142,7 +162,7 @@ if (meeting) {
           .eq('member_id', user.id)
           .maybeSingle()
       : Promise.resolve(null),
-    meeting.created_by
+    user && meeting.created_by
       ? supabaseAdmin.from('profiles').select('name').eq('id', meeting.created_by).maybeSingle()
       : Promise.resolve(null),
   ]);
@@ -154,14 +174,14 @@ if (meeting) {
   } else {
     photos = (photosRes.data ?? []) as PhotoRow[];
   }
-  checkinCount = countRes.count ?? 0;
+  checkinCount = countRes?.count ?? 0;
   if (mineRes && !mineRes.error) {
     const at = (mineRes.data?.checked_in_at as string | null | undefined) ?? null;
     myCheckin = mineRes.data ? { time: at ? fmtTime(at) : null } : null;
   }
   creatorName = (creatorRes?.data?.name as string | null | undefined) ?? null;
 
-  if (user.isOfficer) {
+  if (user?.isOfficer) {
     // Pacific wall time — the shared client form reads it back as Pacific on
     // any device (src/scripts/event-form.ts). A legacy end on another day
     // prefills blank, and the form leaves untouched times out of the PATCH.
@@ -179,6 +199,8 @@ if (meeting) {
   }
 }
 
+const activities = meeting ? activitiesForMeeting(meeting.id, !!user?.isOfficer) : [];
+const isOfficer = !!user?.isOfficer;
 const title = meeting?.title ?? 'Meeting';
 ---
 <DashboardLayout title={title} user={user}>
@@ -222,11 +244,33 @@ const title = meeting?.title ?? 'Meeting';
             <span class="small muted">{view.slides.label} · {view.slides.host}</span>
           </p>
         ) : (
-          user.isOfficer && (
+          isOfficer && (
             <p class="small muted meeting__noslides">
               No slides link yet{hasSlidesColumn ? ' — add one in Edit details below.' : ' — slides links arrive with database STEP 20.'}
             </p>
           )
+        )}
+
+        {activities.length > 0 && (
+          <section class="meeting__activities" aria-labelledby="act-h">
+            <div class="section-head"><h2 id="act-h">Activities</h2></div>
+            <ul class="rowlist">
+              {activities.map((a) => (
+                <li>
+                  <a class="rowlink" href={activityHref(a)}>
+                    <span class="rowlink__main">
+                      <span class="rowlink__title">{a.title}</span>
+                      <span class="rowlink__sub">{a.summary}</span>
+                      {a.audience === 'officers' && (
+                        <span class="meetings__chips"><span class="tag tag--gold">Officer only</span></span>
+                      )}
+                    </span>
+                    <span class="chev" aria-hidden="true">→</span>
+                  </a>
+                </li>
+              ))}
+            </ul>
+          </section>
         )}
 
         {view.descriptionParas.length > 0 && (
@@ -294,7 +338,7 @@ const title = meeting?.title ?? 'Meeting';
                       placeholder="https://docs.google.com/presentation/…"
                       value={meeting.slides_url ?? ''}
                     />
-                    <span class="field__hint">Google Slides, Docs or Drive share link. Members only — never shown on the public /about page. Clear it to remove.</span>
+                    <span class="field__hint">Google Slides, Docs or Drive share link. Public — anyone with this meeting&rsquo;s link sees it, so share the deck as &ldquo;Anyone with the link&rdquo;. Clear it to remove.</span>
                   </label>
                 )}
                 <label class="field">
@@ -312,7 +356,7 @@ const title = meeting?.title ?? 'Meeting';
           </section>
         )}
 
-        {user.isOfficer && view.isPast ? (
+        {isOfficer && view.isPast ? (
           <section class="owned meeting__block recapblock" aria-labelledby="recap-h">
             <div class="recapblock__head">
               <h2 id="recap-h">Recap</h2>
@@ -341,13 +385,13 @@ const title = meeting?.title ?? 'Meeting';
           )
         )}
 
-        {(photos.length > 0 || (user.isOfficer && view.isPast)) && (
-          <section class:list={['meeting__block', { owned: user.isOfficer && view.isPast }]} aria-labelledby="photos-h">
+        {(photos.length > 0 || (isOfficer && view.isPast)) && (
+          <section class:list={['meeting__block', { owned: isOfficer && view.isPast }]} aria-labelledby="photos-h">
             <div class="recapblock__head">
               <h2 id="photos-h">Photos</h2>
-              {user.isOfficer && view.isPast && <span class="flag">Officer only</span>}
+              {isOfficer && view.isPast && <span class="flag">Officer only</span>}
             </div>
-            {user.isOfficer && view.isPast && (
+            {isOfficer && view.isPast && (
               <p class="small muted recapblock__pub">Photos are public — they appear on /about.</p>
             )}
             {photos.length > 0 && (
@@ -356,7 +400,7 @@ const title = meeting?.title ?? 'Meeting';
                   <li data-photo-id={p.id}>
                     <img src={photoUrl(p.storage_path)} alt={p.caption ?? 'Club photo'} loading="lazy" />
                     {p.caption && <span class="photogrid__cap">{p.caption}</span>}
-                    {user.isOfficer && (
+                    {isOfficer && (
                       <>
                         <details class="confirm">
                           <summary class="btn btn--sm btn--danger">Delete</summary>
@@ -375,7 +419,7 @@ const title = meeting?.title ?? 'Meeting';
                 ))}
               </ul>
             )}
-            {user.isOfficer && view.isPast && (
+            {isOfficer && view.isPast && (
               <form id="photo-form" data-event-id={meeting.id} novalidate>
                 <label class="field">
                   <span>Add photos</span>
@@ -399,42 +443,44 @@ const title = meeting?.title ?? 'Meeting';
         )}
       </div>
 
-      <aside class="home__rail" aria-label="Meeting status">
-        <section aria-labelledby="status-h">
-          <div class="section-head"><h2 id="status-h">Check-in</h2></div>
-          <dl class="facts meeting__facts">
-            <div>
-              <dt>Checked in</dt>
-              <dd><span class="num">{checkinCount}</span>{meeting.capacity !== null && <> of <span class="num">{meeting.capacity}</span></>}</dd>
-            </div>
-            {myCheckin !== undefined && (
+      {user && (
+        <aside class="home__rail" aria-label="Meeting status">
+          <section aria-labelledby="status-h">
+            <div class="section-head"><h2 id="status-h">Check-in</h2></div>
+            <dl class="facts meeting__facts">
               <div>
-                <dt>Your check-in</dt>
-                <dd>
-                  {myCheckin ? (
-                    <span class="checkstate checkstate--in">
-                      <span class="checkstate__mark" aria-hidden="true">✓</span>
-                      {view.isPast ? 'You were there' : 'Checked in'}{myCheckin.time ? ` · ${myCheckin.time}` : ''}
-                    </span>
-                  ) : (
-                    <span class="checkstate">
-                      <span class="checkstate__mark" aria-hidden="true">○</span>
-                      Not checked in
-                    </span>
-                  )}
-                </dd>
+                <dt>Checked in</dt>
+                <dd><span class="num">{checkinCount}</span>{meeting.capacity !== null && <> of <span class="num">{meeting.capacity}</span></>}</dd>
               </div>
-            )}
-            <div><dt>Created by</dt><dd>{creatorName ?? '—'}</dd></div>
-          </dl>
-          <p class="meeting__railacts">
-            {user.isOfficer && view.checkinOpened && (
-              <a class="btn btn--ghost" href={`/api/events/${encodeURIComponent(meeting.id)}/attendance.pdf`} download>Attendance PDF</a>
-            )}
-            <a class="btn btn--ghost" href={`/calendar?event=${encodeURIComponent(meeting.id)}`}>View on calendar</a>
-          </p>
-        </section>
-      </aside>
+              {myCheckin !== undefined && (
+                <div>
+                  <dt>Your check-in</dt>
+                  <dd>
+                    {myCheckin ? (
+                      <span class="checkstate checkstate--in">
+                        <span class="checkstate__mark" aria-hidden="true">✓</span>
+                        {view.isPast ? 'You were there' : 'Checked in'}{myCheckin.time ? ` · ${myCheckin.time}` : ''}
+                      </span>
+                    ) : (
+                      <span class="checkstate">
+                        <span class="checkstate__mark" aria-hidden="true">○</span>
+                        Not checked in
+                      </span>
+                    )}
+                  </dd>
+                </div>
+              )}
+              <div><dt>Created by</dt><dd>{creatorName ?? '—'}</dd></div>
+            </dl>
+            <p class="meeting__railacts">
+              {isOfficer && view.checkinOpened && (
+                <a class="btn btn--ghost" href={`/api/events/${encodeURIComponent(meeting.id)}/attendance.pdf`} download>Attendance PDF</a>
+              )}
+              <a class="btn btn--ghost" href={`/calendar?event=${encodeURIComponent(meeting.id)}`}>View on calendar</a>
+            </p>
+          </section>
+        </aside>
+      )}
     </div>
   )}
 </DashboardLayout>

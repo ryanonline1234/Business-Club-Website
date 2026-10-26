@@ -16,7 +16,7 @@ no-op and running it on an empty project builds everything from scratch.
 3. **STEP 15 alone** — verification. Read it before deploying any code.
 4. **STEPs 16–20 as one block** — the `/about` additions (`bio`, `recap`, the
    `photos` table), STEP 19 (the auto-approval backfill) and STEP 20 (the
-   members-only `events.slides_url`). Unlike the rest,
+   `events.slides_url` column). Unlike the rest,
    these are safe **any time, in either order relative to the code deploy**:
    nullable columns older code never selects, a new table nothing else
    references, code that reads them fails soft, and STEP 19 only approves
@@ -92,7 +92,7 @@ clients as a 409 with fixed copy, never the raw Postgres message).
 | `category` | `text` | default `'meeting'`; free text |
 | `status` | `text` | `'active' \| 'completed' \| 'cancelled'`, default `'active'`. Nothing ever sets `'completed'`, but readers must treat it as a legitimate past state (`/about` and `/attendance` count `active` + `completed`) |
 | `created_by` | `uuid` | FK → `profiles`, not null |
-| `slides_url` | `text` | nullable, no default (STEP 20). One **members-only** slides link per meeting — Google Slides/Docs/Drive, https, ≤ 2048 (`lib/slides-link.ts` validates; a check constraint is the second line). Never selected by `/about` |
+| `slides_url` | `text` | nullable, no default (STEP 20). One slides link per meeting — Google Slides/Docs/Drive, https, ≤ 2048 (`lib/slides-link.ts` validates; a check constraint is the second line). **Public** since 2026-10-26 (members-only before): shown on the public `/meetings/[id]`. Never selected by `/about` |
 | `recap` | `text` | nullable, no default (STEP 17). Officer-written "what happened" prose for the **public** `/about` page; NULL = "no recap". Only past events may carry one — enforced by `PATCH /api/events/:id/recap`, and `PATCH /api/events/:id` refuses to move a meeting that started more than 12 h ago into the future |
 | `created_at` | `timestamptz` | |
 

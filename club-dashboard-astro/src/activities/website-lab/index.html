@@ -1,0 +1,744 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Website Lab · Mitty Business Club</title>
+<link rel="stylesheet" href="/activity-assets/fonts.css">
+<style>
+  /* Layout: a club gradebook. Rounds as report-card rows, one live report card, then the real-world field list. */
+  :root {
+    --paper: #f3f5f9;
+    --card: #ffffff;
+    --ink: #13213c;
+    --ink-soft: #4a5874;
+    --line: #dbe1eb;
+    --mark: #ffc94d;
+    --mark-ink: #13213c;
+    --blue: #2f5fd0;
+    --pen: #c92a2a;
+    --chip: #e8edf6;
+    --display: "Bricolage Grotesque", "Arial Black", Arial, sans-serif;
+    --body: "Public Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+    --hand: "Caveat", "Comic Sans MS", cursive;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --paper: #0f1626;
+      --card: #172139;
+      --ink: #e8edf7;
+      --ink-soft: #a7b3c9;
+      --line: #2a3654;
+      --mark: #ffc94d;
+      --mark-ink: #13213c;
+      --blue: #8cadff;
+      --pen: #ff7b7b;
+      --chip: #212d49;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --paper: #0f1626;
+    --card: #172139;
+    --ink: #e8edf7;
+    --ink-soft: #a7b3c9;
+    --line: #2a3654;
+    --mark: #ffc94d;
+    --mark-ink: #13213c;
+    --blue: #8cadff;
+    --pen: #ff7b7b;
+    --chip: #212d49;
+    color-scheme: dark;
+  }
+
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--body);
+    font-size: 16.5px;
+    line-height: 1.55;
+  }
+  .page { max-width: 1080px; margin: 0 auto; padding-inline: 20px; padding-block: 40px 72px; }
+  a { color: var(--blue); }
+  :focus-visible { outline: 3px solid var(--mark); outline-offset: 2px; border-radius: 4px; }
+  h1, h2, h3 { font-family: var(--display); line-height: 1.1; margin: 0; text-wrap: balance; }
+  h2 { font-size: clamp(26px, 3.2vw, 34px); font-weight: 800; letter-spacing: -0.01em; }
+  h3 { font-size: 20px; font-weight: 700; }
+  .eyebrow { font-size: 12.5px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-soft); }
+  .hl { background: linear-gradient(transparent 55%, var(--mark) 55% 92%, transparent 92%); color: inherit; padding: 0 2px; }
+  section { margin-top: 64px; }
+  .section-head { display: grid; gap: 8px; margin-bottom: 22px; max-width: 46em; }
+  .section-head p { margin: 0; color: var(--ink-soft); }
+
+  /* Masthead */
+  .mast { display: grid; grid-template-columns: 1fr auto; gap: 24px; align-items: end; border-bottom: 2px solid var(--ink); padding-bottom: 28px; }
+  .mast h1 { font-size: clamp(44px, 7vw, 80px); font-weight: 800; letter-spacing: -0.02em; }
+  .mast p { margin: 14px 0 0; font-size: 19px; color: var(--ink-soft); max-width: 36em; }
+  .stamp {
+    font-family: var(--hand);
+    font-size: 64px;
+    line-height: 1;
+    color: var(--pen);
+    border: 4px solid var(--pen);
+    border-radius: 50%;
+    width: 128px;
+    height: 128px;
+    display: grid;
+    place-items: center;
+    transform: rotate(-10deg);
+  }
+  .jump { display: flex; flex-wrap: wrap; gap: 8px 18px; margin-top: 18px; font-weight: 600; }
+
+  /* Steps */
+  .steps { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; counter-reset: step; }
+  .steps li { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 18px; display: grid; gap: 6px; align-content: start; min-width: 0; }
+  .steps li::before { counter-increment: step; content: "Step " counter(step); font-size: 12.5px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-soft); }
+  .steps b { font-family: var(--display); font-size: 18px; }
+  .steps span { color: var(--ink-soft); font-size: 15px; }
+  .tip { margin-top: 14px; font-size: 15px; color: var(--ink-soft); }
+  kbd { font: 600 13px/1 ui-monospace, Menlo, monospace; background: var(--chip); border: 1px solid var(--line); border-radius: 4px; padding: 2px 6px; color: var(--ink); }
+
+  /* Rounds */
+  .rounds { display: grid; gap: 12px; }
+  .round {
+    display: grid;
+    grid-template-columns: 90px 1fr auto;
+    gap: 20px;
+    align-items: center;
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 20px 22px;
+  }
+  .round .num { font-family: var(--display); font-weight: 800; font-size: 15px; color: var(--ink-soft); }
+  .round .num b { display: block; font-size: 40px; line-height: 1; color: var(--ink); }
+  .round h3 { font-size: 22px; }
+  .round p { margin: 4px 0 0; color: var(--ink-soft); font-size: 15.5px; }
+  .theme { display: inline-block; margin-top: 8px; font-size: 13px; font-weight: 700; background: var(--chip); color: var(--ink); border-radius: 999px; padding: 3px 10px; }
+  .round .links { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 10px 16px;
+    border-radius: 999px;
+    font-weight: 700;
+    font-size: 15px;
+    text-decoration: none;
+    white-space: nowrap;
+    border: 2px solid var(--ink);
+    color: var(--ink);
+    background: transparent;
+    cursor: pointer;
+    font-family: var(--body);
+  }
+  .btn:hover { background: var(--chip); }
+  .btn.bad { background: var(--ink); color: var(--paper); }
+  .btn.bad:hover { opacity: 0.9; }
+
+  /* Report card */
+  .grader { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 20px; align-items: start; }
+  .sheet { background: var(--card); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; min-width: 0; }
+  .sheet-top { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: end; padding: 18px 20px; border-bottom: 1px solid var(--line); }
+  .sheet-top label { display: grid; gap: 4px; font-size: 13px; font-weight: 700; color: var(--ink-soft); letter-spacing: 0.04em; text-transform: uppercase; flex: 1 1 240px; }
+  select, input[type="text"] {
+    font: 500 16px/1.3 var(--body);
+    padding: 10px 12px;
+    border: 1.5px solid var(--line);
+    border-radius: 10px;
+    background: var(--paper);
+    color: var(--ink);
+    width: 100%;
+  }
+  .crit { display: grid; grid-template-columns: 32px minmax(0, 1fr) auto; gap: 14px; align-items: center; padding: 14px 20px; border-bottom: 1px solid var(--line); }
+  .crit:last-child { border-bottom: 0; }
+  .crit .n { font-family: var(--display); font-weight: 800; font-size: 18px; color: var(--ink-soft); }
+  .crit b { display: block; font-size: 16.5px; }
+  .crit span { display: block; color: var(--ink-soft); font-size: 14.5px; }
+  .seg { display: inline-flex; border: 1.5px solid var(--line); border-radius: 10px; overflow: hidden; }
+  .seg input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+  .seg label { padding: 8px 12px; font-size: 14px; font-weight: 700; cursor: pointer; color: var(--ink-soft); border-left: 1.5px solid var(--line); white-space: nowrap; }
+  .seg label:first-of-type { border-left: 0; }
+  .seg input:checked + label { background: var(--ink); color: var(--paper); }
+  .seg input:focus-visible + label { outline: 3px solid var(--mark); outline-offset: -3px; }
+
+  .result { position: sticky; top: 16px; background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 22px; display: grid; gap: 14px; }
+  .grade-row { display: flex; align-items: center; gap: 18px; }
+  .grade {
+    font-family: var(--hand);
+    font-size: 96px;
+    line-height: 0.8;
+    color: var(--pen);
+    min-width: 80px;
+    text-align: center;
+  }
+  .score { font-family: var(--display); font-size: 30px; font-weight: 800; font-variant-numeric: tabular-nums; }
+  .score small { display: block; font-family: var(--body); font-size: 14px; font-weight: 500; color: var(--ink-soft); }
+  .verdict { margin: 0; font-size: 15px; color: var(--ink-soft); }
+  .scale { display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; font-size: 12.5px; text-align: center; font-variant-numeric: tabular-nums; }
+  .scale div { background: var(--chip); border-radius: 6px; padding: 4px 2px; }
+  .scale b { display: block; font-size: 15px; }
+  .scale .on { background: var(--mark); color: var(--mark-ink); }
+  .history h3 { font-size: 15px; margin-bottom: 6px; }
+  .history ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; font-size: 14.5px; }
+  .history li { display: flex; justify-content: space-between; gap: 10px; }
+  .history li b { font-variant-numeric: tabular-nums; }
+  .history .empty { color: var(--ink-soft); }
+  .impact-help, .impact-suggest { margin: 0; padding: 0 20px 14px 66px; font-size: 14.5px; color: var(--ink-soft); }
+  .impact-suggest { color: var(--ink); padding-bottom: 18px; }
+  .impact-suggest b { color: var(--blue); }
+  .impact-row { border-top: 2px solid var(--ink); border-bottom: 0; }
+  .priority { border-top: 1px solid var(--line); padding-top: 14px; display: grid; gap: 4px; }
+  .priority h3 { font-size: 15px; }
+  .priority p { margin: 0; font-size: 14.5px; color: var(--ink-soft); }
+  .priority .pv { font-size: 16.5px; font-weight: 700; color: var(--ink); }
+  .site .impact-tag { font-size: 14.5px; background: var(--chip); border-radius: 8px; padding: 8px 10px; }
+  .site .impact-tag b { color: var(--ink); }
+  .link-btn { background: none; border: 0; padding: 0; color: var(--blue); font: 600 14px/1.4 var(--body); cursor: pointer; text-decoration: underline; justify-self: start; }
+
+  /* Real-world list */
+  .group { margin-top: 30px; }
+  .group-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 14px; margin-bottom: 12px; }
+  .group-head p { margin: 0; color: var(--ink-soft); font-size: 15.5px; }
+  .sites { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; }
+  .site { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 20px; display: grid; gap: 10px; align-content: start; min-width: 0; }
+  .site-top { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; }
+  .site .url { font-size: 14px; font-weight: 600; overflow-wrap: anywhere; }
+  .site p { margin: 0; font-size: 15px; }
+  .site .look { color: var(--ink-soft); }
+  .site .ask { border-top: 1px dashed var(--line); padding-top: 10px; }
+  .site .ask b { font-size: 12.5px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-soft); display: block; margin-bottom: 2px; }
+  .tag { font-size: 12px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; padding: 3px 8px; border-radius: 999px; background: var(--chip); color: var(--ink); white-space: nowrap; }
+  .tag.mark { background: var(--mark); color: var(--mark-ink); }
+
+  .note { margin-top: 18px; padding: 14px 16px; border: 1.5px dashed var(--line); border-radius: 12px; color: var(--ink-soft); font-size: 15px; }
+  footer { margin-top: 64px; padding-top: 20px; border-top: 1px solid var(--line); font-size: 14px; color: var(--ink-soft); }
+  footer ul { padding-left: 18px; margin: 8px 0 0; }
+
+  @media (max-width: 900px) {
+    .steps { grid-template-columns: repeat(2, 1fr); }
+    .grader { grid-template-columns: 1fr; }
+    .result { position: static; }
+  }
+  @media (max-width: 640px) {
+    .mast { grid-template-columns: 1fr; }
+    .stamp { width: 96px; height: 96px; font-size: 48px; }
+    .steps { grid-template-columns: 1fr; }
+    .round { grid-template-columns: 1fr; gap: 10px; }
+    .round .links { justify-content: flex-start; }
+    .crit { grid-template-columns: 24px minmax(0, 1fr); }
+    .crit .seg { grid-column: 2; justify-self: start; }
+    .impact-help, .impact-suggest { padding-left: 20px; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <header class="mast">
+    <div>
+      <span class="eyebrow">Business Club · Websites meeting</span>
+      <h1>Website Lab</h1>
+      <p>Is this business doing its website right, and does it even matter for their sales? Find the mistakes on three made-up businesses, then <span class="hl">grade real websites</span> with one report card.</p>
+      <nav class="jump" aria-label="On this page">
+        <a href="#rounds">The three rounds</a>
+        <a href="#card">Report card</a>
+        <a href="#real">Real websites to grade</a>
+      </nav>
+    </div>
+    <div class="stamp" aria-hidden="true">A+?</div>
+  </header>
+
+  <section id="how">
+    <div class="section-head">
+      <h2>How the activity works</h2>
+      <p>About 10 minutes per round. Works in small groups with one laptop or phone each.</p>
+    </div>
+    <ol class="steps">
+      <li><b>Open the bad site</b><span>Give groups 3–4 minutes to find as many mistakes as they can. There are 12 hidden on each site.</span></li>
+      <li><b>Grade it</b><span>Score it on the report card below, then rate how much the website drives the business's sales. Compare between groups.</span></li>
+      <li><b>Reveal the answers</b><span>Press “Show the 12 mistakes” in the bar at the bottom of the site. Which group found the most?</span></li>
+      <li><b>See the fix</b><span>Open the fixed version and talk about which fix would help the business most.</span></li>
+    </ol>
+    <p class="tip">Presenting? On any demo site, press <kbd>R</kbd> to show or hide the answers, and use “Hide bar” to give people a clean view.</p>
+    <p class="tip">Running it as a competition? Give teams the <a href="/activities/website-hunt/" target="_blank" rel="noopener">Website Hunt</a> link instead (it’s public, so no sign-in). It has the same three bad websites plus a list for writing down mistakes, but no answers and no fixed versions.</p>
+  </section>
+
+  <section id="rounds">
+    <div class="section-head">
+      <h2>The three rounds</h2>
+      <p>All three businesses are made up, so nobody gets embarrassed. Each one fails in a different way.</p>
+    </div>
+    <div class="rounds">
+      <article class="round">
+        <div class="num">Round<b>1</b></div>
+        <div>
+          <h3>Crumb &amp; Co. Bakery</h3>
+          <p>A neighborhood bakery with great bread and a website stuck in 2014.</p>
+          <span class="theme">The clutter monster</span>
+        </div>
+        <div class="links">
+          <a class="btn bad" href="sites/crumb-bad.html">Bad version</a>
+          <a class="btn" href="sites/crumb-good.html">Fixed version</a>
+        </div>
+      </article>
+      <article class="round">
+        <div class="num">Round<b>2</b></div>
+        <div>
+          <h3>Summit Lawn Care</h3>
+          <p>A lawn mowing company that paid for a gorgeous website that never says what they do.</p>
+          <span class="theme">Pretty but useless</span>
+        </div>
+        <div class="links">
+          <a class="btn bad" href="sites/summit-bad.html">Bad version</a>
+          <a class="btn" href="sites/summit-good.html">Fixed version</a>
+        </div>
+      </article>
+      <article class="round">
+        <div class="num">Round<b>3</b></div>
+        <div>
+          <h3>QuickFix Phone Repair</h3>
+          <p>A phone repair shop whose website has every red flag of a scam, even if the shop is honest.</p>
+          <span class="theme">Trust issues</span>
+        </div>
+        <div class="links">
+          <a class="btn bad" href="sites/quickfix-bad.html">Bad version</a>
+          <a class="btn" href="sites/quickfix-good.html">Fixed version</a>
+        </div>
+      </article>
+    </div>
+  </section>
+
+  <section id="card">
+    <div class="section-head">
+      <h2>The report card</h2>
+      <p>Eight questions a customer asks without realizing it. Score each one 0 (missing), 1 (partly) or 2 (nailed it). Then rate the website's impact: how much does it actually make the business money? A bad grade only hurts as much as the website drives sales. Grades you give are saved in this browser only.</p>
+    </div>
+    <div class="grader">
+      <form class="sheet" id="sheet" aria-label="Website report card">
+        <div class="sheet-top">
+          <label for="site-pick">Website you're grading
+            <select id="site-pick">
+              <optgroup label="Website Lab">
+                <option value="crumb-bad">Crumb &amp; Co. (bad)</option>
+                <option value="crumb-good">Crumb &amp; Co. (fixed)</option>
+                <option value="summit-bad">Summit Lawn Care (bad)</option>
+                <option value="summit-good">Summit Lawn Care (fixed)</option>
+                <option value="quickfix-bad">QuickFix Phone Repair (bad)</option>
+                <option value="quickfix-good">QuickFix Phone Repair (fixed)</option>
+              </optgroup>
+              <optgroup label="Real websites">
+                <option value="arngren">Arngren</option>
+                <option value="pennyjuice">Penny Juice</option>
+                <option value="lingscars">LINGsCARS</option>
+                <option value="yaleart">Yale School of Art</option>
+                <option value="berkshire">Berkshire Hathaway</option>
+                <option value="craigslist">Craigslist</option>
+                <option value="govuk">GOV.UK</option>
+                <option value="airbnb">Airbnb</option>
+                <option value="duolingo">Duolingo</option>
+              </optgroup>
+              <optgroup label="Your own">
+                <option value="other">A local business…</option>
+              </optgroup>
+            </select>
+          </label>
+          <label for="other-name" id="other-wrap" hidden>Business name
+            <input type="text" id="other-name" placeholder="e.g. the pizza place on Main St">
+          </label>
+        </div>
+        <div id="crits"></div>
+        <div id="impact-box">
+          <div class="crit impact-row">
+            <span class="n">+</span>
+            <div><b>Website impact</b><span>How much does this website make the business money?</span></div>
+            <div class="seg" role="radiogroup" aria-label="Website impact">
+              <input type="radio" name="impact" id="imp-high" value="high"><label for="imp-high">High</label>
+              <input type="radio" name="impact" id="imp-medium" value="medium"><label for="imp-medium">Medium</label>
+              <input type="radio" name="impact" id="imp-low" value="low"><label for="imp-low">Low</label>
+            </div>
+          </div>
+          <p class="impact-help"><b>High:</b> the website is the store, and sales happen there. <b>Medium:</b> the website is the front door; people check it before they call, visit or book. <b>Low:</b> the website is a filing cabinet; customers don't buy there.</p>
+          <p class="impact-suggest" id="impact-suggest" hidden></p>
+        </div>
+      </form>
+
+      <aside class="result" aria-live="polite">
+        <div class="grade-row">
+          <div class="grade" id="grade">–</div>
+          <div class="score"><span id="total">0</span> / 16<small id="graded-count">0 of 8 questions scored</small></div>
+        </div>
+        <p class="verdict" id="verdict">Score all eight questions to see the grade.</p>
+        <div class="scale" id="scale">
+          <div data-g="A"><b>A</b>14–16</div>
+          <div data-g="B"><b>B</b>11–13</div>
+          <div data-g="C"><b>C</b>8–10</div>
+          <div data-g="D"><b>D</b>5–7</div>
+          <div data-g="F"><b>F</b>0–4</div>
+        </div>
+        <div class="priority">
+          <h3>What the business should do</h3>
+          <p class="pv" id="priority">Score all eight questions and pick the website's impact.</p>
+          <p id="priority-why"></p>
+        </div>
+        <div class="history">
+          <h3>Grades you've given</h3>
+          <ul id="history"><li class="empty">None yet.</li></ul>
+        </div>
+        <button type="button" class="link-btn" id="clear">Clear this grade</button>
+      </aside>
+    </div>
+  </section>
+
+  <section id="real">
+    <div class="section-head">
+      <h2>Real websites to grade</h2>
+      <p>A mix of famous bad sites, sites that break the rules on purpose, ugly sites that make a lot of money, and sites worth copying. The last two groups make the best debates.</p>
+    </div>
+
+    <div class="group">
+      <div class="group-head"><h3>Breaks the rules</h3><p>Classic examples of what not to do.</p></div>
+      <div class="sites">
+        <article class="site">
+          <div class="site-top"><h3>Arngren</h3><span class="tag">Retail</span></div>
+          <a class="url" href="https://www.arngren.net" target="_blank" rel="noopener">arngren.net</a>
+          <p>A Norwegian electronics and gadget store that has shown up on “worst website” lists for years.</p>
+          <p class="look">Look for: hundreds of product photos crammed onto one page, mixed fonts and colors, no clear way to navigate.</p>
+          <p class="impact-tag"><b>Website impact: High (likely).</b> It’s a store that sells online, so the homepage is its shop window.</p>
+          <p class="ask"><b>Ask the room</b>If you wanted to buy one scooter, how long would it take you to find it?</p>
+        </article>
+        <article class="site">
+          <div class="site-top"><h3>Penny Juice</h3><span class="tag">Food &amp; drink</span></div>
+          <a class="url" href="https://www.pennyjuice.com" target="_blank" rel="noopener">pennyjuice.com</a>
+          <p>A drink supplier for schools, often cited for a busy rainbow of colors and hard-to-find navigation.</p>
+          <p class="look">Look for: color overload, how you get from page to page, and whether a school buyer can find what to order.</p>
+          <p class="impact-tag"><b>Website impact: Medium.</b> School buyers check the site to learn about the products and how to order.</p>
+          <p class="ask"><b>Ask the room</b>Who is this site for: kids, parents or school buyers? Does the design match?</p>
+        </article>
+        <article class="site">
+          <div class="site-top"><h3>User Inyerface</h3><span class="tag mark">Game</span></div>
+          <a class="url" href="https://userinyerface.com" target="_blank" rel="noopener">userinyerface.com</a>
+          <p>A sign-up form made frustrating on purpose by the design agency Bagaar, as a lesson in bad UI.</p>
+          <p class="look">Look for: tricky buttons, confusing checkboxes, a pop-up that keeps coming back. Race to finish it.</p>
+          <p class="impact-tag"><b>Website impact: Not a business.</b> It’s a game, and also an ad for the agency that made it.</p>
+          <p class="ask"><b>Ask the room</b>Which of these tricks have you seen on a real website?</p>
+        </article>
+      </div>
+    </div>
+
+    <div class="group">
+      <div class="group-head"><h3>Breaks the rules on purpose</h3><p>Bad by the checklist. Is it bad for business?</p></div>
+      <div class="sites">
+        <article class="site">
+          <div class="site-top"><h3>LINGsCARS</h3><span class="tag mark">Debate</span></div>
+          <a class="url" href="https://www.lingscars.com" target="_blank" rel="noopener">lingscars.com</a>
+          <p>A UK car-leasing company famous for animated GIFs, clashing colors and chaos. Founder Ling Valentine built it that way on purpose, and the business has been widely reported as successful.</p>
+          <p class="look">Look for: what's underneath the chaos. Can you still find a car, a price and a way to apply?</p>
+          <p class="impact-tag"><b>Website impact: High.</b> It leases cars online with no showroom, so the website is the whole store.</p>
+          <p class="ask"><b>Ask the room</b>Is a memorable personality worth breaking every design rule?</p>
+        </article>
+        <article class="site">
+          <div class="site-top"><h3>Yale School of Art</h3><span class="tag">School</span></div>
+          <a class="url" href="https://www.art.yale.edu" target="_blank" rel="noopener">art.yale.edu</a>
+          <p>The art school's site works like a wiki that its community can edit, so it has looked strange on purpose for years.</p>
+          <p class="look">Look for: whether an applicant can still find deadlines and how to apply.</p>
+          <p class="impact-tag"><b>Website impact: Medium.</b> Applicants use it to research the school and find deadlines.</p>
+          <p class="ask"><b>Ask the room</b>When does an unusual site fit the brand, and when does it just get in the way?</p>
+        </article>
+      </div>
+    </div>
+
+    <div class="group">
+      <div class="group-head"><h3>Ugly, but it works</h3><p>Plain sites from very successful companies. Grade them, then ask how much the website matters to their revenue.</p></div>
+      <div class="sites">
+        <article class="site">
+          <div class="site-top"><h3>Berkshire Hathaway</h3><span class="tag mark">Debate</span></div>
+          <a class="url" href="https://www.berkshirehathaway.com" target="_blank" rel="noopener">berkshirehathaway.com</a>
+          <p>Warren Buffett's company: one of the most valuable in the world, with a homepage that is a plain list of links on a white page. GEICO, the Berkshire business that sells to consumers, has its own modern website.</p>
+          <p class="look">Look for: how fast you can find the shareholder letters. Then try it on your phone.</p>
+          <p class="impact-tag"><b>Website impact: Low.</b> Its revenue (about $371 billion in 2025) comes from businesses it owns, like GEICO and BNSF Railway. Nobody buys anything on this website.</p>
+          <p class="ask"><b>Ask the room</b>It gets a bad grade. Does that cost Berkshire any money? Would a redesign be worth it?</p>
+        </article>
+        <article class="site">
+          <div class="site-top"><h3>Craigslist</h3><span class="tag">Marketplace</span></div>
+          <a class="url" href="https://www.craigslist.org" target="_blank" rel="noopener">craigslist.org</a>
+          <p>Classified ads that have barely changed in decades. Almost no images, no animations, just links.</p>
+          <p class="look">Look for: how quickly you can find, for example, a used bike near you.</p>
+          <p class="impact-tag"><b>Website impact: High.</b> The website is the whole business.</p>
+          <p class="ask"><b>Ask the room</b>Would a prettier site help Craigslist, or confuse its loyal users?</p>
+        </article>
+      </div>
+    </div>
+
+    <div class="group">
+      <div class="group-head"><h3>Worth copying</h3><p>Clear, fast and built around what visitors came to do.</p></div>
+      <div class="sites">
+        <article class="site">
+          <div class="site-top"><h3>GOV.UK</h3><span class="tag">Government</span></div>
+          <a class="url" href="https://www.gov.uk" target="_blank" rel="noopener">gov.uk</a>
+          <p>The UK government's website won Design of the Year in 2013. Its published design principles start with “Start with user needs” and “Do less”.</p>
+          <p class="look">Look for: plain language, a big search box, nothing decorative.</p>
+          <p class="impact-tag"><b>Website impact: High.</b> Not about revenue: millions of people rely on it to get government tasks done.</p>
+          <p class="ask"><b>Ask the room</b>What could a small business learn from a government website?</p>
+        </article>
+        <article class="site">
+          <div class="site-top"><h3>Airbnb</h3><span class="tag">Travel</span></div>
+          <a class="url" href="https://www.airbnb.com" target="_blank" rel="noopener">airbnb.com</a>
+          <p>The homepage leads with the one thing visitors came to do: search for a place to stay.</p>
+          <p class="look">Look for: the search bar (where, when, who) and how little else competes with it.</p>
+          <p class="impact-tag"><b>Website impact: High.</b> Bookings happen on the website and app.</p>
+          <p class="ask"><b>Ask the room</b>What is the “one thing” visitors come to do on a bakery's website?</p>
+        </article>
+        <article class="site">
+          <div class="site-top"><h3>Duolingo</h3><span class="tag">Education</span></div>
+          <a class="url" href="https://www.duolingo.com" target="_blank" rel="noopener">duolingo.com</a>
+          <p>One short sentence about what it is, one big button to get started, and a friendly brand that's consistent everywhere.</p>
+          <p class="look">Look for: how many words it takes them to explain the product.</p>
+          <p class="impact-tag"><b>Website impact: High.</b> The website and app are the product.</p>
+          <p class="ask"><b>Ask the room</b>Write a one-sentence headline like theirs for a business you know.</p>
+        </article>
+      </div>
+    </div>
+
+    <div class="group">
+      <div class="group-head"><h3>Bring your own</h3><p>Usually the most useful round.</p></div>
+      <div class="note">Have each group pick a real local business near school (a pizza place, a dentist, a car wash) and grade its website with the report card. Pick the one fix that would help it most. If a club wanted to offer free website check-ups to local businesses, this is the checklist to use.</div>
+    </div>
+
+    <p class="note">Websites change. Open each link before the meeting to make sure it still shows what's described here.</p>
+  </section>
+
+  <footer>
+    <b>Sources</b>
+    <ul>
+      <li>Load speed: Google, “The Need for Mobile Speed” (2016): 53% of mobile visits are abandoned if a page takes longer than 3 seconds to load. <a href="https://www.marketingdive.com/news/google-53-of-mobile-users-abandon-sites-that-take-over-3-seconds-to-load/426070/" target="_blank" rel="noopener">Marketing Dive summary</a></li>
+      <li>Credibility: Fogg et al., Stanford Web Credibility Research (2003): “design look” was the most-mentioned reason people gave for trusting or distrusting a site (46.1% of comments). <a href="https://pmc.ncbi.nlm.nih.gov/articles/PMC4863498" target="_blank" rel="noopener">Cited in this PMC paper</a></li>
+      <li>GOV.UK: <a href="https://www.uxmatters.com/mt/archives/2016/01/how-focusing-on-user-experience-helped-govuk-win-design-of-the-year.php" target="_blank" rel="noopener">UXmatters on Design of the Year</a></li>
+      <li>LINGsCARS: <a href="https://customerthink.com/lingscars_com_doing_great_by_daring_to_be_different_breaking_the_rules/" target="_blank" rel="noopener">CustomerThink</a> · <a href="https://scalar.usc.edu/works/effective-uses-of-ineffective-design/media/lingscarscom" target="_blank" rel="noopener">USC case study</a></li>
+      <li>Berkshire Hathaway revenue: <a href="https://www.sec.gov/Archives/edgar/data/1067983/000119312526106284/d948018dars.pdf" target="_blank" rel="noopener">2025 annual report (SEC)</a></li>
+      <li>Berkshire Hathaway website: <a href="https://www.barchart.com/story/news/29278577/warren-buffett-s-1-trillion-berkshire-hathaway-empire-has-a-website-from-the-90s-as-proof-he-still-believes-less-is-more" target="_blank" rel="noopener">Barchart</a> · Craigslist: <a href="https://uxplanet.org/when-good-design-goes-bad-examples-of-ugly-ui-with-great-ux-48d72c7d1601" target="_blank" rel="noopener">UX Planet</a></li>
+      <li>User Inyerface: <a href="https://www.creativebloq.com/news/user-inyerface" target="_blank" rel="noopener">Creative Bloq</a> · Yale School of Art: <a href="https://www.linkedbyair.net/work/43-yale-school-of-art" target="_blank" rel="noopener">Linked by Air</a> · Arngren and Penny Juice: <a href="https://weblium.com/blog/21-bad-website-examples/" target="_blank" rel="noopener">Weblium</a>, <a href="https://www.whtop.com/news/23485-the-5-worst-websites-of-all-time" target="_blank" rel="noopener">WHTop</a></li>
+    </ul>
+  </footer>
+</div>
+
+<script>
+(function () {
+  var CRITERIA = [
+    ['Clear in 5 seconds', 'Can you tell what they sell, who it’s for, and where, in 5 seconds?'],
+    ['Obvious next step', 'Is there one clear button: order, book, call, or get a quote?'],
+    ['Contact basics', 'Are the phone number, address or service area, and hours easy to find?'],
+    ['Easy to get around', 'Short menu in plain words? Prices or the menu within 2 clicks?'],
+    ['Works on a phone', 'No pinching or sideways scrolling, and it loads fast.'],
+    ['Trustworthy', 'Real photos, real reviews, secure (HTTPS), no typos, nothing fake.'],
+    ['Easy to read', 'Strong contrast, one or two fonts, not cluttered.'],
+    ['Respects the visitor', 'No pop-up ambush, auto-playing sound, fake urgency, or nosy forms.']
+  ];
+  var LEVELS = ['0 Missing', '1 Partly', '2 Nailed it'];
+  var VERDICTS = {
+    A: 'A website that does its job. Copy what it does.',
+    B: 'Solid. One or two fixes would make it great.',
+    C: 'It works, but visitors will struggle in a few places.',
+    D: 'Several basics are missing.',
+    F: 'This website fails most of the basics.'
+  };
+  var KEY = 'website-lab-grades-v1';
+  var IKEY = 'website-lab-impact-v1';
+  // Suggested website impact for each listed site: [level, reason].
+  var IMPACT = {
+    'crumb-bad': ['medium', 'A local bakery: people check the site for hours, the menu and ordering before they visit.'],
+    'crumb-good': ['medium', 'A local bakery: people check the site for hours, the menu and ordering before they visit.'],
+    'summit-bad': ['medium', 'A local service: new customers look it up and ask for quotes there.'],
+    'summit-good': ['medium', 'A local service: new customers look it up and ask for quotes there.'],
+    'quickfix-bad': ['medium', 'A walk-in shop: people check the site to decide whether to trust it and to book.'],
+    'quickfix-good': ['medium', 'A walk-in shop: people check the site to decide whether to trust it and to book.'],
+    'arngren': ['high', 'It\u2019s a store that sells online, so the homepage is its shop window.'],
+    'pennyjuice': ['medium', 'School buyers check the site to learn about the products and how to order.'],
+    'lingscars': ['high', 'Online-only car leasing with no showroom: the website is the whole store.'],
+    'yaleart': ['medium', 'Applicants use it to research the school and find deadlines.'],
+    'berkshire': ['low', 'Revenue (about $371 billion in 2025) comes from the businesses it owns, like GEICO and BNSF Railway. Nobody buys anything on this website.'],
+    'craigslist': ['high', 'The website is the whole business.'],
+    'govuk': ['high', 'Millions of people rely on it to get government tasks done.'],
+    'airbnb': ['high', 'Bookings happen on the website and app.'],
+    'duolingo': ['high', 'The website and app are the product.']
+  };
+  var IMPACT_NAME = { high: 'High', medium: 'Medium', low: 'Low' };
+  var PRIORITY = {
+    good: {
+      high: ['Protect it.', 'The website is the business, and it\u2019s doing its job.'],
+      medium: ['Keep it current.', 'A good front door. Update hours, prices and photos as they change.'],
+      low: ['Don\u2019t overspend.', 'It\u2019s nice, but more polish won\u2019t bring in more sales.']
+    },
+    ok: {
+      high: ['Fix it soon.', 'Sales happen here, so every improvement means more money.'],
+      medium: ['Fix the basics.', 'Customers check this site before they call or visit. Start with contact info and one clear button.'],
+      low: ['Fine for now.', 'Customers don\u2019t buy here, so small flaws cost very little.']
+    },
+    bad: {
+      high: ['Fix it now.', 'This website is costing sales every day.'],
+      medium: ['Fix it soon.', 'Customers check this site before they call or visit, and some are leaving for a competitor.'],
+      low: ['Ugly, but not urgent.', 'Customers don\u2019t buy here, so a bad grade barely touches revenue.']
+    }
+  };
+
+  var crits = document.getElementById('crits');
+  var pick = document.getElementById('site-pick');
+  var otherWrap = document.getElementById('other-wrap');
+  var otherName = document.getElementById('other-name');
+
+  CRITERIA.forEach(function (c, i) {
+    var row = document.createElement('div');
+    row.className = 'crit';
+    var seg = '';
+    LEVELS.forEach(function (lv, v) {
+      var id = 'c' + i + 'v' + v;
+      seg += '<input type="radio" name="c' + i + '" id="' + id + '" value="' + v + '">' +
+             '<label for="' + id + '">' + lv + '</label>';
+    });
+    row.innerHTML = '<span class="n">' + (i + 1) + '</span>' +
+      '<div><b>' + c[0] + '</b><span>' + c[1] + '</span></div>' +
+      '<div class="seg" role="radiogroup" aria-label="' + c[0] + '">' + seg + '</div>';
+    crits.appendChild(row);
+  });
+
+  function load() {
+    try { return JSON.parse(localStorage.getItem(KEY)) || {}; } catch (e) { return {}; }
+  }
+  function save(all) {
+    try { localStorage.setItem(KEY, JSON.stringify(all)); } catch (e) { /* storage unavailable: grades last for this visit only */ }
+  }
+  var all = load();
+  function loadI() {
+    try { return JSON.parse(localStorage.getItem(IKEY)) || {}; } catch (e) { return {}; }
+  }
+  function saveI(obj) {
+    try { localStorage.setItem(IKEY, JSON.stringify(obj)); } catch (e) { /* storage unavailable */ }
+  }
+  var impacts = loadI();
+  function currentImpact() {
+    var r = document.querySelector('input[name="impact"]:checked');
+    return r ? r.value : null;
+  }
+
+  function siteKey() {
+    if (pick.value !== 'other') return pick.value;
+    var n = otherName.value.trim();
+    return n ? 'other:' + n : 'other:';
+  }
+  function siteLabel(key) {
+    if (key.indexOf('other:') === 0) return key.slice(6) || 'A local business';
+    var opt = pick.querySelector('option[value="' + key + '"]');
+    return opt ? opt.textContent : key;
+  }
+  function letter(total) {
+    return total >= 14 ? 'A' : total >= 11 ? 'B' : total >= 8 ? 'C' : total >= 5 ? 'D' : 'F';
+  }
+
+  function currentScores() {
+    return CRITERIA.map(function (_, i) {
+      var r = document.querySelector('input[name="c' + i + '"]:checked');
+      return r ? Number(r.value) : null;
+    });
+  }
+
+  function render() {
+    var scores = currentScores();
+    var done = scores.filter(function (s) { return s !== null; }).length;
+    var total = scores.reduce(function (a, s) { return a + (s || 0); }, 0);
+    document.getElementById('total').textContent = total;
+    document.getElementById('graded-count').textContent = done + ' of 8 questions scored';
+    var g = done === 8 ? letter(total) : '–';
+    document.getElementById('grade').textContent = g;
+    document.getElementById('verdict').textContent = done === 8 ? VERDICTS[g] : 'Score all eight questions to see the grade.';
+    document.querySelectorAll('#scale div').forEach(function (d) { d.classList.toggle('on', d.getAttribute('data-g') === g); });
+
+    var imp = currentImpact();
+    var pv = document.getElementById('priority');
+    var pw = document.getElementById('priority-why');
+    if (done === 8 && imp) {
+      var band = (g === 'A' || g === 'B') ? 'good' : g === 'C' ? 'ok' : 'bad';
+      pv.textContent = PRIORITY[band][imp][0];
+      pw.textContent = 'Grade ' + g + ', ' + IMPACT_NAME[imp].toLowerCase() + ' impact. ' + PRIORITY[band][imp][1];
+    } else {
+      pv.textContent = 'Score all eight questions and pick the website\u2019s impact.';
+      pw.textContent = '';
+    }
+
+    var list = document.getElementById('history');
+    var keys = Object.keys(all).filter(function (k) { return all[k].filter(function (s) { return s !== null; }).length === 8; });
+    if (!keys.length) {
+      list.innerHTML = '<li class="empty">None yet.</li>';
+    } else {
+      list.innerHTML = '';
+      keys.forEach(function (k) {
+        var t = all[k].reduce(function (a, s) { return a + s; }, 0);
+        var li = document.createElement('li');
+        var name = document.createElement('span');
+        name.textContent = siteLabel(k);
+        var score = document.createElement('b');
+        score.textContent = letter(t) + ' · ' + t + '/16' + (impacts[k] ? ' · ' + IMPACT_NAME[impacts[k]] + ' impact' : '');
+        li.appendChild(name);
+        li.appendChild(score);
+        list.appendChild(li);
+      });
+    }
+  }
+
+  function fill() {
+    var saved = all[siteKey()] || [];
+    CRITERIA.forEach(function (_, i) {
+      document.querySelectorAll('input[name="c' + i + '"]').forEach(function (r) {
+        r.checked = saved[i] !== null && saved[i] !== undefined && Number(r.value) === saved[i];
+      });
+    });
+    var suggestion = IMPACT[pick.value];
+    var imp = impacts[siteKey()] || (suggestion ? suggestion[0] : null);
+    document.querySelectorAll('input[name="impact"]').forEach(function (r) { r.checked = r.value === imp; });
+    var sug = document.getElementById('impact-suggest');
+    if (suggestion) {
+      sug.innerHTML = '<b>Our take: ' + IMPACT_NAME[suggestion[0]] + '.</b> ';
+      sug.appendChild(document.createTextNode(suggestion[1] + ' Disagree? Change it.'));
+      sug.hidden = false;
+    } else {
+      sug.hidden = true;
+    }
+    render();
+  }
+
+  crits.addEventListener('change', function () {
+    var key = siteKey();
+    if (key === 'other:') { render(); return; }
+    all[key] = currentScores();
+    save(all);
+    render();
+  });
+  document.getElementById('impact-box').addEventListener('change', function () {
+    var key = siteKey();
+    if (key !== 'other:') {
+      impacts[key] = currentImpact();
+      saveI(impacts);
+    }
+    render();
+  });
+  pick.addEventListener('change', function () {
+    otherWrap.hidden = pick.value !== 'other';
+    fill();
+  });
+  otherName.addEventListener('change', fill);
+  document.getElementById('clear').addEventListener('click', function () {
+    delete all[siteKey()];
+    delete impacts[siteKey()];
+    save(all);
+    saveI(impacts);
+    fill();
+  });
+  document.getElementById('sheet').addEventListener('submit', function (e) { e.preventDefault(); });
+
+  fill();
+})();
+</script>
+
+</body></html>

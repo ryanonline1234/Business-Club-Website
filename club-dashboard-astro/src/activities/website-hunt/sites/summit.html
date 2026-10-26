@@ -1,0 +1,374 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SUMMIT — Atelier</title>
+<link rel="stylesheet" href="/activity-assets/fonts.css">
+<link rel="stylesheet" href="lab.css">
+<style>
+  :root {
+    --forest: #0e1d16;
+    --moss: #1d3a2b;
+    --mist: #eef0ea;
+    --stone: #c8ccc2;
+    --whisper: #b9bdb4;
+    --gold: #c9a96e;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--mist);
+    color: var(--whisper);
+    font-family: "Jost", "Helvetica Neue", Arial, sans-serif;
+    font-weight: 200;
+    font-size: 15px;
+    line-height: 1.9;
+    letter-spacing: 0.04em;
+  }
+  h1, h2, h3 {
+    font-family: "Cormorant Garamond", Georgia, serif;
+    font-weight: 300;
+    margin: 0;
+    color: var(--forest);
+  }
+  a { color: inherit; }
+
+  header {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 20;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 28px 40px;
+    color: #fff;
+  }
+  .wordmark {
+    font-family: "Cormorant Garamond", Georgia, serif;
+    font-size: 22px;
+    letter-spacing: 0.6em;
+  }
+  .burger {
+    width: 44px;
+    height: 44px;
+    display: grid;
+    align-content: center;
+    gap: 7px;
+    background: none;
+    border: 0;
+    cursor: pointer;
+    padding: 8px;
+  }
+  .burger i { display: block; height: 1px; background: #fff; }
+  .menu {
+    position: fixed;
+    inset: 0;
+    z-index: 30;
+    background: var(--forest);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 18px;
+  }
+  .menu a {
+    font-family: "Cormorant Garamond", Georgia, serif;
+    font-style: italic;
+    font-size: 54px;
+    color: var(--mist);
+    text-decoration: none;
+  }
+  .menu button {
+    position: absolute;
+    top: 30px;
+    right: 40px;
+    background: none;
+    border: 0;
+    color: #fff;
+    font-size: 30px;
+    cursor: pointer;
+    font-weight: 200;
+  }
+
+  .hero {
+    position: relative;
+    height: 100vh;
+    min-height: 620px;
+    overflow: hidden;
+    background: linear-gradient(#0b1712 0%, #1f3a2c 55%, #3e5b45 100%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+  }
+  .hero svg { position: absolute; left: 0; bottom: 0; width: 100%; height: 70%; }
+  .hero-text { position: relative; z-index: 1; padding: 0 20px; }
+  .hero h1 {
+    color: #fff;
+    font-style: italic;
+    font-size: clamp(54px, 9vw, 120px);
+    line-height: 1;
+  }
+  .hero p {
+    color: rgba(255, 255, 255, 0.55);
+    margin: 22px 0 0;
+    text-transform: uppercase;
+    letter-spacing: 0.5em;
+    font-size: 12px;
+  }
+  .discover {
+    position: absolute;
+    bottom: 40px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 1;
+    color: rgba(255, 255, 255, 0.7);
+    font-size: 11px;
+    letter-spacing: 0.5em;
+    text-transform: uppercase;
+    text-decoration: none;
+    text-align: center;
+  }
+  .discover::after { content: ""; display: block; width: 1px; height: 48px; background: rgba(255,255,255,0.5); margin: 12px auto 0; }
+
+  section { padding: 160px 40px; }
+  .ethos { max-width: 860px; margin: 0 auto; text-align: center; }
+  .ethos h2 { font-size: clamp(36px, 5vw, 64px); font-style: italic; line-height: 1.2; }
+  .ethos p { max-width: 520px; margin: 40px auto 0; }
+
+  .gallery {
+    display: grid;
+    grid-template-columns: 2fr 1fr 1fr;
+    gap: 6px;
+    padding: 0 6px;
+  }
+  .gallery div { height: 520px; }
+  .g1 { background: linear-gradient(160deg, #20402f, #4f7a59 60%, #a7b98f); }
+  .g2 { background: linear-gradient(200deg, #3a5a40, #9fb48b); }
+  .g3 { background: linear-gradient(180deg, #c9cfbf, #6f8a6a); }
+
+  .voices { text-align: center; }
+  .voices .label, .connect .label {
+    font-size: 11px;
+    letter-spacing: 0.5em;
+    text-transform: uppercase;
+    color: var(--gold);
+  }
+  .quotes { display: grid; grid-template-columns: repeat(3, 1fr); gap: 40px; max-width: 1000px; margin: 60px auto 0; }
+  .quotes blockquote { margin: 0; }
+  .quotes p { font-family: "Cormorant Garamond", Georgia, serif; font-style: italic; font-size: 34px; color: var(--forest); margin: 0; line-height: 1.2; }
+  .quotes cite { display: block; margin-top: 14px; font-style: normal; font-size: 12px; letter-spacing: 0.3em; }
+
+  .team { display: grid; grid-template-columns: 1fr 1fr; gap: 80px; align-items: center; max-width: 1100px; margin: 0 auto; }
+  .stock {
+    position: relative;
+    height: 420px;
+    background:
+      radial-gradient(circle at 30% 34%, #e9c9a8 0 38px, transparent 39px),
+      radial-gradient(circle at 70% 34%, #c79c78 0 38px, transparent 39px),
+      radial-gradient(ellipse 80px 130px at 30% 80%, #2b2f3a 0 99%, transparent 100%),
+      radial-gradient(ellipse 80px 130px at 70% 80%, #3a3f4d 0 99%, transparent 100%),
+      linear-gradient(#f4f5f7, #dfe3e8);
+    overflow: hidden;
+  }
+  .stock .hands {
+    position: absolute;
+    left: 50%;
+    top: 60%;
+    transform: translate(-50%, -50%);
+    width: 64px;
+    height: 26px;
+    border-radius: 14px;
+    background: #d9b08c;
+  }
+  .stock .wm {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    font: 700 46px/1 Arial, sans-serif;
+    color: rgba(255, 255, 255, 0.55);
+    transform: rotate(-24deg);
+    letter-spacing: 0.1em;
+  }
+  .stock figcaption {
+    position: absolute;
+    left: 12px;
+    bottom: 10px;
+    font-size: 11px;
+    color: #6b7280;
+    background: rgba(255,255,255,0.8);
+    padding: 2px 8px;
+  }
+  .team h2 { font-size: 52px; font-style: italic; }
+
+  .insta { text-align: center; padding-top: 0; }
+  .insta-row { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; margin-top: 28px; }
+  .insta-row div { aspect-ratio: 1; max-width: 100%; background: linear-gradient(135deg, #cbd3c3, #7d957b); }
+  .insta-row div:nth-child(2n) { background: linear-gradient(135deg, #9fb48b, #2d4a37); }
+
+  .connect { background: var(--forest); color: #6f7d73; }
+  .connect-inner { max-width: 760px; margin: 0 auto; }
+  .connect h2 { color: var(--mist); font-size: 64px; font-style: italic; text-align: center; margin: 12px 0 50px; }
+  .connect .label { display: block; text-align: center; }
+  form { display: grid; grid-template-columns: 1fr 1fr; gap: 26px 30px; }
+  .field { display: grid; gap: 4px; }
+  .field.full { grid-column: 1 / -1; }
+  .field label { font-size: 10px; letter-spacing: 0.35em; text-transform: uppercase; color: #6f7d73; }
+  .field input, .field select, .field textarea {
+    background: transparent;
+    border: 0;
+    border-bottom: 1px solid #2f4a3b;
+    color: var(--mist);
+    font: 200 15px/1.6 "Jost", sans-serif;
+    padding: 8px 0;
+    border-radius: 0;
+    width: 100%;
+  }
+  .field select option { color: #000; }
+  .radios { display: flex; gap: 22px; color: #8d9a90; font-size: 14px; }
+  .robot { display: flex; align-items: center; gap: 10px; font-size: 13px; color: #8d9a90; }
+  .send {
+    grid-column: 1 / -1;
+    justify-self: center;
+    background: none;
+    border: 1px solid #3b5a48;
+    color: var(--mist);
+    font: 200 12px/1 "Jost", sans-serif;
+    letter-spacing: 0.5em;
+    text-transform: uppercase;
+    padding: 20px 46px;
+    cursor: pointer;
+  }
+  .err { grid-column: 1 / -1; text-align: center; color: #d98c8c; font-size: 13px; }
+  footer {
+    background: var(--forest);
+    color: #3f5246;
+    text-align: center;
+    font-size: 11px;
+    letter-spacing: 0.4em;
+    padding: 40px 20px 60px;
+    border-top: 1px solid #1a2f24;
+  }
+
+  @media (max-width: 800px) {
+    header { padding: 20px; }
+    section { padding: 100px 20px; }
+    .quotes, .team, form { grid-template-columns: 1fr; }
+    .gallery { grid-template-columns: 1fr; }
+    .gallery div { height: 320px; }
+    .insta-row { grid-template-columns: repeat(3, 1fr); }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <span class="wordmark">SUMMIT</span>
+  <button class="burger" type="button" id="burger" aria-label="Menu"><i></i><i></i><i></i></button>
+</header>
+
+<div class="menu" id="menu" hidden>
+  <button type="button" id="menu-close" aria-label="Close menu">&times;</button>
+  <a href="#ethos">Journey</a>
+  <a href="#ethos">Ethos</a>
+  <a href="#voices">Atelier</a>
+  <a href="#connect">Connect</a>
+</div>
+
+<section class="hero" style="padding:0">
+  <svg viewBox="0 0 1440 600" preserveAspectRatio="none" aria-hidden="true">
+    <path d="M0 330 L180 190 L320 290 L520 120 L700 280 L880 160 L1060 300 L1240 170 L1440 280 V600 H0Z" fill="#28463a"/>
+    <path d="M0 420 L220 300 L420 400 L640 270 L860 410 L1080 300 L1300 400 L1440 340 V600 H0Z" fill="#1d3a2b"/>
+    <path d="M0 520 C240 460 480 500 720 470 C960 440 1200 500 1440 470 V600 H0Z" fill="#132a1f"/>
+  </svg>
+  <div class="hero-text">
+    <h1>Elevate the ordinary.</h1>
+    <p>An atelier of living space</p>
+  </div>
+  <a class="discover" href="#ethos">Discover</a>
+</section>
+
+<section id="ethos">
+  <div class="ethos">
+    <h2>We believe a lawn is a canvas. Every blade, a brushstroke.</h2>
+    <p>Founded on a quiet devotion to the outdoors, Summit approaches each space as a dialogue between earth and intention. Our practice is rooted in patience, proportion, and presence. We do not simply tend. We listen. We curate. We elevate.</p>
+    <p>Serving discerning clients across the region and beyond.</p>
+  </div>
+</section>
+
+<div class="gallery" aria-hidden="true">
+  <div class="g1"></div><div class="g2"></div><div class="g3"></div>
+</div>
+
+<section class="voices" id="voices">
+  <span class="label">Voices</span>
+  <div class="quotes">
+    <blockquote><p>“Transformative.”</p><cite>— J.</cite></blockquote>
+    <blockquote><p>“Simply, wow.”</p><cite>— A. M.</cite></blockquote>
+    <blockquote><p>“A feeling I can’t describe.”</p><cite>— Anonymous</cite></blockquote>
+  </div>
+</section>
+
+<section style="padding-top:0">
+  <div class="team">
+    <figure class="stock" style="margin:0">
+      <div class="hands"></div>
+      <div class="wm">STOCKPIX</div>
+      <figcaption>Image #48213 · Business partners shaking hands in office</figcaption>
+    </figure>
+    <div>
+      <span class="label" style="font-size:11px;letter-spacing:0.5em;text-transform:uppercase;color:#c9a96e">The Collective</span>
+      <h2>Rooted in vision.</h2>
+      <p>Every engagement is bespoke. Investment is tailored to the unique story of your landscape and is discussed during a private consultation.</p>
+    </div>
+  </div>
+</section>
+
+<section class="insta">
+  <span style="font-size:11px;letter-spacing:0.5em;text-transform:uppercase;color:#c9a96e">@summit.atelier · last post 48 weeks ago</span>
+  <div class="insta-row" aria-hidden="true"><div></div><div></div><div></div><div></div><div></div></div>
+</section>
+
+<section class="connect" id="connect">
+  <div class="connect-inner">
+    <span class="label">Connect</span>
+    <h2>Begin the conversation.</h2>
+    <form id="form" novalidate>
+      <div class="field"><label for="f1">First name *</label><input id="f1"></div>
+      <div class="field"><label for="f2">Last name *</label><input id="f2"></div>
+      <div class="field"><label for="f3">Email *</label><input id="f3"></div>
+      <div class="field"><label for="f4">Confirm email *</label><input id="f4"></div>
+      <div class="field"><label for="f5">Property address *</label><input id="f5"></div>
+      <div class="field"><label for="f6">Lot size (sq ft) *</label><input id="f6"></div>
+      <div class="field"><label for="f7">Investment range *</label>
+        <select id="f7"><option>Select</option><option>$5,000 – $10,000</option><option>$10,000 – $25,000</option><option>$25,000+</option></select></div>
+      <div class="field"><label for="f8">How did you hear about us? *</label><input id="f8"></div>
+      <div class="field full"><label>Preferred aesthetic *</label>
+        <div class="radios"><span><input type="radio" name="ae" id="ae1"> <label for="ae1" style="letter-spacing:0;text-transform:none;font-size:14px">Zen</label></span><span><input type="radio" name="ae" id="ae2"> <label for="ae2" style="letter-spacing:0;text-transform:none;font-size:14px">Baroque</label></span><span><input type="radio" name="ae" id="ae3"> <label for="ae3" style="letter-spacing:0;text-transform:none;font-size:14px">Brutalist</label></span></div></div>
+      <div class="field full"><label for="f9">Tell us your story (minimum 200 characters) *</label><textarea id="f9" rows="3"></textarea></div>
+      <div class="field full robot"><input type="checkbox" id="f10"> <label for="f10" style="font-size:13px;letter-spacing:0;text-transform:none">I am not a robot, and I have read the 14-page Terms of Engagement *</label></div>
+      <button class="send" type="submit">Submit</button>
+      <p class="err" id="err" hidden>Please complete all 11 required fields. Your story must be at least 200 characters.</p>
+    </form>
+  </div>
+</section>
+
+<footer>SUMMIT · AN ATELIER OF LIVING SPACE · EST. MMXII</footer>
+<script>
+  var menu = document.getElementById('menu');
+  document.getElementById('burger').addEventListener('click', function () { menu.hidden = false; });
+  document.getElementById('menu-close').addEventListener('click', function () { menu.hidden = true; });
+  menu.querySelectorAll('a').forEach(function (a) { a.addEventListener('click', function () { menu.hidden = true; }); });
+  document.getElementById('form').addEventListener('submit', function (e) {
+    e.preventDefault();
+    document.getElementById('err').hidden = false;
+  });
+</script>
+<script id="hunt-data" type="application/json">{"key": "summit", "round": 2, "site": "Summit Lawn Care"}</script>
+<script src="hunt.js"></script>
+</body>
+</html>

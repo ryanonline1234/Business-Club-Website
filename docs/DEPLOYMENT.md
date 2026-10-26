@@ -22,8 +22,8 @@ The app selects `profiles.status` on every request. The sequence:
    must show `status = 'approved'`. If anyone who had access shows `pending`,
    fix it *before* deploying code.
 4. **Paste STEPs 16–20 as one block** — the `/about` columns and `photos`
-   table, STEP 19 (the auto-approval backfill) and STEP 20 (the members-only
-   `events.slides_url`). Safe any time, on either
+   table, STEP 19 (the auto-approval backfill) and STEP 20 (the
+   `events.slides_url` column). Safe any time, on either
    side of the code deploy. Caveat: STEP 19 approves every school-domain row
    at `pending` on every run, so suspend an account with `rejected`, never
    `pending`.

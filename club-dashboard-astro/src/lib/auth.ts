@@ -1,5 +1,6 @@
 import { createSupabaseServerClient, supabaseAdmin } from './supabase';
 import { SITE_ORIGIN } from './env';
+import { safeNextPath } from './next-redirect';
 
 /**
  * The session layer. Every page and every API route goes through one of the
@@ -272,14 +273,25 @@ export async function getSession(
  * statement of a page's frontmatter and never catch them.
  * ──────────────────────────────────────────────────────────────────────────── */
 
-/** Any signed-in user, approved or not. Used only by /pending. */
+/**
+ * Any signed-in user, approved or not. Used only by /pending.
+ *
+ * `nextPath` (optional, all three page guards): where a signed-out visitor
+ * should land after signing in — sent as /login?next=…, validated by
+ * safeNextPath here and again by /login (invariant 8). Omitted, sign-in goes
+ * home as it always has.
+ */
 export async function requireSession(
   request: Request,
   responseHeaders: Headers,
-  redirect: RedirectFn
+  redirect: RedirectFn,
+  nextPath?: string
 ): Promise<SessionUser> {
   const user = await getSession(request, responseHeaders);
-  if (!user) throw redirect('/login');
+  if (!user) {
+    const next = safeNextPath(nextPath);
+    throw redirect(next ? `/login?next=${encodeURIComponent(next)}` : '/login');
+  }
   return user;
 }
 
@@ -287,9 +299,10 @@ export async function requireSession(
 export async function requireApproved(
   request: Request,
   responseHeaders: Headers,
-  redirect: RedirectFn
+  redirect: RedirectFn,
+  nextPath?: string
 ): Promise<SessionUser> {
-  const user = await requireSession(request, responseHeaders, redirect);
+  const user = await requireSession(request, responseHeaders, redirect, nextPath);
   if (!user.isApproved) throw redirect('/pending');
   return user;
 }
@@ -298,9 +311,10 @@ export async function requireApproved(
 export async function requireOfficer(
   request: Request,
   responseHeaders: Headers,
-  redirect: RedirectFn
+  redirect: RedirectFn,
+  nextPath?: string
 ): Promise<SessionUser> {
-  const user = await requireApproved(request, responseHeaders, redirect);
+  const user = await requireApproved(request, responseHeaders, redirect, nextPath);
   if (!user.isOfficer) throw redirect('/');
   return user;
 }

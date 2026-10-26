@@ -10,6 +10,15 @@ recap stay separate, no sixth nav item, `deadline` events aren't listed,
 photos stay public, photos are shrunk to 2048px. This document is kept as the
 design record; the code is the source of truth._
 
+_**Superseded 2026-10-26 (owner decision):** slides are now **public**, and so
+are `/meetings` and `/meetings/[id]` — a signed-out visitor sees title, time,
+slides, public activities, recap and photos (never location, description or
+check-ins). Meetings also list **activities** served from the site
+(`/activities/<slug>/`, registry in `src/lib/activities.ts`). §4's "members
+only" reasoning below is kept as history. Current rules:
+[KNOWN-GAPS.md](KNOWN-GAPS.md#abouts-select-lists-are-a-privacy-boundary--do-not-widen-them-casually)
+and [ARCHITECTURE.md](ARCHITECTURE.md#meeting-activities)._
+
 The ask: a place where meetings are registered and listed, where you can go
 back to a past meeting, open its slides, and where officers can edit its
 description and upload photos.

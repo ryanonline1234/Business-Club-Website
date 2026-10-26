@@ -29,7 +29,13 @@ Before writing code, read:
    `apiRequireAdmin`, then `if (!guard.ok) return guard.response`. Never
    hand-roll a role check — copy-pasted checks are how endpoints ended up
    unauthenticated before. `supabaseAdmin` bypasses RLS, so the guard is the
-   **only** access control on a route.
+   **only** access control on a route. The public pages — `/about`, `/join`,
+   `/checkin`, `/login`, `/meetings`, `/meetings/[id]` and the `'public'`
+   activities — have no guard by design; where they read data, their select
+   lists are the boundary
+   ([KNOWN-GAPS.md](docs/KNOWN-GAPS.md#abouts-select-lists-are-a-privacy-boundary--do-not-widen-them-casually)),
+   and the meeting pages read the session (`getSession`) only to decide how
+   much to show.
 2. **Env goes through `src/lib/env.ts`, full stop.** It validates all five
    variables at boot, trims them, and is the only home of `isSchoolEmail()`.
    Never read `import.meta.env` in app code, and **never touch the bare
@@ -74,7 +80,16 @@ Before writing code, read:
 10. **No client framework, no external runtime resources.** Plain `.astro`
     files, inline `<script>`, one stylesheet at `public/styles/global.css`,
     fonts self-hosted via the `@fontsource` packages. No React, no Tailwind,
-    no CDN URLs, no Google Fonts.
+    no CDN URLs, no Google Fonts. Meeting activities included: their fonts
+    live in `public/activity-assets/`.
+11. **Meeting activities are code, never uploads.** Files under
+    `src/activities/` run on this origin, beside the session cookie — a
+    script there could call the API as whoever is viewing. They arrive by
+    commit and review only; never build a way for officers to upload HTML.
+    An activity with `audience: 'public'` must hold nothing secret (answer
+    keys go in an `'officers'` activity). Registry and rules:
+    `src/lib/activities.ts`; how they are served:
+    [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#meeting-activities).
 
 ## Verifying
 

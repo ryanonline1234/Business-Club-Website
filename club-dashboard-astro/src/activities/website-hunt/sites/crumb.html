@@ -1,0 +1,483 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Crumb &amp; Co. Bakery - Home - Welcome!!!</title>
+<link rel="stylesheet" href="lab.css">
+<style>
+  body {
+    margin: 0;
+    background-color: #ff8fc7;
+    background-image:
+      radial-gradient(#ffe600 18%, transparent 19%),
+      radial-gradient(#7cf0ff 18%, transparent 19%);
+    background-size: 34px 34px;
+    background-position: 0 0, 17px 17px;
+    font-family: "Comic Sans MS", "Comic Sans", "Chalkboard SE", "Comic Neue", cursive;
+    color: #222;
+  }
+  .page {
+    width: 1000px;
+    margin: 0 auto;
+    background: #fff9b0;
+    border: 8px ridge #d62828;
+  }
+  .topstrip {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: #000080;
+    color: #00ff00;
+    font-family: "Courier New", monospace;
+    font-size: 12px;
+    padding: 4px 8px;
+  }
+  .counter span {
+    background: #000;
+    color: #ff0;
+    padding: 0 3px;
+    border: 1px inset #888;
+    letter-spacing: 2px;
+  }
+  .logo {
+    text-align: center;
+    padding: 16px 0 4px;
+  }
+  .logo h1 {
+    margin: 0;
+    font-family: Impact, "Arial Black", sans-serif;
+    font-size: 76px;
+    line-height: 1;
+    background: linear-gradient(90deg, #ff0000, #ff8800, #ffff00, #00cc00, #0000ff, #8800ff);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    -webkit-text-stroke: 2px #000;
+    transform: skewX(-8deg);
+  }
+  .logo p {
+    margin: 4px 0 8px;
+    font-family: "Brush Script MT", "Lucida Handwriting", cursive;
+    font-size: 30px;
+    color: #c71585;
+  }
+  marquee {
+    display: block;
+    background: #d62828;
+    color: #ffff00;
+    font-weight: bold;
+    font-size: 20px;
+    padding: 4px 0;
+  }
+  .nav {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2px;
+    background: #006400;
+    padding: 4px;
+  }
+  .nav a {
+    flex: 1 0 auto;
+    text-align: center;
+    background: #9acd32;
+    color: #00008b;
+    font-family: "Times New Roman", serif;
+    font-size: 13px;
+    padding: 4px 3px;
+    border: 2px outset #ccff99;
+  }
+  .nav a:nth-child(3n) { background: #ffa07a; color: #8b0000; }
+  .nav a:nth-child(4n) { background: #dda0dd; color: #4b0082; }
+
+  .banner {
+    position: relative;
+    height: 230px;
+    margin: 10px;
+    border: 4px double #000;
+    background: #ddd;
+    overflow: hidden;
+  }
+  .banner .loading {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    font-family: "Courier New", monospace;
+    font-size: 15px;
+    background: #ececec;
+    color: #333;
+  }
+  .bar {
+    width: 60%;
+    height: 18px;
+    border: 2px inset #999;
+    background: #fff;
+  }
+  .bar i {
+    display: block;
+    height: 100%;
+    width: 0;
+    background: repeating-linear-gradient(90deg, #0a0 0 12px, #0c0 12px 14px);
+  }
+  .banner .photo {
+    position: absolute;
+    inset: 0;
+    background:
+      radial-gradient(ellipse 120px 60px at 30% 60%, #c68642, transparent 70%),
+      radial-gradient(ellipse 160px 70px at 62% 55%, #a0522d, transparent 70%),
+      radial-gradient(ellipse 90px 50px at 80% 70%, #deb887, transparent 70%),
+      linear-gradient(#8fbcd4, #f5deb3);
+    filter: blur(6px) saturate(1.6);
+  }
+  .banner .photo-caption {
+    position: absolute;
+    bottom: 8px;
+    right: 10px;
+    color: #fff;
+    font-size: 14px;
+    text-shadow: 1px 1px 0 #000;
+  }
+
+  .cols {
+    display: grid;
+    grid-template-columns: 190px 1fr 210px;
+    gap: 10px;
+    padding: 0 10px 10px;
+  }
+  .box {
+    border: 3px groove #8b4513;
+    background: #fffde7;
+    padding: 8px;
+    margin-bottom: 10px;
+  }
+  .box h3 {
+    margin: -8px -8px 8px;
+    padding: 4px 8px;
+    background: #8b4513;
+    color: #ffd700;
+    font-family: "Papyrus", fantasy;
+    font-size: 17px;
+  }
+  .side a { display: block; color: #0000ee; font-size: 13px; text-decoration: underline; margin: 3px 0; }
+  .construction {
+    text-align: center;
+    padding: 10px 6px;
+    background: repeating-linear-gradient(45deg, #ffd000 0 14px, #111 14px 28px);
+    color: #fff;
+    font-family: Impact, sans-serif;
+    font-size: 16px;
+    text-shadow: 2px 2px 0 #000;
+  }
+  .about p {
+    font-size: 14px;
+    line-height: 1.35;
+    text-align: justify;
+  }
+  .tagline2 {
+    color: #f4e04d;
+    font-family: "Lucida Handwriting", cursive;
+  }
+  .specials {
+    text-align: center;
+    background: #ff1493;
+    color: #ffff00;
+    padding: 12px;
+    border: 5px dotted #00ffff;
+  }
+  .specials h2 {
+    margin: 0 0 6px;
+    font-family: "Arial Black", sans-serif;
+    font-size: 26px;
+    color: #00ffff;
+  }
+  .slide { font-size: 22px; font-weight: bold; min-height: 60px; }
+  .slide small { display: block; font-size: 13px; color: #fff; font-weight: normal; }
+  .blink { animation: blink 0.8s steps(1) infinite; }
+  @keyframes blink { 50% { visibility: hidden; } }
+  .order {
+    display: block;
+    width: 100%;
+    margin: 12px 0;
+    padding: 14px;
+    font-family: Impact, sans-serif;
+    font-size: 30px;
+    color: #fff;
+    background: linear-gradient(#ff4500, #8b0000);
+    border: 4px outset #ff6347;
+    cursor: pointer;
+  }
+  .soon {
+    display: none;
+    padding: 8px;
+    background: #fff;
+    border: 2px dashed #f00;
+    color: #f00;
+    text-align: center;
+  }
+  .phone-img { display: block; margin: 6px auto; }
+  .music {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px;
+    background: #000;
+    color: #0f0;
+    font-family: "Courier New", monospace;
+    font-size: 12px;
+  }
+  .eq { display: flex; align-items: flex-end; gap: 2px; height: 20px; }
+  .eq i { width: 4px; background: #0f0; animation: eq 0.5s ease-in-out infinite alternate; }
+  .eq i:nth-child(2) { animation-delay: 0.1s; }
+  .eq i:nth-child(3) { animation-delay: 0.25s; }
+  .eq i:nth-child(4) { animation-delay: 0.05s; }
+  .eq i:nth-child(5) { animation-delay: 0.3s; }
+  @keyframes eq { from { height: 3px; } to { height: 20px; } }
+  .footer {
+    text-align: center;
+    font-family: "Times New Roman", serif;
+    font-size: 11px;
+    color: #555;
+    background: #e0e0e0;
+    padding: 8px;
+    border-top: 3px double #999;
+  }
+
+  /* Newsletter pop-up */
+  .overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 5000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.75);
+  }
+  .overlay[hidden] { display: none; }
+  .modal {
+    position: relative;
+    width: 520px;
+    max-width: calc(100vw - 32px);
+    padding: 24px;
+    text-align: center;
+    background: #ffff00;
+    border: 8px solid #ff00ff;
+    font-family: "Comic Sans MS", cursive;
+  }
+  .modal h2 { margin: 0 0 6px; font-size: 34px; color: #ff0000; }
+  .modal p { margin: 4px 0 12px; font-size: 16px; }
+  .modal input {
+    display: block;
+    width: 100%;
+    margin: 6px 0;
+    padding: 8px;
+    font-size: 15px;
+    border: 2px inset #999;
+    box-sizing: border-box;
+  }
+  .yes {
+    display: block;
+    width: 100%;
+    margin-top: 10px;
+    padding: 12px;
+    font-size: 22px;
+    font-weight: bold;
+    color: #fff;
+    background: #00a000;
+    border: 4px outset #0f0;
+    cursor: pointer;
+  }
+  .no {
+    display: inline-block;
+    margin-top: 10px;
+    background: none;
+    border: 0;
+    font-size: 11px;
+    color: #c8c800;
+    text-decoration: underline;
+    cursor: pointer;
+  }
+  .x {
+    position: absolute;
+    top: 2px;
+    right: 4px;
+    background: none;
+    border: 0;
+    font-size: 10px;
+    color: #e5e500;
+    cursor: pointer;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .blink, .eq i { animation: none; }
+  }
+</style>
+</head>
+<body>
+
+<div class="overlay" id="popup">
+  <div class="modal" role="dialog" aria-label="Newsletter sign-up">
+    <button class="x" type="button" id="popup-x" aria-label="Close">x</button>
+    <h2>WAIT!!! DON'T LEAVE!!!</h2>
+    <p>Sign up for our NEWSLETTER and get <b>1% OFF</b> your next purchase of $100 or more!!!*</p>
+    <input id="nl-email" type="text" placeholder="Email address">
+    <input id="nl-phone" type="text" placeholder="Cell phone number">
+    <input id="nl-bday" type="text" placeholder="Birthday (MM/DD/YYYY)">
+    <button class="yes" type="button" id="popup-yes">YES!! I LOVE SAVING MONEY!!!</button>
+    <button class="no" type="button" id="popup-no">No thanks, I don't like fresh bread</button>
+  </div>
+</div>
+
+<div class="page">
+
+  <div class="topstrip">
+    <span class="counter">You are visitor # <span>000847</span></span>
+    <span>Best viewed in Internet Explorer 6 at 800x600</span>
+  </div>
+
+  <div class="logo">
+    <h1>~*~ Crumb &amp; Co. ~*~</h1>
+    <p>Welcome to our website!!!</p>
+  </div>
+
+  <marquee scrollamount="9">!!! WELCOME TO THE OFFICIAL WEBSITE OF CRUMB &amp; CO !!! WE ARE THE BEST !!! FRESH BAKED GOOD'S EVERY DAY !!! WERE OPEN LATE (SOMETIMES) !!! CALL US TODAY !!! TELL YOUR FREINDS !!!</marquee>
+
+  <nav class="nav">
+    <a href="#">Home</a>
+    <a href="#">Home 2</a>
+    <a href="#">About Us</a>
+    <a href="#">Our Story Part 2</a>
+    <a href="#">Meet Grandma's Cat</a>
+    <a href="#">Blog (2011)</a>
+    <a href="#">Links</a>
+    <a href="#">Guestbook</a>
+    <a href="#">Webring</a>
+    <a href="#">Awards</a>
+    <a href="#">FAQ's</a>
+    <a href="#">Misc.</a>
+    <a href="#">Site Map</a>
+    <a href="#">Contact??</a>
+  </nav>
+
+  <div class="banner">
+    <div class="photo" id="banner-photo" hidden></div>
+    <span class="photo-caption" id="banner-caption" hidden>our breads!!! (photo by my nephew)</span>
+    <div class="loading" id="banner-loading">
+      <span>Loading banner_FINAL_v3_REALLYFINAL.bmp (24.6 MB)...</span>
+      <div class="bar"><i id="banner-bar"></i></div>
+      <span id="banner-pct">0%</span>
+    </div>
+  </div>
+
+  <div class="cols">
+    <div class="side">
+      <div class="box">
+        <h3>Cool Links</h3>
+        <a href="#">My cousin's band</a>
+        <a href="#">Free screensavers</a>
+        <a href="#">Bread facts!!!</a>
+        <a href="#">Click here</a>
+        <a href="#">Click here too</a>
+      </div>
+      <div class="box">
+        <h3>Sign our Guestbook!</h3>
+        <p style="font-size:12px;margin:0">Last entry: "nice site" (2013)</p>
+      </div>
+      <div class="construction">UNDER CONSTRUCTION<br>PARDON OUR DUST!!</div>
+    </div>
+
+    <div class="main">
+      <div class="box about">
+        <h3>About Us!!</h3>
+        <p>Crumb &amp; Co. was started in 1987 by my grandmother Rosa who always said "life is short, eat the bread." She came over with nothing but a sourdough starter and a dream and a very old cat named Biscuit (see "Meet Grandma's Cat" page). Over the years we have grown a lot and moved twice and had many many adventures which you can read about in our blog. We make many things like breads, cakes, cookies, pies, muffins and more, you name it we probaly make it!!</p>
+        <p class="tagline2">We take pride in our quality ingredients and our dedicated staff who work very hard every single day to make the best products for our valued customers in the community and beyond.</p>
+        <p>We are open most days, hours vary depending on the season and how busy we are, so check our Facebook page for updates or just stop by and see if we are open!! You can't miss us, we are right next to where the old video store used to be.</p>
+      </div>
+
+      <div class="specials">
+        <h2 class="blink">*** SPECIALS!!! ***</h2>
+        <div class="slide" id="slide"></div>
+      </div>
+
+      <button class="order" type="button" id="order-btn">&#9733; ORDER ONLINE NOW &#9733;</button>
+      <div class="soon" id="soon">Online ordering is COMING SOON!!! (since 2015)</div>
+    </div>
+
+    <div class="side">
+      <div class="box">
+        <h3>Contact Us</h3>
+        <svg class="phone-img" width="170" height="64" viewBox="0 0 170 64" role="img" aria-label="">
+          <rect width="170" height="64" fill="#fffde7"/>
+          <g transform="rotate(-6 85 32)">
+            <text x="6" y="26" font-family="Brush Script MT, cursive" font-size="20" fill="#d4a017">Call us at:</text>
+            <text x="6" y="52" font-family="Brush Script MT, cursive" font-size="24" fill="#e0b84a">555-555-0142</text>
+          </g>
+        </svg>
+        <p style="font-size:12px;margin:4px 0 0">Call for directions!</p>
+      </div>
+      <div class="box">
+        <h3>Music!</h3>
+        <div class="music">
+          <div class="eq" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
+          <span>NOW PLAYING:<br>bakery_theme_song.mid</span>
+        </div>
+        <p style="font-size:12px;margin:6px 0 0">Turn up ur speakers!!! (there is no pause button)</p>
+      </div>
+      <div class="box">
+        <h3>Awards</h3>
+        <p style="font-size:12px;margin:0">&#9733; Cool Site of the Day (2009) &#9733;</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="footer">
+    &copy; 2014 Crumb &amp; Co. Bakery. All rights reserved. | Last updated: March 3, 2016 | Webmaster: my nephew Kevin
+  </div>
+</div>
+<script>
+  var popup = document.getElementById('popup');
+  function closePopup() { popup.hidden = true; }
+  ['popup-x', 'popup-yes', 'popup-no'].forEach(function (id) {
+    document.getElementById(id).addEventListener('click', closePopup);
+  });
+
+  var pct = 0;
+  var bar = document.getElementById('banner-bar');
+  var label = document.getElementById('banner-pct');
+  var timer = setInterval(function () {
+    pct = Math.min(100, pct + (pct < 70 ? 4 : 1));
+    bar.style.width = pct + '%';
+    label.textContent = pct + '%';
+    if (pct >= 100) {
+      clearInterval(timer);
+      document.getElementById('banner-loading').hidden = true;
+      document.getElementById('banner-photo').hidden = false;
+      document.getElementById('banner-caption').hidden = false;
+    }
+  }, 160);
+
+  var specials = [
+    ['Heart Cookies for Valentine’s Day!!', 'Valentine’s Day 2019 only'],
+    ['PUMPKIN SPICE EVERYTHING', 'Fall 2020'],
+    ['New Years Cake', 'Dec 31, 2018'],
+    ['Back to School Muffins', 'August 2017']
+  ];
+  var i = 0;
+  var slide = document.getElementById('slide');
+  function show() {
+    slide.innerHTML = specials[i][0] + '<small>' + specials[i][1] + '</small>';
+    i = (i + 1) % specials.length;
+  }
+  show();
+  setInterval(show, 1400);
+
+  document.getElementById('order-btn').addEventListener('click', function () {
+    document.getElementById('soon').style.display = 'block';
+  });
+</script>
+<script id="hunt-data" type="application/json">{"key": "crumb", "round": 1, "site": "Crumb & Co. Bakery"}</script>
+<script src="hunt.js"></script>
+</body>
+</html>

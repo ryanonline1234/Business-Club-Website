@@ -118,23 +118,39 @@ account, apply STEP 9 and delete this entry.
 
 ### `/about`'s select lists are a privacy boundary — do not widen them casually
 
-**Severity: structural.** `/about` is the one public page that reads through
+**Severity: structural.** `/about` is a public page that reads through
 `supabaseAdmin` with no gate at all (`/login` and `/join` read nothing;
 `/checkin` reads one event's `title, start_time, end_time, location` only after
-a signed QR token verifies), and `supabaseAdmin` can see everything. What keeps it safe is that
-its queries name only the columns the public may see:
+a signed QR token verifies; the meeting pages are covered below), and
+`supabaseAdmin` can see everything. What keeps it safe is that its queries
+name only the columns the public may see:
 
 - `events` → `id, title, start_time, category, recap` (never `created_by`;
   `id` is used only for the server-side photo join and never reaches the DOM)
 - `photos` → `storage_path, caption, event_id` (never `uploaded_by`)
 - `profiles` → `name, role, bio`, filtered to **approved officers only** —
   never email, never member rows, never member counts, never attendance
-- **never `slides_url`** — slides links are members-only (owner decision,
-  2026-10-01); they render only on `/meetings/[id]`, behind `requireApproved`
+
+**The meeting pages are public too (owner decision, 2026-10-26)**, so that a
+meeting's slides and activities open without signing in. For a visitor who is
+not signed in and approved, their selects are the same kind of boundary:
+
+- `/meetings` → `events: id, title, start_time, end_time, category`, plus
+  `recap`, `slides_url` and `photos(count)` (never `location`, never
+  attendance)
+- `/meetings/[id]` → `events: id, title, start_time, end_time, category,
+  status, recap, slides_url` (never `description`, `location`, `capacity`
+  or `created_by`), plus that meeting's photos; no `attendance` or `profiles`
+  read at all
+- **`slides_url` is public** since 2026-10-26 (it was members-only from
+  2026-10-01). A deck shared "Mitty only" still sends a non-member to a Google
+  login wall, which is Google's sharing setting, not ours; the Edit details
+  hint tells officers to share as "Anyone with the link". `/about` still does
+  not select it — it has no place to show it.
 
 Adding a column to one of those selects, or loosening the officers filter, is
-a privacy decision, not a refactor — the page header in
-`src/pages/about.astro` says the same thing. The DB mirrors the boundary:
+a privacy decision, not a refactor — the page headers in
+`src/pages/about.astro` and `src/pages/meetings/*.astro` say the same thing. The DB mirrors the boundary:
 STEP 18's column-level grant keeps `photos.uploaded_by` unreadable under the
 anon key even though the photo rows themselves are public.
 

@@ -207,6 +207,8 @@ button,input,select,textarea{ font:inherit; color:inherit; }
 .avatar--lg{ width:42px; height:42px; }
 
 .signout{ display:flex; flex:none; }
+/* Signed-out shell (public meeting pages): the one control in the bar. */
+.topbar__signin{ margin-left:auto; flex:none; }
 .signout__btn{
   display:inline-flex; align-items:center; min-height:var(--tap); padding:0 10px;
   background:transparent; border:0; cursor:pointer; border-radius:var(--r);
@@ -1054,6 +1056,7 @@ button,input,select,textarea{ font:inherit; color:inherit; }
 .meeting__desc p, .meeting__recap p{ font-size:var(--t-16); line-height:1.65; color:var(--ink-2); overflow-wrap:anywhere; }
 .meeting__desc p + p, .meeting__recap p + p{ margin-top:10px; }
 .meeting__recap{ max-width:64ch; }
+.meeting__activities{ max-width:64ch; }
 .meeting__railacts{ margin-top:16px; display:flex; flex-direction:column; gap:10px; align-items:stretch; }
 .meeting__railacts .btn{ justify-content:center; }
 @media (min-width:620px) and (max-width:939px){
