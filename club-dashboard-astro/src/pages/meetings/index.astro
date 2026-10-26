@@ -21,11 +21,17 @@
  *     (their OWN attendance rows only);
  *   • officers also see each meeting's check-in count, gold "No recap" /
  *     "No photos" flags on past meetings, a count of past meetings still
- *     missing a recap (the empty /about record), and "Add a past meeting".
+ *     missing a recap (the empty /about record), and the New meeting form
+ *     (POST /api/events/create; past start times are fine, and it lands on
+ *     the new meeting's page). ?new=1 opens that form on arrival.
  *
- * Not listed: cancelled events (hidden everywhere) and `deadline` events
- * (not meetings). Reads FAIL SOFT for slides_url (STEP 20), recap (STEP 17)
- * and photos (STEP 18).
+ * Since 2026-10-26 this page replaces the calendar (owner decision): every
+ * upcoming event is listed under Coming up — `deadline` events included,
+ * tagged — and /calendar only redirects here. Past `deadline` events are not
+ * meetings and stay out of the archive.
+ *
+ * Not listed: cancelled events (hidden everywhere). Reads FAIL SOFT for
+ * slides_url (STEP 20), recap (STEP 17) and photos (STEP 18).
  */
 import DashboardLayout from '../../layouts/DashboardLayout.astro';
 import { getSession } from '../../lib/auth';
@@ -33,7 +39,7 @@ import { supabaseAdmin } from '../../lib/supabase';
 import { effectiveEndMs } from '../../lib/event-time';
 import { slidesLink } from '../../lib/slides-link';
 import { activitiesForMeeting } from '../../lib/activities';
-import { categoryLabel, isMissingColumn, isMissingRelation, schoolYearLabel } from '../../lib/meetings';
+import { EVENT_CATEGORIES, categoryLabel, isMissingColumn, isMissingRelation, schoolYearLabel } from '../../lib/meetings';
 
 /* No guard — public page (see the header). `user` is null unless the visitor
    is signed in AND approved. */
@@ -43,7 +49,6 @@ const isOfficer = !!user?.isOfficer;
 
 const TZ = 'America/Los_Angeles';
 const LIST_LIMIT = 500;
-const UPCOMING_SHOWN = 3;
 
 interface Row {
   id: string;
@@ -78,7 +83,6 @@ for (const [i, cols] of attempts.entries()) {
     .from('events')
     .select(cols)
     .in('status', ['active', 'completed'])
-    .or('category.is.null,category.neq.deadline')
     .order('start_time', { ascending: false })
     .limit(LIST_LIMIT);
   if (error && (isMissingColumn(error) || isMissingRelation(error)) && i < attempts.length - 1) continue;
@@ -122,6 +126,7 @@ interface View {
   month: string;
   sub: string;
   isPast: boolean;
+  isDeadline: boolean;
   hasSlides: boolean;
   activityCount: number;
   photoCount: number;
@@ -143,6 +148,7 @@ const toView = (r: Row): View => {
       .filter(Boolean)
       .join(' · '),
     isPast: end !== null && end < nowMs,
+    isDeadline: (r.category ?? '').trim() === 'deadline',
     hasSlides: slidesLink(r.slides_url) !== null,
     activityCount: activitiesForMeeting(r.id, isOfficer).length,
     photoCount: countOf(r.photos),
@@ -153,8 +159,8 @@ const toView = (r: Row): View => {
 };
 
 const views = rows.map(toView);
-const upcoming = views.filter((v) => !v.isPast).reverse().slice(0, UPCOMING_SHOWN);
-const past = views.filter((v) => v.isPast);
+const upcoming = views.filter((v) => !v.isPast).reverse();
+const past = views.filter((v) => v.isPast && !v.isDeadline);
 const missingRecap = past.filter((v) => !v.hasRecap).length;
 
 // Past rows are newest-first, so each school year is one contiguous run.
@@ -181,9 +187,61 @@ const plural = (n: number, one: string, many: string) => (n === 1 ? one : many);
           ? `${missingRecap} past ${plural(missingRecap, 'meeting has', 'meetings have')} no recap yet — recaps and photos are what fill the public /about page.`
           : 'Every past meeting has a recap.'}
       </p>
-      <p class="meetings__officeracts">
-        <a class="btn btn--ghost" href="/calendar?new=1">Add a past meeting</a>
-      </p>
+      <details class="composer meetings__composer">
+        <summary>New meeting</summary>
+        <form class="composer__form" id="event-form" novalidate>
+          <div class="composer__head">
+            <b>New meeting</b>
+            <span class="composer__help">Past dates are fine — for adding a meeting after the fact.</span>
+          </div>
+          <label class="field">
+            <span>Title</span>
+            <input class="input" type="text" name="title" required maxlength="200" autocomplete="off" />
+          </label>
+          <div class="composer__duo">
+            <label class="field">
+              <span>Starts</span>
+              <input class="input" type="datetime-local" name="start" required />
+              <span class="field__hint">Pacific time.</span>
+            </label>
+            <label class="field">
+              <span>Ends</span>
+              <input class="input" type="time" name="end" />
+              <span class="field__hint js-end-hint">Same day as the start. Leave it blank and the meeting ends at midnight.</span>
+            </label>
+          </div>
+          <div class="composer__duo">
+            <label class="field">
+              <span>Location</span>
+              <input class="input" type="text" name="location" maxlength="300" autocomplete="off" />
+            </label>
+            <label class="field">
+              <span>Capacity</span>
+              <input class="input" type="number" name="capacity" min="1" step="1" inputmode="numeric" />
+              <span class="field__hint">Optional. Leave blank for no cap.</span>
+            </label>
+          </div>
+          <div class="composer__duo">
+            <label class="field">
+              <span>Category</span>
+              <select class="select" name="category">
+                {EVENT_CATEGORIES.map((c) => (
+                  <option value={c} selected={c === 'meeting'}>{categoryLabel(c)}</option>
+                ))}
+              </select>
+            </label>
+          </div>
+          <label class="field">
+            <span>Description</span>
+            <textarea class="textarea" name="description" maxlength="5000"></textarea>
+            <span class="field__hint">Optional. Plain text — members see it on the meeting page. Add slides and activities there after creating it.</span>
+          </label>
+          <p id="event-form-error" class="small js-form-error" role="alert" style="color:var(--clay); display:none;"></p>
+          <div class="composer__actions">
+            <button class="btn" type="submit">Create meeting</button>
+          </div>
+        </form>
+      </details>
     </section>
   )}
 
@@ -197,8 +255,8 @@ const plural = (n: number, one: string, many: string) => (n === 1 ? one : many);
     <div class="state state--rule">
       <b>No meetings yet</b>
       <p>
-        Meetings land here as they&rsquo;re scheduled on the calendar.
-        {isOfficer && ' Add past ones with “Add a past meeting” above.'}
+        Meetings land here as officers schedule them.
+        {isOfficer && ' Use “New meeting” above — past dates work too.'}
       </p>
     </div>
   ) : (
@@ -207,8 +265,6 @@ const plural = (n: number, one: string, many: string) => (n === 1 ? one : many);
         <section aria-labelledby="up-h" class="meetings__group">
           <div class="section-head">
             <h2 id="up-h">Coming up</h2>
-            <span class="spacer"></span>
-            {user && <a class="btn btn--sm btn--ghost" href="/calendar">Full calendar</a>}
           </div>
           <ul class="rowlist">
             {upcoming.map((m) => (
@@ -218,8 +274,9 @@ const plural = (n: number, one: string, many: string) => (n === 1 ? one : many);
                   <span class="rowlink__main">
                     <span class="rowlink__title">{m.title}</span>
                     <span class="rowlink__sub">{m.sub}</span>
-                    {(m.hasSlides || m.activityCount > 0) && (
+                    {(m.isDeadline || m.hasSlides || m.activityCount > 0) && (
                       <span class="meetings__chips">
+                        {m.isDeadline && <span class="tag tag--gold">Deadline</span>}
                         {m.hasSlides && <span class="tag">Slides</span>}
                         {m.activityCount > 0 && <span class="tag">{plural(m.activityCount, 'Activity', `${m.activityCount} activities`)}</span>}
                       </span>
@@ -273,3 +330,26 @@ const plural = (n: number, one: string, many: string) => (n === 1 ? one : many);
     </Fragment>
   )}
 </DashboardLayout>
+
+<script>
+  import { wireCreateForm } from '../../scripts/event-form';
+
+  /* New meeting (officers) — the shared logic is src/scripts/event-form.ts;
+     a created meeting lands on its own page. ?new=1 (the old "Add a past
+     meeting" link, and /calendar?new=1) opens the form on arrival. */
+  const form = document.getElementById('event-form') as HTMLFormElement | null;
+  if (form) {
+    wireCreateForm(form);
+    const params = new URLSearchParams(location.search);
+    if (params.get('new') === '1') {
+      params.delete('new');
+      const qs = params.toString();
+      history.replaceState(null, '', location.pathname + (qs ? `?${qs}` : '') + location.hash);
+      const composer = form.closest('details');
+      if (composer) {
+        composer.open = true;
+        composer.scrollIntoView({ block: 'start' });
+      }
+    }
+  }
+</script>

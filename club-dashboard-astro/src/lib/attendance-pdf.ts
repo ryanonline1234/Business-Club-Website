@@ -2,7 +2,7 @@ import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from 'pdf
 
 /**
  * The per-meeting attendance sheet officers download from /attendance and
- * /calendar (GET /api/events/:id/attendance.pdf). Pure: data in, bytes out —
+ * each meeting's page (GET /api/events/:id/attendance.pdf). Pure: data in, bytes out —
  * no database, no request — so it can be rendered and eyeballed locally.
  *
  * FONTS: the built-in Helvetica, deliberately. It needs no font file (the

@@ -219,7 +219,7 @@ Schema features with no code behind them. All inherited; none regressed.
 | What | State |
 |---|---|
 | `events.password` | Dead column. The create endpoint silently ignores a `password` key; nothing reads it. Kept because dropping a column is irreversible. If password check-in is ever built, hash it |
-| `events.capacity` | Validated positive on create and displayed on the calendar, but check-in never compares attendance against it |
+| `events.capacity` | Validated positive on create and displayed on the meeting page, but check-in never compares attendance against it |
 | `events.status = 'completed'` | Allowed by the check constraint, set by nothing. Events are `active` until cancelled |
 | `attendance.qr_data` | Never written |
 | `attendance.method = 'password'` | Allowed value, unreachable — the only writer hardcodes `'qr'` |
@@ -258,8 +258,8 @@ ever reports "my recap isn't showing", check the event's status first.
 ### No pagination anywhere
 
 `/announcements` renders the latest 50; the officer attendance log fetches
-the latest 400 and says so when capped; the roster and calendar load
-everything. Fine at club scale; the first thing to revisit if any table grows
+the latest 400 and says so when capped; the roster loads everything, and
+`/meetings` caps at 500 and says so. Fine at club scale; the first thing to revisit if any table grows
 past a few hundred rows.
 
 ### Mutations reload the whole page

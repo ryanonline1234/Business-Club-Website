@@ -18,8 +18,8 @@ import { checkinWindow } from '../../../../lib/event-time';
  *
  * The token lives 15 minutes (QR_TOKEN_TTL_SECONDS, owned by lib/qrcode.ts).
  * `expires_at` / `expires_in` are returned so the client can silently re-fetch
- * before the projected code goes stale — and src/pages/calendar.astro's
- * Present mode does exactly that: it re-fetches at `expires_in − 180s`,
+ * before the projected code goes stale — and src/components/PresentLayer.astro
+ * does exactly that: it re-fetches at `expires_in − 180s`,
  * surfaces 4xx errors on screen, and retries 5xx/network failures. (An older
  * warning here described a fetch-once client; that client is gone. The similar
  * warning block in src/lib/qrcode.ts is likewise stale.)

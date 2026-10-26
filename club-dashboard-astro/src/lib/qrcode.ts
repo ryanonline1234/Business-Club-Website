@@ -17,7 +17,7 @@ const AUDIENCE = 'checkin';
  * photograph off a projector is the actual weakness, so the window is what
  * limits the blast radius.
  *
- * The client half lives in src/pages/calendar.astro's present mode: it reads
+ * The client half lives in src/components/PresentLayer.astro: it reads
  * the `expires_in` this endpoint returns, silently re-fetches before expiry
  * (with a 30s retry on failure), and shows a refresh countdown — so a code
  * projected for a 45-minute meeting keeps verifying. If you change the TTL,

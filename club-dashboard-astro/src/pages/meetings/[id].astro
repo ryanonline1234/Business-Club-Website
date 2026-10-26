@@ -22,7 +22,11 @@
  *   • Recap         → PATCH /api/events/:id/recap   (past meetings; public)
  *   • Photos        → POST /api/photos, DELETE /api/photos/:id (past; public)
  *   • Officer-only activities (presenter views, answer keys)
- * The calendar keeps only Present and Cancel, and links here.
+ *   • Present check-in code → components/PresentLayer (opens in place;
+ *     ?present=1, from the home page, opens it on arrival)
+ *   • Cancel meeting → DELETE /api/events/:id/delete, then back to /meetings
+ * Since 2026-10-26 there is no calendar: /calendar only redirects here, and
+ * new meetings are created on /meetings.
  *
  * Reads FAIL SOFT for columns/tables that arrive by hand-applied SQL steps:
  * events.slides_url (STEP 20), events.recap (STEP 17), photos (STEP 18) — a
@@ -33,6 +37,7 @@
  * embed, no iframe (invariant 10).
  */
 import DashboardLayout from '../../layouts/DashboardLayout.astro';
+import PresentLayer from '../../components/PresentLayer.astro';
 import { getSession } from '../../lib/auth';
 import { supabaseAdmin } from '../../lib/supabase';
 import { checkinWindow, explicitEndMs, isHappeningNow, pacificParts } from '../../lib/event-time';
@@ -234,7 +239,9 @@ const title = meeting?.title ?? 'Meeting';
 
         {view.canPresent && (
           <p class="meeting__present">
-            <a class="btn" href={`/calendar?event=${encodeURIComponent(meeting.id)}&present=1`}>Present check-in code</a>
+            <button class="btn" type="button" id="present-open" data-event-id={meeting.id} data-event-title={meeting.title}>
+              Present check-in code
+            </button>
           </p>
         )}
 
@@ -282,77 +289,92 @@ const title = meeting?.title ?? 'Meeting';
         {editPrefill && (
           <section class="owned meeting__block" aria-labelledby="edit-h">
             <div class="event-actions__head"><span class="flag">Officer only</span></div>
-            <details class="editdetails">
-              <summary class="btn btn--ghost" id="edit-h">Edit details</summary>
-              <form class="composer__form editdetails__form" id="event-edit-form" data-event-id={meeting.id} novalidate>
-                <div class="composer__head">
-                  <b>Edit details</b>
-                  <span class="small muted">Check-ins, recap and photos stay attached.</span>
-                </div>
-                <label class="field">
-                  <span>Title</span>
-                  <input class="input" type="text" name="title" required maxlength="200" autocomplete="off" value={meeting.title} />
-                </label>
-                <div class="composer__duo">
+            <div class="event-actions__row">
+              <details class="editdetails">
+                <summary class="btn btn--ghost" id="edit-h">Edit details</summary>
+                <form class="composer__form editdetails__form" id="event-edit-form" data-event-id={meeting.id} novalidate>
+                  <div class="composer__head">
+                    <b>Edit details</b>
+                    <span class="small muted">Check-ins, recap and photos stay attached.</span>
+                  </div>
                   <label class="field">
-                    <span>Starts</span>
-                    <input class="input" type="datetime-local" name="start" required value={editPrefill.start} />
-                    <span class="field__hint">Pacific time.</span>
+                    <span>Title</span>
+                    <input class="input" type="text" name="title" required maxlength="200" autocomplete="off" value={meeting.title} />
                   </label>
+                  <div class="composer__duo">
+                    <label class="field">
+                      <span>Starts</span>
+                      <input class="input" type="datetime-local" name="start" required value={editPrefill.start} />
+                      <span class="field__hint">Pacific time.</span>
+                    </label>
+                    <label class="field">
+                      <span>Ends</span>
+                      <input class="input" type="time" name="end" value={editPrefill.end} />
+                      <span class="field__hint js-end-hint">Same day. Blank = ends at midnight.</span>
+                    </label>
+                  </div>
+                  <div class="composer__duo">
+                    <label class="field">
+                      <span>Location</span>
+                      <input class="input" type="text" name="location" maxlength="300" autocomplete="off" value={meeting.location ?? ''} />
+                    </label>
+                    <label class="field">
+                      <span>Capacity</span>
+                      <input class="input" type="number" name="capacity" min="1" step="1" inputmode="numeric" value={meeting.capacity ?? ''} />
+                    </label>
+                  </div>
                   <label class="field">
-                    <span>Ends</span>
-                    <input class="input" type="time" name="end" value={editPrefill.end} />
-                    <span class="field__hint js-end-hint">Same day. Blank = ends at midnight.</span>
+                    <span>Category</span>
+                    <select class="select" name="category">
+                      {editPrefill.categories.map((c) => (
+                        <option value={c} selected={c === editPrefill!.category}>{categoryLabel(c)}</option>
+                      ))}
+                    </select>
                   </label>
-                </div>
-                <div class="composer__duo">
+                  {hasSlidesColumn && (
+                    <label class="field">
+                      <span>Slides link</span>
+                      <input
+                        class="input"
+                        type="url"
+                        name="slides"
+                        inputmode="url"
+                        autocapitalize="off"
+                        autocorrect="off"
+                        spellcheck="false"
+                        maxlength="2048"
+                        placeholder="https://docs.google.com/presentation/…"
+                        value={meeting.slides_url ?? ''}
+                      />
+                      <span class="field__hint">Google Slides, Docs or Drive share link. Public — anyone with this meeting&rsquo;s link sees it, so share the deck as &ldquo;Anyone with the link&rdquo;. Clear it to remove.</span>
+                    </label>
+                  )}
                   <label class="field">
-                    <span>Location</span>
-                    <input class="input" type="text" name="location" maxlength="300" autocomplete="off" value={meeting.location ?? ''} />
+                    <span>Description</span>
+                    <textarea class="textarea" name="description" maxlength="5000">{meeting.description ?? ''}</textarea>
+                    <span class="field__hint">Members only. Each line break starts a new paragraph.</span>
                   </label>
-                  <label class="field">
-                    <span>Capacity</span>
-                    <input class="input" type="number" name="capacity" min="1" step="1" inputmode="numeric" value={meeting.capacity ?? ''} />
-                  </label>
-                </div>
-                <label class="field">
-                  <span>Category</span>
-                  <select class="select" name="category">
-                    {editPrefill.categories.map((c) => (
-                      <option value={c} selected={c === editPrefill!.category}>{categoryLabel(c)}</option>
-                    ))}
-                  </select>
-                </label>
-                {hasSlidesColumn && (
-                  <label class="field">
-                    <span>Slides link</span>
-                    <input
-                      class="input"
-                      type="url"
-                      name="slides"
-                      inputmode="url"
-                      autocapitalize="off"
-                      autocorrect="off"
-                      spellcheck="false"
-                      maxlength="2048"
-                      placeholder="https://docs.google.com/presentation/…"
-                      value={meeting.slides_url ?? ''}
-                    />
-                    <span class="field__hint">Google Slides, Docs or Drive share link. Public — anyone with this meeting&rsquo;s link sees it, so share the deck as &ldquo;Anyone with the link&rdquo;. Clear it to remove.</span>
-                  </label>
-                )}
-                <label class="field">
-                  <span>Description</span>
-                  <textarea class="textarea" name="description" maxlength="5000">{meeting.description ?? ''}</textarea>
-                  <span class="field__hint">Members only. Each line break starts a new paragraph.</span>
-                </label>
-                <p class="small js-form-error" role="alert" style="color:var(--clay); display:none;"></p>
-                <div class="composer__actions">
-                  <button class="btn" type="submit">Save changes</button>
-                  <button class="btn btn--ghost js-edit-close" type="button">Close</button>
-                </div>
-              </form>
-            </details>
+                  <p class="small js-form-error" role="alert" style="color:var(--clay); display:none;"></p>
+                  <div class="composer__actions">
+                    <button class="btn" type="submit">Save changes</button>
+                    <button class="btn btn--ghost js-edit-close" type="button">Close</button>
+                  </div>
+                </form>
+              </details>
+              {meeting.status === 'active' && (
+                <details class="confirm">
+                  <summary class="btn btn--danger">Cancel meeting</summary>
+                  <div class="confirm__row">
+                    <span class="confirm__q">
+                      Cancel this meeting? It disappears from the site.{checkinCount > 0 ? ` ${checkinCount} ${checkinCount === 1 ? 'person is' : 'people are'} already checked in.` : ''}
+                    </span>
+                    <button class="btn btn--sm btn--danger-go" type="button" id="cancel-event-go" data-event-id={meeting.id}>Cancel it</button>
+                    <button class="btn btn--sm btn--ghost" type="button" id="cancel-event-keep">Keep it</button>
+                  </div>
+                </details>
+              )}
+            </div>
+            <p id="event-actions-error" class="small" role="alert" style="color:var(--clay); display:none; margin-top:10px;"></p>
           </section>
         )}
 
@@ -450,7 +472,7 @@ const title = meeting?.title ?? 'Meeting';
             <dl class="facts meeting__facts">
               <div>
                 <dt>Checked in</dt>
-                <dd><span class="num">{checkinCount}</span>{meeting.capacity !== null && <> of <span class="num">{meeting.capacity}</span></>}</dd>
+                <dd><span class="num" id="facts-checkins">{checkinCount}</span>{meeting.capacity !== null && <> of <span class="num">{meeting.capacity}</span></>}</dd>
               </div>
               {myCheckin !== undefined && (
                 <div>
@@ -472,17 +494,18 @@ const title = meeting?.title ?? 'Meeting';
               )}
               <div><dt>Created by</dt><dd>{creatorName ?? '—'}</dd></div>
             </dl>
-            <p class="meeting__railacts">
-              {isOfficer && view.checkinOpened && (
+            {isOfficer && view.checkinOpened && (
+              <p class="meeting__railacts">
                 <a class="btn btn--ghost" href={`/api/events/${encodeURIComponent(meeting.id)}/attendance.pdf`} download>Attendance PDF</a>
-              )}
-              <a class="btn btn--ghost" href={`/calendar?event=${encodeURIComponent(meeting.id)}`}>View on calendar</a>
-            </p>
+              </p>
+            )}
           </section>
         </aside>
       )}
     </div>
   )}
+
+  {meeting && view?.canPresent && <PresentLayer checkinCount={checkinCount} />}
 </DashboardLayout>
 
 <script>
@@ -503,6 +526,37 @@ const title = meeting?.title ?? 'Meeting';
     }
     return fallback;
   };
+
+  /* ── Cancel meeting (officers, inline confirm) ───────────────────────────
+     A cancelled meeting is hidden everywhere, this page included, so success
+     goes back to the list rather than reloading into "not found". */
+  const cancelGo = document.getElementById('cancel-event-go') as HTMLButtonElement | null;
+  document.getElementById('cancel-event-keep')?.addEventListener('click', (e) => {
+    (e.currentTarget as HTMLElement).closest('details')?.removeAttribute('open');
+  });
+  if (cancelGo) {
+    const actionsErr = document.getElementById('event-actions-error') as HTMLElement;
+    cancelGo.addEventListener('click', async () => {
+      const id = cancelGo.dataset.eventId;
+      if (!id) return;
+      cancelGo.disabled = true;
+      actionsErr.style.display = 'none';
+      try {
+        const res = await fetch(`/api/events/${encodeURIComponent(id)}/delete`, { method: 'DELETE' });
+        if (!res.ok) {
+          actionsErr.textContent = await errText(res, 'Could not cancel the meeting.');
+          actionsErr.style.display = 'block';
+          cancelGo.disabled = false;
+          return;
+        }
+        location.href = '/meetings';
+      } catch {
+        actionsErr.textContent = 'Network error — check your connection and try again.';
+        actionsErr.style.display = 'block';
+        cancelGo.disabled = false;
+      }
+    });
+  }
 
   /* ── Recap (officers, past meetings) ─────────────────────────────────── */
   const recapForm = document.getElementById('recap-form') as HTMLFormElement | null;

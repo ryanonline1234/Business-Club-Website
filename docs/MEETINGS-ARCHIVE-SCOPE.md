@@ -19,6 +19,12 @@ only" reasoning below is kept as history. Current rules:
 [KNOWN-GAPS.md](KNOWN-GAPS.md#abouts-select-lists-are-a-privacy-boundary--do-not-widen-them-casually)
 and [ARCHITECTURE.md](ARCHITECTURE.md#meeting-activities)._
 
+_**Also superseded 2026-10-26:** the calendar is retired. Meetings has its own
+nav tab (§2's "no sixth nav item" holds — it took Calendar's slot), and the
+calendar's remaining jobs moved here: New meeting on `/meetings`, Present and
+Cancel on `/meetings/[id]`. `/calendar` only redirects. §3's table below
+describes the 2026-10-01 split and is history._
+
 The ask: a place where meetings are registered and listed, where you can go
 back to a past meeting, open its slides, and where officers can edit its
 description and upload photos.

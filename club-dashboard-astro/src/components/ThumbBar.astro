@@ -10,13 +10,11 @@ interface Props {
 }
 const { currentPath } = Astro.props;
 
-// /meetings belongs to the Calendar tab (no sixth nav item — the officer
-// top bar has no room for one at iPad widths).
-const SECTION_ALIASES: Record<string, string[]> = { '/calendar': ['/meetings'] };
+// Meetings took the Calendar tab's place on 2026-10-26 (/calendar now only
+// redirects). Still five items — the officer top bar has no room for a sixth
+// at iPad widths. /meetings/[id] highlights Meetings.
 const isActive = (href: string) =>
-  href === '/'
-    ? currentPath === '/'
-    : [href, ...(SECTION_ALIASES[href] ?? [])].some((p) => currentPath === p || currentPath.startsWith(p + '/'));
+  href === '/' ? currentPath === '/' : currentPath === href || currentPath.startsWith(href + '/');
 
 const current = (href: string) => (isActive(href) ? 'page' : undefined);
 ---
@@ -25,9 +23,9 @@ const current = (href: string) => (isActive(href) ? 'page' : undefined);
     <svg class="ic" viewBox="0 0 20 20" aria-hidden="true"><path d="M3 9l7-6 7 6v8H3z"/><path d="M8 17v-5h4v5"/></svg>
     Home
   </a>
-  <a href="/calendar" aria-current={current('/calendar')}>
+  <a href="/meetings" aria-current={current('/meetings')}>
     <svg class="ic" viewBox="0 0 20 20" aria-hidden="true"><path d="M3.5 5h13v12h-13z"/><path d="M3.5 9h13M7 3v3M13 3v3"/></svg>
-    Calendar
+    Meetings
   </a>
   <a href="/members" aria-current={current('/members')}>
     <svg class="ic" viewBox="0 0 20 20" aria-hidden="true"><circle cx="8" cy="7.5" r="3"/><path d="M2.5 16.5c0-3 2.5-4.6 5.5-4.6s5.5 1.6 5.5 4.6"/><path d="M14 5.4a2.9 2.9 0 010 4.6"/></svg>

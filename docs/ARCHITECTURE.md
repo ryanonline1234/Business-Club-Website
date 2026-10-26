@@ -77,7 +77,8 @@ club-dashboard-astro/
 │       ├── index.astro                 ← home dashboard
 │       ├── login.astro  pending.astro  checkin.astro   ← standalone (no layout)
 │       ├── about.astro  join.astro     ← PUBLIC, standalone: showcase + recruiting QR
-│       ├── calendar.astro  attendance.astro
+│       ├── calendar.astro              ← RETIRED: redirects old links to /meetings
+│       ├── attendance.astro
 │       ├── meetings/index.astro  meetings/[id].astro   ← PUBLIC archive + one page per meeting
 │       ├── activities/[slug]/[...path].ts             ← serves src/activities (guard per audience)
 │       ├── members.astro   announcements.astro
@@ -349,7 +350,7 @@ PNG data URL. Verification pins `algorithms: ['HS256']` so an `alg: none`
 token can never pass.
 
 ```
-Officer on /calendar → Present mode → GET /api/events/:id/qr   (officer-gated)
+Officer on /meetings/[id] → Present mode → GET /api/events/:id/qr   (officer-gated)
   → full-bleed projected QR, silently re-fetched ~3 min before expiry
   → live tally: GET /api/events/:id/checkins every 3 s → a NUMBER, never names
 Member scans → /checkin (public) → signs in if needed (?next= round trip)
@@ -374,8 +375,8 @@ or the event stops being active: the token is then re-verified with only its
 expiry relaxed (`verifyQRToken(token, { expiredGraceS })`, signature still
 enforced), purely to read the member's own row; someone with no row still gets
 the details-free "invalid" view. The home page's next-up card shows
-your status on the day of the meeting, and the calendar's event facts show it
-once check-in has opened. Each is the signed-in member's **own** row only; a
+your status on the day of the meeting, and the meeting page's check-in facts
+show it once check-in has opened. Each is the signed-in member's **own** row only; a
 failed lookup renders nothing rather than a false "not checked in".
 
 The check-in window is `start_time − 30 min` → `end_time + 2 h` **capped at

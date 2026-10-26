@@ -54,11 +54,22 @@ both attached to the Oct 14 meeting. Registry: `src/lib/activities.ts`; how
 they're served and why they're code, not uploads:
 [ARCHITECTURE.md](ARCHITECTURE.md#meeting-activities), AGENTS.md invariant 11.
 
+Calendar retired (2026-10-26, owner decision — it felt awkward): the
+**Meetings** tab replaces Calendar in both navs. `/meetings` lists every
+upcoming meeting (and upcoming deadline), then past meetings, and holds the
+officers' **New meeting** form; each meeting page runs **Present check-in
+code** in place (`components/PresentLayer.astro`) and has **Cancel meeting**.
+The month grid is gone. `/calendar` only redirects old links (`?event=`,
+`&present=1`, `?new=1`). Officer screens were checked locally with a
+temporary dev-only fake session (removed): Present opens, polls and closes;
+the server refused the code because the Oct 14 meeting is over (expected); the
+cancel confirm opens and closes. A live check-in with a real code at a
+meeting is still to do.
+
 Meetings archive (2026-10-01): `/meetings` lists every meeting (upcoming,
 then past by school year); `/meetings/[id]` is each meeting's record —
 details, a slides link (Google Slides/Docs/Drive), recap, photos — and the
-ONE place officers edit it (the calendar keeps Present and Cancel and links
-over). Photos are shrunk on the device before upload, so iPad camera photos
+ONE place officers edit it. Photos are shrunk on the device before upload, so iPad camera photos
 work.
 
 Events (2026-10-01): officers can **edit** an event in place (Edit details on
@@ -72,12 +83,12 @@ Check-in (2026-09-30): scanning the projected QR checks a signed-in member in
 **automatically** and shows a ✓ (reopening shows "You're checked in", never a
 second button — even after the 15-minute code expires; there's a "Not you?"
 on every checked-in screen for shared iPads); Present mode shows a live count that ticks up; members see
-their own ✓ / not-yet on the home card and the calendar; officers download a
-date-named attendance PDF per meeting from `/attendance` (Meeting sheets) or
-the calendar.
+their own ✓ / not-yet on the home card and the meeting page; officers
+download a date-named attendance PDF per meeting from `/attendance` (Meeting
+sheets) or the meeting page.
 
-Portal (signed-in, "Warm & Mobile-First" design): home, `/calendar` with QR
-present mode, `/attendance`, `/members` with roster + approval queue + add-by-email,
+Portal (signed-in, "Warm & Mobile-First" design): home, Meetings (public, see
+above), `/attendance`, `/members` with roster + approval queue + add-by-email,
 `/announcements`. Public: `/about` (the Bold-poster showpiece), `/login`,
 `/checkin`, `/join` (the permanent recruiting QR).
 
@@ -94,11 +105,14 @@ Nothing is half-finished; these are choices, roughly in the order that pays off.
    shared as "Anyone with the link" now that they're public. Sep 30: the
    "First Business Club Meeting" deck in Drive. Oct 14: the "Website Report
    Card" deck is a Claude Slides artifact — send it to Google Slides first.
-2. **Signed-in check of the 2026-10-26 change.** It was verified signed out
-   only (public pages, Hunt end to end, Lab → sign-in redirect, traversal
-   probes). An officer should open the Oct 14 meeting and see both activities
-   (Lab tagged "Officer only"), open the Lab, and see the new public-slides
-   hint in Edit details; a member should see the Hunt but not the Lab.
+2. **Real sign-in checks of the 2026-10-26 changes.** Verified signed out
+   (public pages, Hunt end to end, Lab → sign-in redirect, traversal probes)
+   and with a local fake officer session (officer meeting page lists both
+   activities, Present opens/polls/closes, New meeting form, cancel confirm).
+   Still needs a real person: an officer opens the Lab itself, and runs
+   **Present at the next meeting** — a live code being scanned is the one path
+   not exercised since the calendar moved; a member should see the Hunt but
+   not the Lab.
 3. **Put real content on `/about`.** The design is built and empty. One past
    meeting with a recap, a photo or two, and officer bios turns the
    placeholder into the record — recap and photos from `/meetings/[id]` now

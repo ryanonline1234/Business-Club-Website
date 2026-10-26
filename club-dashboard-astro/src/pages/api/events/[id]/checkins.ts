@@ -5,14 +5,14 @@ import { apiJson, apiRequireOfficer } from '../../../../lib/auth';
 /**
  * GET /api/events/[id]/checkins — officers only. `{ count }` and nothing else.
  *
- * Feeds the live tally on /calendar's Present screen, which polls this every
+ * Feeds the live tally on the Present screen (components/PresentLayer), which polls this every
  * few seconds while the code is projected. It returns a NUMBER, never names:
  * the projected surface is seen by the whole room, and "no student names ever
  * appear here" is a rule of that screen, not an accident of its layout.
  *
  * Officer-gated because its only caller is Present mode, an officer screen —
  * not as a secrecy boundary: approved members already see the same count on
- * /calendar. Only attendance ROWS (who, when) are officer-only; a member only
+ * each meeting's page. Only attendance ROWS (who, when) are officer-only; a member only
  * ever sees their own (/attendance). no-store so a shared cache can never
  * serve a stale number to the projector.
  */

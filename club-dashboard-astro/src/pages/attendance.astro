@@ -55,7 +55,7 @@ const meetingsHeld = meetingsHeldCount ?? 0;
 /* ── Officer data ─────────────────────────────────────────────────────── */
 
 const LOG_LIMIT = 400;
-/** Meeting sheets listed on this page; older meetings' PDFs are on the calendar. */
+/** Meeting sheets listed on this page; older meetings' PDFs are on their meeting pages. */
 const SHEETS_LIMIT = 60;
 /** Listed openly above the log; the rest fold into "Older meetings". */
 const SHEETS_SHOWN = 6;
@@ -179,7 +179,7 @@ if (session.isOfficer) {
 
   // Meeting sheets: the SHEETS_LIMIT most recent meetings whose check-in
   // window has opened (start − 30 min, the check-in endpoint's own rule),
-  // newest first, each with a PDF; older ones are on each event's calendar
+  // newest first, each with a PDF; older ones are on each meeting's own
   // page. Cancelled meetings are left out of the list (the endpoint still
   // serves them). The embedded count is one query, not one per meeting.
   const sheetsOpenBefore = new Date(Date.now() + CHECKIN_OPENS_BEFORE_MS).toISOString();

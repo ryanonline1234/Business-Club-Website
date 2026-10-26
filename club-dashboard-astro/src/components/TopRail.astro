@@ -11,19 +11,17 @@ const { currentPath } = Astro.props;
 
 const items = [
   { href: '/', label: 'Home' },
-  { href: '/calendar', label: 'Calendar' },
+  { href: '/meetings', label: 'Meetings' },
   { href: '/attendance', label: 'Attendance' },
   { href: '/members', label: 'Members' },
   { href: '/announcements', label: 'Announcements' },
 ];
 
-// /meetings belongs to the Calendar tab (no sixth nav item — the officer
-// top bar has no room for one at iPad widths).
-const SECTION_ALIASES: Record<string, string[]> = { '/calendar': ['/meetings'] };
+// Meetings took the Calendar tab's place on 2026-10-26 (/calendar now only
+// redirects). Still five items — the officer top bar has no room for a sixth
+// at iPad widths. /meetings/[id] highlights Meetings.
 const isActive = (href: string) =>
-  href === '/'
-    ? currentPath === '/'
-    : [href, ...(SECTION_ALIASES[href] ?? [])].some((p) => currentPath === p || currentPath.startsWith(p + '/'));
+  href === '/' ? currentPath === '/' : currentPath === href || currentPath.startsWith(href + '/');
 ---
 <nav class="nav" aria-label="Portal">
   {items.map((item) => (

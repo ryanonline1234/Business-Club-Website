@@ -52,12 +52,12 @@ checks. The role values remain as titles.
 | `GET` | `/api/auth/signin` | public | `/login`, `/checkin` |
 | `GET` | `/api/auth/callback` | public | OAuth redirect |
 | `GET`/`POST` | `/api/auth/signout` | public + cross-site check | layout & `/pending` sign-out forms |
-| `POST` | `/api/events/create` | officer | `/calendar` composer |
+| `POST` | `/api/events/create` | officer | `/meetings` New meeting form |
 | `PATCH` | `/api/events/:id` | officer | `/meetings/[id]` → Edit details |
-| `DELETE` | `/api/events/:id/delete` | officer | `/calendar` cancel |
-| `GET` | `/api/events/:id/qr` | **officer** | `/calendar` Present mode |
-| `GET` | `/api/events/:id/checkins` | officer | `/calendar` Present mode live tally (polled) |
-| `GET` | `/api/events/:id/attendance.pdf` | officer | `/attendance` meeting sheets, `/calendar` event detail |
+| `DELETE` | `/api/events/:id/delete` | officer | `/meetings/[id]` Cancel meeting |
+| `GET` | `/api/events/:id/qr` | **officer** | `/meetings/[id]` Present mode |
+| `GET` | `/api/events/:id/checkins` | officer | `/meetings/[id]` Present mode live tally (polled) |
+| `GET` | `/api/events/:id/attendance.pdf` | officer | `/attendance` meeting sheets, `/meetings/[id]` |
 | `PATCH` | `/api/events/:id/recap` | officer | `/meetings/[id]` recap editor (past meetings) |
 | `POST` | `/api/attendance/checkin` | **approved** | `/checkin` |
 | `PATCH` | `/api/members/:id` | officer | `/members` role select |
@@ -225,8 +225,8 @@ no auth at all in the old app) and renders it as a QR PNG. Response is
 ```
 
 The token lives **15 minutes** (`QR_TOKEN_TTL_SECONDS` in `lib/qrcode.ts` —
-the short window is the security property; do not lengthen it). `/calendar`'s
-Present mode re-fetches at `expires_in − 180s` so the projected code never
+the short window is the security property; do not lengthen it). Present mode
+(`components/PresentLayer.astro`, on `/meetings/[id]`) re-fetches at `expires_in − 180s` so the projected code never
 goes stale on screen.
 
 Minting is refused for events that can no longer accept check-ins:

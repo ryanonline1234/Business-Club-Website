@@ -1,7 +1,7 @@
 # Mitty Business Club — Officer Portal
 
-Member portal for the Mitty Business Club: home dashboard, event calendar with
-projected QR check-in, attendance history, member roster with an officer
+Member portal for the Mitty Business Club: home dashboard, meetings (public
+pages with slides and activities, plus projected QR check-in), attendance history, member roster with an officer
 approval queue, and announcements.
 
 Built with **Astro 5** (SSR, no client framework) + **Supabase** (Postgres,
@@ -107,10 +107,10 @@ Full setup (Supabase project, Google OAuth, Vercel) is in
 | `/about` | **public** | The club's showcase for non-members: past events with officer-written recaps and photos, officer bios, link to the school's clubs page. Its own Bold Graphic design, not the portal's Warm system; renders a designed empty state until officers add recaps, photos and bios |
 | `/login` | public | Google sign-in; fixed error copy keyed by `?error=` |
 | `/pending` | any session | Waiting room: pending / declined / server-error states |
-| `/calendar` | approved | Month grid + agenda; each event shows **your own** check-in state once check-in opens. Officers get the event composer (end = a same-day time; blank = midnight; `?new=1` opens it), cancel, the attendance PDF, and Present mode (projected QR, auto-refreshing, with a live check-in count) |
+| `/calendar` | none (redirect) | **Retired 2026-10-26.** Only redirects old links: `?event=<id>` → that meeting's page (`&present=1` opens Present there), `?new=1` → the New meeting form, anything else → `/meetings` |
 | `/attendance` | approved | Officers see the club log, turnout, and **meeting sheets** (a date-named PDF per meeting: attendees, emails, check-in times); members see **only their own** history |
-| `/meetings` | **public** | The meetings archive: upcoming, then past meetings by school year, each with Slides / Activity / photos / Recap chips. Signed in, members also see locations and "✓ You were there"; officers see check-in counts and "No recap / No photos" flags |
-| `/meetings/[id]` | **public** | One meeting's record: title and time, **slides link**, activities, recap, photos — for anyone with the link. Signed in, members also see the location, description and their check-in. Officers edit **here** — Edit details (every field + slides), Recap, Photos (shrunk on-device before upload) — the one place each of those lives — and see officer-only activities |
+| `/meetings` | **public** | The **Meetings** tab (it replaced Calendar): every upcoming meeting (and upcoming deadline), then past meetings by school year, each with Slides / Activity / photos / Recap chips. Signed in, members also see locations and "✓ You were there"; officers see check-in counts, "No recap / No photos" flags, and the **New meeting** form (end = a same-day time; blank = midnight; past dates fine; `?new=1` opens it) |
+| `/meetings/[id]` | **public** | One meeting's record: title and time, **slides link**, activities, recap, photos — for anyone with the link. Signed in, members also see the location, description and their check-in. Officers run and edit it **here** — **Present check-in code** (full-screen projected QR, auto-refreshing, with a live check-in count; `?present=1` opens it), Edit details (every field + slides), **Cancel meeting**, Recap, Photos (shrunk on-device before upload), the attendance PDF — and see officer-only activities |
 | `/activities/<slug>/` | public or officer | A meeting activity served from `src/activities/` (registry: `src/lib/activities.ts`). `website-hunt` is public (the team game, no answers); `website-lab` is officers-only (presenter view with the answer key). Signed-out officers are sent to sign-in and come back |
 | `/members` | approved | Roster with check-in counts; emails, approval queue, role select and add-by-email are officer-only. `?add=1#add-members` opens the add-by-email panel |
 | `/announcements` | approved | Server-rendered feed; officers compose and delete |

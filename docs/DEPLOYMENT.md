@@ -310,7 +310,7 @@ for `[auth/getSession]` errors, and see
 
 Either `AUTH_SECRET` changed (rotating it invalidates every outstanding token
 immediately — the desired behavior if one leaks) or the token simply aged out:
-the TTL is 15 minutes, and Present mode on `/calendar` auto-refreshes the
+the TTL is 15 minutes, and Present mode on the meeting page auto-refreshes the
 projected code. A printed QR is stale by design.
 
 ---

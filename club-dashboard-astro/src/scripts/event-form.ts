@@ -1,5 +1,5 @@
 /**
- * Event forms — the client half shared by /calendar's "New event" composer and
+ * Event forms — the client half shared by /meetings' "New meeting" composer and
  * /meetings/[id]'s "Edit details" form, so the two can never disagree about
  * how a time is read or what gets sent. Imported from page <script>s (Astro
  * bundles it). No data is ever rendered into DOM HTML here — textContent and
@@ -189,12 +189,11 @@ export const bindEventForm = (
 };
 
 /**
- * /calendar's New event composer: prefill the start, wire the end, POST.
- * On success it lands on the new event — its meeting page when the officer
- * came from /meetings ("Add a past meeting"), else the calendar with it
- * selected — instead of reloading onto whatever was selected before.
+ * /meetings' New meeting composer: prefill the start, wire the end, POST.
+ * On success it lands on the new meeting's own page, where its slides,
+ * activities, recap and photos are added.
  */
-export function wireCreateForm(form: HTMLFormElement, opts: { landOnMeetingPage?: boolean } = {}): void {
+export function wireCreateForm(form: HTMLFormElement): void {
   const startInput = form.querySelector('input[name="start"]') as HTMLInputElement | null;
   const syncEnd = wireEndToStart(form);
   let lastPrefill = '';
@@ -225,14 +224,12 @@ export function wireCreateForm(form: HTMLFormElement, opts: { landOnMeetingPage?
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify(payload),
       }),
-    'Could not create the event.',
+    'Could not create the meeting.',
     async (res) => {
       const body = await res.json().catch(() => null);
       const id = body && body.data && typeof body.data.id === 'string' ? (body.data.id as string) : null;
       if (!id) return location.reload();
-      location.href = opts.landOnMeetingPage
-        ? `/meetings/${encodeURIComponent(id)}`
-        : `/calendar?event=${encodeURIComponent(id)}`;
+      location.href = `/meetings/${encodeURIComponent(id)}`;
     }
   );
 }

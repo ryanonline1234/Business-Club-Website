@@ -484,9 +484,6 @@ button,input,select,textarea{ font:inherit; color:inherit; }
   text-decoration:none; color:inherit;
 }
 .rowlink:hover{ background:var(--paper-2); }
-/* The agenda row whose event is open in the detail panel below (≤979px the
-   month grid is hidden, so this is the only "which one am I looking at"). */
-.rowlink[aria-current]{ background:var(--paper-2); border-left:3px solid var(--gold); padding-left:1px; }
 .rowlink__main{ min-width:0; flex:1; }
 .rowlink__title{ display:block; color:var(--ink); font-size:var(--t-16); font-weight:500; line-height:1.35; overflow-wrap:anywhere; }
 .rowlink__sub{ display:block; margin-top:3px; font-size:var(--t-14); color:var(--ink-3); overflow-wrap:anywhere; }
@@ -818,66 +815,10 @@ button,input,select,textarea{ font:inherit; color:inherit; }
 .declined .btn{ margin-left:auto; }
 
 /* ============================================================
-   CALENDAR / EVENTS + QR + PRESENT MODE
+   EVENT DETAILS + OFFICER ACTIONS + PRESENT MODE
+   (used by /meetings/[id]; the calendar page was retired 2026-10-26)
    ============================================================ */
-.eventgrid{ display:grid; gap:clamp(24px,3.2vw,40px); }
-/* The officer composer leads the detail column (phone order is unchanged:
-   agenda, composer, detail). It used to be a grid row under BOTH columns,
-   which on an iPad in landscape put "New event" two screens down. */
-.eventgrid .composer{ max-width:680px; margin-bottom:clamp(24px,3.2vw,40px); }
-@media (min-width:980px){
-  /* 336 = 7 × 48: each month-grid day link meets the 48px tap floor on an
-     iPad in landscape, where the grid is the day-level navigation. */
-  .eventgrid{ grid-template-columns:minmax(0,336px) minmax(0,1fr); align-items:start; }
-  .eventgrid > div:first-of-type{ grid-column:1; grid-row:1; }
-  .eventgrid > div:last-of-type{ grid-column:2; grid-row:1; }
-}
-.month__head{
-  display:flex; align-items:baseline; gap:10px; margin-bottom:12px;
-  padding-bottom:8px; border-bottom:1px solid var(--gold);
-}
-.month__head b{ font-family:var(--f-serif); font-size:var(--t-19); color:var(--ink); font-weight:600; }
-.month__head span{ font-family:var(--f-serif); font-size:var(--t-14); color:var(--gold-2); margin-left:auto; }
-.month__grid{ display:grid; grid-template-columns:repeat(7,1fr); gap:2px 0; }
-.month__grid .dow{
-  font-family:var(--f-cond); text-transform:uppercase; letter-spacing:var(--tr-1);
-  font-size:var(--t-12); color:var(--ink-3); text-align:center; padding-bottom:6px;
-}
-.month__grid .day{
-  aspect-ratio:1; display:flex; flex-direction:column;
-  align-items:center; justify-content:center; gap:3px;
-  font-family:var(--f-serif); font-size:var(--t-16); color:var(--ink-2);
-  font-variant-numeric:lining-nums tabular-nums;
-  border-radius:var(--r); border:1px solid transparent;
-  background:transparent; padding:0; text-decoration:none;
-}
-.month__grid .day.muted{ color:var(--ink-3); }
-.month__grid .day .pip{ display:block; width:5px; height:5px; border-radius:var(--r-full); background:var(--gold-2); }
-.month__grid .day.today{
-  background:var(--lit); color:var(--lit-ink); font-weight:600;
-  border-color:var(--gold-ink);
-}
-.month__grid .day.today .pip{ background:var(--lit-ink); }
-/* month grid is desktop-only; a seven-column grid at 375px is unreadable */
-@media (max-width:979px){ .month{ display:none; } }
-/* ≥980px the month grid replaces the agenda's month header and prev/next —
-   but the per-event list stays, because a grid day links only to its FIRST
-   event, and a second event that day would otherwise be unreachable. */
-/* Prev/next month — under the grid, and under the agenda. NOT an inline
-   style: an inline display:flex outranked the ≥980px hide below and showed
-   two stacked "← Sep / Nov →" rows on iPad landscape. */
-.monthnav{ margin-top:16px; display:flex; gap:12px; }
-@media (min-width:980px){
-  .agenda{ margin-top:24px; }
-  .agenda > .section-head, .agenda > p, .agenda > .state{ display:none; }
-}
-
 .event-detail__cat{ display:flex; gap:8px; align-items:center; margin-bottom:12px; flex-wrap:wrap; }
-.event-detail h1, .event-detail h2{
-  font-family:var(--f-serif); font-weight:600; color:var(--ink);
-  font-size:clamp(var(--t-24),4.8vw,var(--t-34)); line-height:1.14; letter-spacing:-.01em;
-}
-.event-detail__desc{ margin-top:12px; max-width:64ch; line-height:1.65; font-size:var(--t-16); overflow-wrap:anywhere; }
 .facts{ margin-top:22px; display:grid; grid-template-columns:1fr; border-top:1px solid var(--rule); }
 @media (min-width:560px){ .facts{ grid-template-columns:1fr 1fr; } }
 .facts div{ padding:12px 0; border-bottom:1px solid var(--rule); }
@@ -892,7 +833,6 @@ button,input,select,textarea{ font:inherit; color:inherit; }
 .facts dd{ margin:5px 0 0; color:var(--ink); font-size:var(--t-16); }
 
 .event-actions{ margin-top:24px; padding-top:4px; padding-bottom:4px; }
-.event-detail__more{ margin-top:20px; display:flex; }
 .event-actions__head{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:12px; }
 .event-actions__row{ display:flex; gap:12px; flex-wrap:wrap; }
 /* Every action in the officer row — plain buttons AND the two disclosures
@@ -910,19 +850,10 @@ button,input,select,textarea{ font:inherit; color:inherit; }
   .event-actions__row > .confirm,
   .event-actions__row > .editdetails{ flex:0 0 auto; }
 }
-/* Below 620, a three-item row (or any row with an open disclosure) would wrap
-   2 + 1 and stretch the lone Cancel to full width. Stack those rows instead. */
+/* Below 620 the actions stack, one full-width row each — side by side they
+   squeeze, and an open disclosure would shove its neighbour around. */
 @media (max-width:619px){
-  .event-actions__row:not(:has(> :nth-child(4))) > *,
-  .event-actions__row:has(> details[open]) > *{ flex-basis:100%; }
-}
-/* Four actions (Present, PDF, Edit, Cancel ≈ 650px with gaps) overflow the
-   row — narrowed by the .owned inset — up to ~735px (single column) and
-   ~1124px (detail column beside the month grid: iPad landscape). Lay them
-   out 2×2 rather than 3 + an orphaned Cancel. Only for four CLOSED items;
-   an open disclosure has its own row. */
-@media (min-width:620px) and (max-width:739px), (min-width:980px) and (max-width:1127px){
-  .event-actions__row:has(> :nth-child(4)):not(:has(> details[open])) > *{ flex:1 1 calc(50% - 6px); }
+  .event-actions__row > *{ flex-basis:100%; }
 }
 /* An open disclosure takes a full row of its own under the buttons, so the
    other actions stay on one line instead of being shoved around by it. */
@@ -1040,7 +971,8 @@ button,input,select,textarea{ font:inherit; color:inherit; }
 .meetings__head p{ margin-top:6px; }
 .meetings__officer{ margin-top:22px; }
 .meetings__officer p{ max-width:64ch; color:var(--ink-2); font-size:var(--t-14); }
-.meetings__officeracts{ margin-top:12px; display:flex; gap:12px; flex-wrap:wrap; }
+/* The New meeting composer (moved from the calendar): same width it had there. */
+.meetings__composer{ max-width:680px; margin-top:14px; }
 .meetings__group{ margin-top:clamp(28px,3.6vw,42px); max-width:760px; }
 .meetings__chips{ display:flex; gap:6px; flex-wrap:wrap; margin-top:7px; }
 
