@@ -1,0 +1,608 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Vegas on a Budget</title>
+<link rel="stylesheet" href="/activity-assets/fonts.css">
+<link rel="stylesheet" href="vegas.css">
+<style>
+  /* Layout: the presenter's run sheet. Sign, the game plan, then one section per round in the order they're played. */
+  .jump { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px 18px; margin-top: 18px; font-weight: 700; }
+  .jump a { color: var(--gold); }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .jump a { color: var(--gold); } }
+
+  .plan { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; }
+  .plan li { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 16px; display: grid; gap: 4px; align-content: start; }
+  .plan .t { font-size: 12.5px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--neon); }
+  .plan b { font-family: var(--display); font-weight: 400; font-size: 16px; line-height: 1.2; }
+  .plan span { color: var(--ink-soft); font-size: 14.5px; }
+  .setup { margin-top: 14px; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 16px; align-items: center; }
+  .setup p { margin: 0; }
+  .setup code { font: 600 15px/1.4 ui-monospace, Menlo, monospace; background: var(--chip); padding: 2px 6px; border-radius: 6px; }
+
+  .say { margin-top: 16px; background: var(--chip); border-radius: 12px; padding: 14px 18px; }
+  .say .eyebrow { color: var(--ink-soft); }
+  .say ul { margin: 6px 0 0; padding-left: 20px; display: grid; gap: 4px; }
+
+  /* Round 1 menu */
+  .pay { display: flex; flex-wrap: wrap; gap: 10px 28px; align-items: baseline; margin-bottom: 14px; }
+  .pay .big { font: 400 40px/1 var(--display); color: var(--money); }
+  .pay span { color: var(--ink-soft); }
+  .menu { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+  .menu .card h3 { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin-bottom: 8px; }
+  .menu .card h3 small { font: 600 12px/1 var(--body); letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-soft); }
+  .menu ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+  .menu li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0 10px; font-size: 14.5px; line-height: 1.35; border-top: 1px dashed var(--line); padding-top: 6px; }
+  .menu li .num { font-weight: 700; text-align: right; }
+  .menu li .stars { grid-column: 2; text-align: right; font-size: 12px; }
+  .rules { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-top: 12px; }
+  .rules .card b { font-family: var(--display); font-weight: 400; display: block; margin-bottom: 4px; }
+  .rules .card span { color: var(--ink-soft); font-size: 15px; }
+
+  /* Round 2 wheel */
+  .wheel-wrap { display: grid; grid-template-columns: minmax(0, 420px) minmax(0, 1fr); gap: 28px; align-items: center; }
+  .wheel { position: relative; width: 100%; max-width: 420px; aspect-ratio: 1; margin: 0 auto; }
+  .wheel svg { width: 100%; height: 100%; display: block; }
+  #disc { transform-origin: 50% 50%; transform-box: view-box; transition: transform 4.2s cubic-bezier(0.15, 0.85, 0.2, 1); }
+  .pointer { position: absolute; left: 50%; top: -6px; transform: translateX(-50%); width: 0; height: 0; border-left: 16px solid transparent; border-right: 16px solid transparent; border-top: 30px solid var(--gold); filter: drop-shadow(0 2px 2px rgba(0, 0, 0, 0.35)); z-index: 2; }
+  .wheel .hub { position: absolute; inset: 41%; border-radius: 50%; background: var(--gold); border: 4px solid var(--ink); display: grid; place-items: center; font: 400 12px/1 var(--display); color: var(--gold-ink); }
+  .spin-side { display: grid; gap: 14px; }
+  .result { min-height: 170px; }
+  .result h3 { font-size: 26px; color: var(--neon); }
+  .result p { margin: 6px 0 10px; font-size: 17px; }
+  .result ul { margin: 0; padding-left: 20px; display: grid; gap: 4px; }
+  .result .tap { margin-top: 10px; font-weight: 700; }
+  .history { display: flex; flex-wrap: wrap; gap: 6px; }
+  .history span { background: var(--chip); border-radius: 999px; padding: 4px 12px; font-size: 14px; font-weight: 600; }
+
+  /* Round 3 over/under */
+  .ou-stage { text-align: center; padding: 30px 24px; }
+  .ou-stage .count { font-size: 13px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-soft); }
+  .ou-stage .q { font-size: clamp(22px, 3vw, 30px); font-weight: 700; line-height: 1.25; margin: 10px auto 18px; max-width: 26em; text-wrap: balance; }
+  .ou-stage .line { display: inline-flex; align-items: center; gap: 14px; background: var(--ink); color: var(--paper); border-radius: 999px; padding: 10px 26px; }
+  .ou-stage .line span { font-size: 13px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; opacity: 0.8; }
+  .ou-stage .line b { font: 400 34px/1 var(--display); }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .ou-stage .line { background: var(--chip); color: var(--ink); } }
+  :root[data-theme="dark"] .ou-stage .line { background: var(--chip); color: var(--ink); }
+  .answer { margin: 22px auto 0; max-width: 40em; }
+  .answer .call { font: 400 clamp(38px, 6vw, 56px)/1 var(--display); color: var(--neon); }
+  .answer .real { font-size: 20px; font-weight: 700; margin-top: 8px; }
+  .answer p { color: var(--ink-soft); margin: 8px 0 0; }
+  .ou-nav { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; margin-top: 22px; }
+  .dots { display: flex; justify-content: center; gap: 6px; margin-top: 14px; }
+  .dots button { width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--ink-soft); background: transparent; padding: 0; cursor: pointer; }
+  .dots button[aria-current="true"] { background: var(--neon); border-color: var(--neon); }
+  .dots button.done { background: var(--ink-soft); }
+
+  /* Finale chart */
+  .house { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-bottom: 18px; }
+  .house .card b { font: 400 26px/1.1 var(--display); display: block; }
+  .house .card span { color: var(--ink-soft); font-size: 15px; }
+  .chart-card { padding: 18px 20px 14px; }
+  .chart-top { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px 24px; align-items: end; margin-bottom: 10px; }
+  .chart-top h3 { font-size: 18px; }
+  .chart-top label { display: grid; gap: 4px; font-weight: 700; font-size: 14px; min-width: 240px; }
+  .chart-top input { accent-color: var(--neon); width: 100%; }
+  .tiles { display: flex; flex-wrap: wrap; gap: 10px 28px; margin: 6px 0 10px; }
+  .tiles div span { display: block; font-size: 12.5px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-soft); }
+  .tiles div b { font: 400 26px/1.1 var(--display); font-variant-numeric: tabular-nums; }
+  .key { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 14px; color: var(--ink-soft); margin-bottom: 4px; }
+  .key span { display: inline-flex; align-items: center; gap: 6px; }
+  .key i { width: 16px; height: 3px; border-radius: 2px; display: inline-block; }
+  .plot { position: relative; }
+  .plot svg { width: 100%; height: auto; display: block; overflow: visible; }
+  .plot text { font: 500 12px var(--body); fill: var(--ink-soft); }
+  .plot .lbl { font-weight: 700; fill: var(--ink); }
+  .tip { position: absolute; pointer-events: none; background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 8px 12px; font-size: 14px; box-shadow: 0 6px 18px rgba(0, 0, 0, 0.15); white-space: nowrap; transform: translate(-50%, -110%); }
+  .tip div { display: flex; align-items: center; gap: 6px; }
+  .tip i { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+  .tip b { font-variant-numeric: tabular-nums; }
+  details.table { margin-top: 8px; font-size: 14.5px; }
+  details.table summary { cursor: pointer; font-weight: 700; color: var(--ink-soft); }
+  details.table table { border-collapse: collapse; margin-top: 8px; width: 100%; max-width: 520px; font-variant-numeric: tabular-nums; }
+  details.table th, details.table td { text-align: right; padding: 4px 10px; border-bottom: 1px solid var(--line); }
+  details.table th:first-child, details.table td:first-child { text-align: left; }
+
+  /* Leaderboard */
+  .board-form { display: grid; grid-template-columns: minmax(0, 1fr) 180px auto; gap: 10px; }
+  .board { list-style: none; margin: 14px 0 0; padding: 0; display: grid; gap: 8px; counter-reset: rank; }
+  .board li { display: grid; grid-template-columns: 44px minmax(0, 1fr) auto auto; gap: 12px; align-items: center; background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 10px 14px; }
+  .board li::before { counter-increment: rank; content: counter(rank); font: 400 22px/1 var(--display); color: var(--ink-soft); text-align: center; }
+  .board li:first-child { border: 2px solid var(--gold); }
+  .board li:first-child::before { color: var(--star); }
+  .board b { font-size: 17px; }
+  .board .num { font: 400 20px/1 var(--display); }
+  .board .x { border: 0; background: transparent; color: var(--ink-soft); font-size: 20px; cursor: pointer; padding: 4px 8px; }
+
+  footer ul { padding-left: 18px; margin: 8px 0 0; }
+
+  @media (max-width: 900px) {
+    .plan { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .menu, .rules, .house { grid-template-columns: 1fr; }
+    .wheel-wrap { grid-template-columns: 1fr; }
+  }
+  @media (max-width: 560px) {
+    .plan { grid-template-columns: 1fr; }
+    .setup { grid-template-columns: 1fr; }
+    .board-form { grid-template-columns: 1fr; }
+    .board li { grid-template-columns: 30px minmax(0, 1fr) auto auto; gap: 8px; }
+    .chart-top label { min-width: 0; width: 100%; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    #disc { transition-duration: 0.6s; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <header class="sign">
+    <div class="welcome">Welcome to fabulous Business Club</div>
+    <h1>Vegas on a <span>Budget</span></h1>
+    <p>Your first job on the Strip pays <b>$3,600 a month</b>. Budget it, survive the Wheel of Life, bet on what you know, and find out why the house always wins (and how you can be the house).</p>
+    <nav class="jump" aria-label="Sections">
+      <a href="#plan">Game plan</a>
+      <a href="#round1">1 · Budget</a>
+      <a href="#round2">2 · Wheel of Life</a>
+      <a href="#round3">3 · Over/Under</a>
+      <a href="#finale">Be the house</a>
+      <a href="#board">Leaderboard</a>
+    </nav>
+  </header>
+
+  <section id="plan">
+    <div class="section-head">
+      <span class="eyebrow">About 45 minutes · teams of 3 to 4</span>
+      <h2>The game plan</h2>
+      <p>Every team gets the same job and the same paycheck. The team with the highest net worth at the end wins: emergency fund, plus investments, plus chips, minus credit card debt.</p>
+    </div>
+    <ol class="plan">
+      <li><span class="t">3 min</span><b>Deal in</b><span>Form teams. One phone per team opens the team sheet and enters a team name.</span></li>
+      <li><span class="t">12 min</span><b>1 · Build the budget</b><span>Pick housing, a car, food, a phone, fun and shopping. Lock it in.</span></li>
+      <li><span class="t">10 min</span><b>2 · Wheel of Life</b><span>Fast-forward six months, then spin 3 or 4 times. Surprises hit every team.</span></li>
+      <li><span class="t">12 min</span><b>3 · Over/Under</b><span>Eight money questions. Teams bet chips on what they know.</span></li>
+      <li><span class="t">8 min</span><b>Be the house</b><span>Gambling vs. investing, then teams read out their net worth.</span></li>
+    </ol>
+    <div class="card setup">
+      <p>Give teams the <b>participant version</b>: it's listed on the meeting page as <b>Vegas on a Budget</b> (<code>/activities/vegas-on-a-budget/</code>). It has a player's guide and the team sheet, which does the math and saves on that phone. Neither holds the Over/Under answers.</p>
+      <a class="btn primary" href="/activities/vegas-on-a-budget/">Open the participant version</a>
+    </div>
+  </section>
+
+  <section id="round1">
+    <div class="section-head">
+      <span class="eyebrow">Round 1 · 12 minutes</span>
+      <h2>Build the budget</h2>
+      <p>Each team picks one option per category on the team sheet. Cheaper options leave more to save; nicer ones earn stars.</p>
+    </div>
+    <div class="pay">
+      <span class="big" id="r1-pay"></span>
+      <span id="r1-job"></span>
+      <span id="r1-fixed"></span>
+    </div>
+    <div class="menu" id="menu"></div>
+    <div class="rules">
+      <div class="card"><b>At least <span id="r1-min"></span> ★</b><span>Living on rice and the bus is cheap, but nobody sticks with it. A budget has to be one you can live with.</span></div>
+      <div class="card"><b>50 / 30 / 20</b><span>Aim for about 50% on needs, 30% on wants, 20% saved. The cheapest option in a category is the need; paying more for it is a want.</span></div>
+      <div class="card"><b>Split your savings</b><span>Choose how much goes to an emergency fund (cash for surprises) vs. investments (they grow, but they're locked away).</span></div>
+    </div>
+    <div class="say">
+      <div class="eyebrow">Talking points</div>
+      <ul>
+        <li>Nevada has no state income tax, so a $52,000 job takes home about $3,600 a month here. In many states it'd be less.</li>
+        <li>Rent is the big one. A common rule: keep housing near 30% of take-home pay. That's about $1,080 here.</li>
+        <li>Spend more than you make and the gap goes on a 24% credit card. Watch the "Left over" number.</li>
+      </ul>
+    </div>
+  </section>
+
+  <section id="round2">
+    <div class="section-head">
+      <span class="eyebrow">Round 2 · 10 minutes</span>
+      <h2>The Wheel of Life</h2>
+      <p>Tell teams their budget has run for six months; the team sheet shows what they've saved (or owe). Spin 3 or 4 times. After each spin, every team taps the same event on their sheet.</p>
+    </div>
+    <div class="wheel-wrap">
+      <div class="wheel">
+        <div class="pointer" aria-hidden="true"></div>
+        <svg viewBox="0 0 400 400" role="img" aria-label="Wheel of Life with ten life events"><g id="disc"></g></svg>
+        <div class="hub" aria-hidden="true">LIFE</div>
+      </div>
+      <div class="spin-side">
+        <div class="card result" id="result" aria-live="polite">
+          <h3>Ready when you are</h3>
+          <p>Spin the wheel to see what life throws at everyone.</p>
+        </div>
+        <div><button type="button" class="btn primary" id="spin">Spin the wheel</button></div>
+        <div class="history" id="history"></div>
+      </div>
+    </div>
+    <div class="say">
+      <div class="eyebrow">Talking points</div>
+      <ul>
+        <li>Surprises aren't rare: something like this happens to most people every year. That's what an emergency fund is for. Aim for 3 to 6 months of expenses.</li>
+        <li>No emergency fund? The surprise goes on a credit card, and it costs you 24% a year until you pay it off.</li>
+        <li>On optional spins, ask teams how they decided. Saying no is a money skill too.</li>
+      </ul>
+    </div>
+  </section>
+
+  <section id="round3">
+    <div class="section-head">
+      <span class="eyebrow">Round 3 · 12 minutes</span>
+      <h2>Over / Under</h2>
+      <p>Each team starts with <b id="r3-chips"></b> in chips. Read the question and the line. Teams pick over or under, bet any amount, and lock it. Then reveal.</p>
+    </div>
+    <div class="card ou-stage">
+      <div class="count" id="ou-count"></div>
+      <div class="q" id="ou-q"></div>
+      <div class="line"><span>The line</span><b id="ou-line"></b></div>
+      <div class="answer" id="ou-answer" hidden></div>
+      <div class="ou-nav">
+        <button type="button" class="btn" id="ou-prev">&larr; Back</button>
+        <button type="button" class="btn primary" id="ou-reveal">Reveal the answer</button>
+        <button type="button" class="btn" id="ou-next">Next question &rarr;</button>
+      </div>
+      <div class="dots" id="ou-dots"></div>
+    </div>
+  </section>
+
+  <section id="finale">
+    <div class="section-head">
+      <span class="eyebrow">Finale · 8 minutes</span>
+      <h2>The house always wins. So be the house.</h2>
+      <p>Casinos don't need luck. Every game is built so they keep a small slice of every bet, and millions of bets turn that slice into billions.</p>
+    </div>
+    <div class="house">
+      <div class="card"><b>5.26¢</b><span>kept from every $1 bet on American roulette, on average. Thirty-eight pockets, but wins pay as if there were 36.</span></div>
+      <div class="card"><b>7–9¢</b><span>kept from every $1 played in Strip slot machines, year after year. Replay your winnings and the slice comes out again.</span></div>
+      <div class="card"><b>~$9 billion</b><span>won from gamblers by Las Vegas Strip casinos in a single year. The edge is small; the volume is huge.</span></div>
+    </div>
+    <div class="card chart-card">
+      <div class="chart-top">
+        <h3>Same money, other side of the table: investing from 22 to 62</h3>
+        <label for="monthly">Put in each month: <span id="monthly-label" class="num"></span>
+          <input type="range" id="monthly" min="50" max="500" step="25" value="200">
+        </label>
+      </div>
+      <div class="tiles">
+        <div><span>You put in</span><b id="tile-in"></b></div>
+        <div><span>It grows to</span><b id="tile-out" style="color:var(--money)"></b></div>
+        <div><span>Growth you didn't work for</span><b id="tile-gain"></b></div>
+      </div>
+      <div class="key">
+        <span><i style="background:var(--s-invest)"></i>Invested at 7% a year</span>
+        <span><i style="background:var(--s-in)"></i>Money you put in</span>
+      </div>
+      <div class="plot" id="plot"></div>
+      <details class="table">
+        <summary>Show as a table</summary>
+        <table id="plot-table"></table>
+      </details>
+    </div>
+    <div class="say">
+      <div class="eyebrow">Talking points</div>
+      <ul>
+        <li>A broad index fund owns a slice of hundreds of companies, casino companies included. Over the long run the edge is on your side, so you get paid for waiting.</li>
+        <li>The stock market has averaged about 10% a year before inflation, with some ugly years (−37% in 2008). We use 7% to be careful.</li>
+        <li>The biggest lever is time. Starting at 22 instead of 32 roughly doubles what you end up with.</li>
+      </ul>
+    </div>
+  </section>
+
+  <section id="board">
+    <div class="section-head">
+      <span class="eyebrow">Cash out</span>
+      <h2>Leaderboard</h2>
+      <p>Each team reads its net worth from step 4 of the team sheet. Highest net worth wins the table.</p>
+    </div>
+    <form class="board-form" id="board-form">
+      <input type="text" id="b-team" placeholder="Team name" maxlength="40" required aria-label="Team name">
+      <input type="number" id="b-worth" placeholder="Net worth ($)" step="1" required aria-label="Net worth in dollars">
+      <button type="submit" class="btn primary">Add team</button>
+    </form>
+    <ol class="board" id="board-list"></ol>
+    <p id="board-empty" style="color:var(--ink-soft)">No teams yet.</p>
+    <button type="button" class="btn small" id="board-clear" hidden>Clear the leaderboard</button>
+  </section>
+
+  <footer>
+    Made for a Business Club activity. The job, prices and life events are made up but realistic for Las Vegas.
+    Over/Under answers draw on:
+    <ul>
+      <li>Credit card rates and the $400 question: Federal Reserve (consumer credit data; Survey of Household Economics and Decisionmaking).</li>
+      <li>Strip casino win and slot hold: Nevada Gaming Control Board gaming revenue reports.</li>
+      <li>Roulette edge: the math of a 38-pocket wheel. Investing figures assume 7% a year, compounded monthly.</li>
+    </ul>
+  </footer>
+</div>
+
+<script src="game.js"></script>
+<script>
+(function () {
+  var V = window.VEGAS;
+  var $ = function (id) { return document.getElementById(id); };
+  var money = V.money;
+  function esc(s) {
+    return String(s).replace(/[&<>"]/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c];
+    });
+  }
+  function store(key, value) {
+    try {
+      if (value === undefined) return JSON.parse(localStorage.getItem(key));
+      localStorage.setItem(key, JSON.stringify(value));
+    } catch (e) { return null; }
+  }
+
+  /* ---------- Round 1: the menu ---------- */
+  $('r1-pay').textContent = money(V.takeHome) + '/mo';
+  $('r1-job').textContent = V.job + ' · ' + money(V.salary) + ' a year';
+  $('r1-fixed').textContent = 'Fixed bills: ' + money(V.fixedTotal) + ' (power and AC, internet, health insurance)';
+  $('r1-min').textContent = V.minStars;
+  $('menu').innerHTML = V.categories.map(function (cat) {
+    return '<div class="card"><h3>' + esc(cat.label) + '<small>' + cat.kind + '</small></h3><ul>' +
+      cat.options.map(function (o) {
+        return '<li><span>' + esc(o.label) + '</span><span class="num">' + money(o.cost) + '</span><span class="stars" aria-label="' + o.stars + ' stars">' + '★★★'.slice(0, o.stars) + '</span></li>';
+      }).join('') + '</ul></div>';
+  }).join('');
+
+  /* ---------- Round 2: the wheel ---------- */
+  var SLICE = 360 / V.events.length;
+  var COLORS = [
+    { fill: '#c8175d', text: '#ffffff' },
+    { fill: '#2b1748', text: '#ffffff' },
+    { fill: '#f2b705', text: '#23123b' },
+    { fill: '#0f7a52', text: '#ffffff' }
+  ];
+  function polar(deg, r) {
+    var a = (deg - 90) * Math.PI / 180;
+    return [200 + r * Math.cos(a), 200 + r * Math.sin(a)];
+  }
+  var discHtml = '<circle cx="200" cy="200" r="198" fill="#2b1748"/>';
+  V.events.forEach(function (ev, i) {
+    var c = COLORS[i % COLORS.length];
+    var a0 = polar(i * SLICE, 190), a1 = polar((i + 1) * SLICE, 190);
+    discHtml += '<path d="M200 200 L' + a0[0] + ' ' + a0[1] + ' A190 190 0 0 1 ' + a1[0] + ' ' + a1[1] + ' Z" fill="' + c.fill + '" stroke="#fbf5ea" stroke-width="2"/>';
+    var mid = i * SLICE + SLICE / 2;
+    var p = polar(mid, 128);
+    var words = ev.label.split(' ');
+    var lines = words.length > 2 ? [words.slice(0, Math.ceil(words.length / 2)).join(' '), words.slice(Math.ceil(words.length / 2)).join(' ')] : [ev.label];
+    // Labels run along the radius; flip the left half so none reads upside down.
+    var turn = mid > 180 ? mid + 90 : mid - 90;
+    discHtml += '<text transform="translate(' + p[0] + ' ' + p[1] + ') rotate(' + turn + ')" text-anchor="middle" fill="' + c.text + '" style="font:700 13px Public Sans, system-ui, sans-serif">' +
+      lines.map(function (l, j) { return '<tspan x="0" dy="' + (j === 0 ? (lines.length > 1 ? -4 : 4) : 15) + '">' + esc(l) + '</tspan>'; }).join('') + '</text>';
+  });
+  // Bulbs around the rim
+  for (var b = 0; b < 30; b++) {
+    var q = polar(b * 12 + 6, 194);
+    discHtml += '<circle cx="' + q[0] + '" cy="' + q[1] + '" r="3" fill="#ffd95c"/>';
+  }
+  $('disc').innerHTML = discHtml;
+
+  var rotation = 0, spinning = false, history = [];
+  $('spin').addEventListener('click', function () {
+    if (spinning) return;
+    spinning = true;
+    this.disabled = true;
+    var i = Math.floor(Math.random() * V.events.length);
+    var center = i * SLICE + SLICE / 2 + (Math.random() - 0.5) * SLICE * 0.6;
+    var target = ((-center - rotation) % 360 + 360) % 360;
+    rotation += 360 * 5 + target;
+    $('disc').style.transform = 'rotate(' + rotation + 'deg)';
+    $('result').innerHTML = '<h3>Spinning…</h3>';
+    var done = function () {
+      spinning = false;
+      $('spin').disabled = false;
+      $('spin').textContent = 'Spin again';
+      showEvent(V.events[i]);
+      history.push(V.events[i].label);
+      $('history').innerHTML = history.map(function (h, n) { return '<span>' + (n + 1) + '. ' + esc(h) + '</span>'; }).join('');
+    };
+    var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    setTimeout(done, reduce ? 700 : 4300);
+  });
+
+  // Every distinct outcome of an event, across the choices that change it.
+  function outcomes(ev) {
+    var seen = {}, list = [];
+    var picks = ev.optional ? ['yes', 'no'] : [undefined];
+    ['strip', 'summerlin', 'henderson'].forEach(function (housing) {
+      ['suv', 'used', 'bus'].forEach(function (transport) {
+        ['newest', 'lastyear'].forEach(function (phone) {
+          picks.forEach(function (pick) {
+            var o = ev.effect({ housing: housing, transport: transport, phone: phone }, pick, 0.5);
+            var k = o.amount + '|' + o.note;
+            if (!seen[k]) { seen[k] = 1; list.push(o); }
+          });
+        });
+      });
+    });
+    return list;
+  }
+  function signed(n) {
+    if (n === 0) return '<b class="num">$0</b>';
+    return '<b class="num ' + (n > 0 ? 'gain' : 'lose') + '">' + (n > 0 ? '+' : '') + money(n) + '</b>';
+  }
+  function showEvent(ev) {
+    var body;
+    if (ev.key === 'slots') {
+      body = '<ul><li>Teams decide: <b>play $200</b> or <b>walk away</b>.</li><li>Teams that play tap it on their sheet, which pulls the lever with odds tilted toward the house: 7 times in 10 the $200 is gone. On average a team gets back $72.</li></ul>';
+    } else {
+      body = '<ul>' + outcomes(ev).map(function (o) { return '<li>' + signed(o.amount) + ' ' + esc(o.note) + '</li>'; }).join('') + '</ul>';
+      if (ev.optional) body = '<p class="tap">Teams choose: ' + esc(ev.optional.yes) + ' or ' + esc(ev.optional.no) + '.</p>' + body;
+    }
+    $('result').innerHTML = '<h3>' + esc(ev.label) + '</h3><p>' + esc(ev.text) + '</p>' + body +
+      '<p class="tap">Teams: tap “' + esc(ev.label) + '” on your sheet.</p>';
+  }
+
+  /* ---------- Round 3: Over / Under ---------- */
+  var ANSWERS = [
+    { call: 'under', real: '0%', why: 'Nevada is one of the few states with no state income tax. Casinos and tourists cover a big share of the state budget through gaming and sales taxes.' },
+    { call: 'over', real: 'About 22%', why: 'That\'s the average on cards that charge interest (Federal Reserve). Carry $3,000 and you pay around $660 a year just in interest.' },
+    { call: 'over', real: '5.26¢', why: 'An American wheel has 38 pockets (1 to 36, 0 and 00), but a winning number pays as if there were 36. That gap is the house edge.' },
+    { call: 'over', real: 'About $7 to $9', why: 'Strip slots keep roughly 7 to 9 cents of every dollar played (Nevada Gaming Control Board). Play the same money through again and again and it keeps shrinking.' },
+    { call: 'over', real: 'About 10%', why: 'Since the S&P 500 began in 1957 it has averaged around 10% a year before inflation, about 7% after. Some years are rough: it fell 37% in 2008.' },
+    { call: 'over', real: 'About 37%', why: 'In the Federal Reserve\'s 2024 survey, 63% of adults said they\'d cover a $400 surprise with cash. The rest would borrow, sell something, or couldn\'t pay.' },
+    { call: 'over', real: 'Almost 4 years', why: '47 months. You\'d pay about $4,630 in total, so more than $1,600 of it is interest.' },
+    { call: 'over', real: 'About $525,000', why: 'You put in $96,000. Compounding does the rest: most of the money arrives in the last 15 years.' }
+  ];
+  $('r3-chips').textContent = money(V.startChips);
+  var ou = { i: 0, revealed: {} };
+  $('ou-dots').innerHTML = V.questions.map(function (q, i) {
+    return '<button type="button" aria-label="Question ' + (i + 1) + '" data-i="' + i + '"></button>';
+  }).join('');
+  function renderOu() {
+    var q = V.questions[ou.i], a = ANSWERS[ou.i];
+    $('ou-count').textContent = 'Question ' + (ou.i + 1) + ' of ' + V.questions.length;
+    $('ou-q').textContent = q.q;
+    $('ou-line').textContent = q.line;
+    var shown = !!ou.revealed[ou.i];
+    $('ou-answer').hidden = !shown;
+    $('ou-answer').innerHTML = '<div class="call">' + a.call.toUpperCase() + '</div><div class="real">' + esc(a.real) + '</div><p>' + esc(a.why) + '</p>';
+    $('ou-reveal').hidden = shown;
+    $('ou-prev').disabled = ou.i === 0;
+    $('ou-next').disabled = ou.i === V.questions.length - 1;
+    $('ou-dots').querySelectorAll('button').forEach(function (d, i) {
+      d.setAttribute('aria-current', i === ou.i ? 'true' : 'false');
+      d.classList.toggle('done', !!ou.revealed[i] && i !== ou.i);
+    });
+  }
+  $('ou-reveal').addEventListener('click', function () { ou.revealed[ou.i] = true; renderOu(); });
+  $('ou-prev').addEventListener('click', function () { if (ou.i > 0) { ou.i--; renderOu(); } });
+  $('ou-next').addEventListener('click', function () { if (ou.i < V.questions.length - 1) { ou.i++; renderOu(); } });
+  $('ou-dots').addEventListener('click', function (e) {
+    var d = e.target.closest('[data-i]');
+    if (d) { ou.i = Number(d.getAttribute('data-i')); renderOu(); }
+  });
+  renderOu();
+
+  /* ---------- Finale: the investing chart ---------- */
+  var W = 720, H = 300, PAD = { l: 64, r: 96, t: 14, b: 34 };
+  var YEARS = 40, START_AGE = 22;
+  function niceMax(v) {
+    var step = Math.pow(10, Math.floor(Math.log10(v)));
+    var steps = [1, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10];
+    for (var s = 0; s < steps.length; s++) if (steps[s] * step >= v) return steps[s] * step;
+    return 10 * step;
+  }
+  function short(n) {
+    if (n >= 1e6) return '$' + (n / 1e6).toFixed(n % 1e6 ? 1 : 0) + 'M';
+    if (n >= 1e3) return '$' + Math.round(n / 1e3) + 'k';
+    return '$' + n;
+  }
+  function drawChart() {
+    var m = Number($('monthly').value);
+    $('monthly-label').textContent = money(m);
+    var pts = [];
+    for (var y = 0; y <= YEARS; y++) pts.push({ age: START_AGE + y, grown: V.grow(0, m, y), put: m * 12 * y });
+    var last = pts[pts.length - 1];
+    $('tile-in').textContent = money(last.put);
+    $('tile-out').textContent = money(last.grown);
+    $('tile-gain').textContent = money(last.grown - last.put);
+
+    var max = niceMax(last.grown);
+    var x = function (age) { return PAD.l + (age - START_AGE) / YEARS * (W - PAD.l - PAD.r); };
+    var y = function (v) { return H - PAD.b - v / max * (H - PAD.t - PAD.b); };
+    var svg = '';
+    for (var t = 0; t <= 4; t++) {
+      var v = max / 4 * t;
+      svg += '<line x1="' + PAD.l + '" x2="' + (W - PAD.r) + '" y1="' + y(v) + '" y2="' + y(v) + '" stroke="var(--line)" stroke-width="1"/>';
+      svg += '<text x="' + (PAD.l - 10) + '" y="' + (y(v) + 4) + '" text-anchor="end">' + short(v) + '</text>';
+    }
+    for (var a = START_AGE; a <= START_AGE + YEARS; a += 10) {
+      svg += '<text x="' + x(a) + '" y="' + (H - PAD.b + 22) + '" text-anchor="middle">Age ' + a + '</text>';
+    }
+    var path = function (key) { return pts.map(function (p, i) { return (i ? 'L' : 'M') + x(p.age).toFixed(1) + ' ' + y(p[key]).toFixed(1); }).join(' '); };
+    svg += '<path d="' + path('put') + '" fill="none" stroke="var(--s-in)" stroke-width="2" stroke-linecap="round" stroke-dasharray="6 5"/>';
+    svg += '<path d="' + path('grown') + '" fill="none" stroke="var(--s-invest)" stroke-width="2.5" stroke-linecap="round"/>';
+    svg += '<circle cx="' + x(last.age) + '" cy="' + y(last.grown) + '" r="5" fill="var(--s-invest)" stroke="var(--card)" stroke-width="2"/>';
+    svg += '<circle cx="' + x(last.age) + '" cy="' + y(last.put) + '" r="5" fill="var(--s-in)" stroke="var(--card)" stroke-width="2"/>';
+    svg += '<text class="lbl" x="' + (x(last.age) + 10) + '" y="' + (y(last.grown) + 4) + '">' + short(Math.round(last.grown)) + '</text>';
+    svg += '<text class="lbl" x="' + (x(last.age) + 10) + '" y="' + (y(last.put) + 4) + '">' + short(last.put) + '</text>';
+    svg += '<line id="cross" x1="0" x2="0" y1="' + PAD.t + '" y2="' + (H - PAD.b) + '" stroke="var(--ink-soft)" stroke-width="1" visibility="hidden"/>';
+    svg += '<circle id="dot-g" r="5" fill="var(--s-invest)" stroke="var(--card)" stroke-width="2" visibility="hidden"/>';
+    svg += '<circle id="dot-p" r="5" fill="var(--s-in)" stroke="var(--card)" stroke-width="2" visibility="hidden"/>';
+    svg += '<rect id="hit" x="' + PAD.l + '" y="0" width="' + (W - PAD.l - PAD.r) + '" height="' + H + '" fill="transparent"/>';
+
+    $('plot').innerHTML = '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Investing ' + money(m) + ' a month from 22 to 62 at 7% grows to ' + money(last.grown) + ', from ' + money(last.put) + ' put in">' + svg + '</svg><div class="tip" hidden></div>';
+    $('plot-table').innerHTML = '<tr><th>Age</th><th>Put in</th><th>Invested at 7%</th></tr>' +
+      pts.filter(function (p) { return (p.age - START_AGE) % 5 === 0; }).map(function (p) {
+        return '<tr><td>' + p.age + '</td><td>' + money(p.put) + '</td><td>' + money(p.grown) + '</td></tr>';
+      }).join('');
+
+    var svgEl = $('plot').querySelector('svg'), tip = $('plot').querySelector('.tip');
+    var cross = svgEl.querySelector('#cross'), dg = svgEl.querySelector('#dot-g'), dp = svgEl.querySelector('#dot-p');
+    function move(e) {
+      var r = svgEl.getBoundingClientRect();
+      var sx = (e.clientX - r.left) / r.width * W;
+      var age = Math.round(START_AGE + (sx - PAD.l) / (W - PAD.l - PAD.r) * YEARS);
+      age = Math.max(START_AGE, Math.min(START_AGE + YEARS, age));
+      var p = pts[age - START_AGE];
+      var px = x(age);
+      cross.setAttribute('x1', px); cross.setAttribute('x2', px);
+      dg.setAttribute('cx', px); dg.setAttribute('cy', y(p.grown));
+      dp.setAttribute('cx', px); dp.setAttribute('cy', y(p.put));
+      [cross, dg, dp].forEach(function (n) { n.setAttribute('visibility', 'visible'); });
+      tip.hidden = false;
+      tip.innerHTML = '<b>Age ' + age + '</b><div><i style="background:var(--s-invest)"></i>Invested <b>' + money(p.grown) + '</b></div><div><i style="background:var(--s-in)"></i>Put in <b>' + money(p.put) + '</b></div>';
+      var left = px / W * r.width;
+      tip.style.left = Math.max(80, Math.min(r.width - 80, left)) + 'px';
+      tip.style.top = (y(p.grown) / H * r.height) + 'px';
+    }
+    function leave() {
+      tip.hidden = true;
+      [cross, dg, dp].forEach(function (n) { n.setAttribute('visibility', 'hidden'); });
+    }
+    var hit = svgEl.querySelector('#hit');
+    hit.addEventListener('pointermove', move);
+    hit.addEventListener('pointerdown', move);
+    hit.addEventListener('pointerleave', leave);
+  }
+  $('monthly').addEventListener('input', drawChart);
+  drawChart();
+
+  /* ---------- Leaderboard ---------- */
+  var BOARD_KEY = 'vegas-budget-board';
+  var board = store(BOARD_KEY) || [];
+  if (!Array.isArray(board)) board = [];
+  function renderBoard() {
+    board.sort(function (a, b) { return b.worth - a.worth; });
+    $('board-list').innerHTML = board.map(function (t, i) {
+      return '<li><b>' + esc(t.team) + '</b><span class="num ' + (t.worth < 0 ? 'lose' : '') + '">' + money(t.worth) + '</span>' +
+        '<button type="button" class="x" data-i="' + i + '" aria-label="Remove ' + esc(t.team) + '">&times;</button></li>';
+    }).join('');
+    $('board-empty').hidden = board.length > 0;
+    $('board-clear').hidden = board.length === 0;
+  }
+  $('board-form').addEventListener('submit', function (e) {
+    e.preventDefault();
+    var team = $('b-team').value.trim();
+    var worth = Math.round(Number($('b-worth').value));
+    if (!team || !isFinite(worth)) return;
+    board.push({ team: team, worth: worth });
+    store(BOARD_KEY, board);
+    $('b-team').value = '';
+    $('b-worth').value = '';
+    $('b-team').focus();
+    renderBoard();
+  });
+  $('board-list').addEventListener('click', function (e) {
+    var x = e.target.closest('[data-i]');
+    if (!x) return;
+    board.splice(Number(x.getAttribute('data-i')), 1);
+    store(BOARD_KEY, board);
+    renderBoard();
+  });
+  $('board-clear').addEventListener('click', function () {
+    if (!confirm('Clear every team from the leaderboard?')) return;
+    board = [];
+    store(BOARD_KEY, board);
+    renderBoard();
+  });
+  renderBoard();
+})();
+</script>
+</body>
+</html>

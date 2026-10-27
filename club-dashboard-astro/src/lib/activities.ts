@@ -48,6 +48,8 @@ export interface Activity {
 
 /** "2nd Business Meeting", 2026-10-14 — the websites meeting. */
 const WEBSITES_MEETING = '51ab2bae-f28e-4dd1-9666-edced601c39f';
+/** "3rd Business Meeting", 2026-10-27 — the personal finance meeting. */
+const VEGAS_MEETING = '607e7965-7162-4d23-bb2b-c6547f7dfb84';
 
 export const ACTIVITIES: readonly Activity[] = [
   {
@@ -63,6 +65,20 @@ export const ACTIVITIES: readonly Activity[] = [
     summary: 'Presenter view: the same three websites with the answers revealed, their fixed versions, and the report card.',
     audience: 'officers',
     meetings: [WEBSITES_MEETING],
+  },
+  {
+    slug: 'vegas-on-a-budget',
+    title: 'Vegas on a Budget',
+    summary: 'Team game: build a budget for a first job on the Strip, survive the Wheel of Life and finish with the highest net worth. One phone per team.',
+    audience: 'public',
+    meetings: [VEGAS_MEETING],
+  },
+  {
+    slug: 'vegas-presenter',
+    title: 'Vegas on a Budget: presenter page',
+    summary: 'The run sheet: budget menu, Wheel of Life, the Over/Under answers and the leaderboard.',
+    audience: 'officers',
+    meetings: [VEGAS_MEETING],
   },
 ];
 

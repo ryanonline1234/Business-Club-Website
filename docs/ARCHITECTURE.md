@@ -420,7 +420,7 @@ way to admin in an admin's browser. The rule now:
 ## Meeting activities
 
 The interactive pages a meeting runs — the Website Hunt game, the Website Lab
-presenter view — are served from this site at `/activities/<slug>/` (they
+presenter view, Vegas on a Budget and its presenter page — are served from this site at `/activities/<slug>/` (they
 started life as Claude artifacts; moved 2026-10-26).
 
 - **Files:** `src/activities/<slug>/`, plain HTML/CSS/JS with an
@@ -438,7 +438,11 @@ started life as Claude artifacts; moved 2026-10-26).
   it must hold nothing secret. `'officers'` — `requireOfficer` with
   `nextPath`, before any byte is served, for presenter views and answer keys.
   The Website Hunt is public; the Website Lab (all 36 answers in its page
-  source) is officers-only.
+  source) is officers-only. Likewise Vegas on a Budget (`vegas-on-a-budget`,
+  the player's guide and team sheet) is public and its presenter page
+  (`vegas-presenter`, the Over/Under answers) is officers-only; each carries
+  its own copy of `vegas.css` and `game.js`, and `game.js` holds only the
+  betting lines.
 - **Response headers:** a CSP of `default-src 'self'` with
   `connect-src 'none'` and `form-action 'none'` (activity scripts cannot call
   the API or post anywhere), `x-robots-tag: noindex` (the demo businesses are

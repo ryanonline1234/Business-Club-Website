@@ -1,0 +1,636 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Vegas Team Sheet</title>
+<link rel="stylesheet" href="/activity-assets/fonts.css">
+<link rel="stylesheet" href="vegas.css">
+<style>
+  /* Layout: one phone per team. Four steps down the page, a sticky paycheck bar while budgeting. */
+  .page { max-width: 760px; padding-bottom: 120px; }
+  .sign h1 { font-size: clamp(34px, 9vw, 60px); }
+
+  .step-head { display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; align-items: center; margin-bottom: 16px; }
+  .step-head .badge { grid-row: span 2; width: 46px; height: 46px; border-radius: 50%; background: var(--neon); color: #fff; display: grid; place-items: center; font: 400 20px/1 var(--display); }
+  .step-head p { margin: 0; color: var(--ink-soft); grid-column: 2; }
+  .step.locked-out { opacity: 0.5; }
+  .step.locked-out .card, .step.locked-out .cats { pointer-events: none; }
+  .waiting { margin: 0 0 12px; font-weight: 600; color: var(--ink-soft); }
+
+  .team-name { display: grid; gap: 6px; margin-top: 24px; font-weight: 700; }
+
+  .paycheck { display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; align-items: baseline; }
+  .paycheck .big { font: 400 34px/1 var(--display); color: var(--money); }
+  .paycheck p { margin: 0; color: var(--ink-soft); font-size: 15px; grid-column: 1 / -1; }
+  .fixed { list-style: none; margin: 12px 0 0; padding: 12px 0 0; border-top: 1px dashed var(--line); display: grid; gap: 6px; font-size: 15px; }
+  .fixed li { display: flex; justify-content: space-between; gap: 12px; }
+  .fixed small { display: block; color: var(--ink-soft); }
+
+  .cats { display: grid; gap: 14px; margin-top: 14px; }
+  fieldset { border: 1px solid var(--line); background: var(--card); border-radius: 14px; padding: 14px 16px 16px; margin: 0; min-width: 0; }
+  legend { font: 400 16px/1 var(--display); padding: 0 6px; }
+  legend small { font: 600 12px/1 var(--body); letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-soft); margin-left: 6px; }
+  .opts { display: grid; gap: 8px; }
+  .opt { display: grid; grid-template-columns: 22px minmax(0, 1fr) auto; gap: 10px; align-items: center; border: 1.5px solid var(--line); border-radius: 12px; padding: 10px 12px; cursor: pointer; }
+  .opt:has(input:checked) { border-color: var(--neon); background: color-mix(in srgb, var(--neon) 8%, var(--card)); }
+  .opt input { width: 20px; height: 20px; accent-color: var(--neon); margin: 0; }
+  .opt b { display: block; font-size: 15.5px; line-height: 1.3; }
+  .opt small { display: block; color: var(--ink-soft); font-size: 13.5px; line-height: 1.35; }
+  .opt .price { text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .opt .price .stars { display: block; font-size: 13px; }
+
+  .summary { margin-top: 16px; display: grid; gap: 14px; }
+  .totals { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+  .totals div { background: var(--chip); border-radius: 10px; padding: 10px 12px; }
+  .totals > div > span { display: block; font-size: 12.5px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-soft); }
+  .totals b { font: 400 22px/1.2 var(--display); font-variant-numeric: tabular-nums; }
+  .totals small { display: block; font: 600 13px/1.3 var(--body); color: var(--ink-soft); }
+
+  .split h3 { font-size: 15px; margin-bottom: 8px; }
+  .bar { display: flex; gap: 2px; height: 22px; border-radius: 6px; overflow: hidden; background: var(--chip); }
+  .bar i { display: block; height: 100%; min-width: 0; transition: width 0.25s; }
+  .bar .needs { background: var(--s-in); }
+  .bar .wants { background: var(--neon); }
+  .bar .save { background: var(--s-invest); }
+  .bar .over { background: repeating-linear-gradient(45deg, var(--loss) 0 6px, transparent 6px 10px); }
+  .legend { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 8px; font-size: 14px; }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .legend i { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
+  .legend small { color: var(--ink-soft); }
+
+  .slider label { display: flex; justify-content: space-between; gap: 12px; font-weight: 700; }
+  .slider input { width: 100%; accent-color: var(--neon); margin: 10px 0 4px; }
+  .slider p { margin: 0; color: var(--ink-soft); font-size: 14.5px; }
+
+  .warn { margin: 0; color: var(--loss); font-weight: 600; font-size: 15px; }
+  .lockrow { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+
+  .dock {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 10;
+    background: var(--ink); color: var(--paper);
+    padding: 10px 16px calc(10px + env(safe-area-inset-bottom, 0px));
+    display: flex; justify-content: center; gap: 8px 22px; flex-wrap: wrap;
+    font-size: 15px; box-shadow: 0 -6px 20px rgba(0, 0, 0, 0.2);
+  }
+  .dock b { font-variant-numeric: tabular-nums; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .dock { background: #0b0616; color: var(--ink); border-top: 1px solid var(--line); } }
+  :root[data-theme="dark"] .dock { background: #0b0616; color: var(--ink); border-top: 1px solid var(--line); }
+
+  .wallet { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+  .wallet div { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; }
+  .wallet > div > span { display: block; font-size: 12.5px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-soft); }
+  .wallet b { font: 400 22px/1.2 var(--display); font-variant-numeric: tabular-nums; }
+  .wallet small { display: block; color: var(--ink-soft); font-size: 13px; }
+
+  .events { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 14px; }
+  .events button { text-align: left; font: 600 15px/1.25 var(--body); color: var(--ink); background: var(--card); border: 1.5px solid var(--line); border-radius: 12px; padding: 12px; cursor: pointer; }
+  .events button:hover { border-color: var(--neon); }
+  .events button small { display: block; color: var(--ink-soft); font-weight: 500; font-size: 13px; margin-top: 2px; }
+  .ask { margin-top: 12px; border-color: var(--neon); }
+  .ask p { margin: 4px 0 12px; color: var(--ink-soft); }
+  .ask .lockrow { margin-top: 4px; }
+  .ledger { list-style: none; margin: 14px 0 0; padding: 0; display: grid; gap: 8px; }
+  .ledger li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 12px; background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 10px 14px; }
+  .ledger li small { color: var(--ink-soft); grid-column: 1; }
+  .ledger li .amt { grid-row: span 2; align-self: center; font-variant-numeric: tabular-nums; }
+  .undo { margin-top: 10px; }
+
+  .stack { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+  .stack b { font: 400 26px/1 var(--display); font-variant-numeric: tabular-nums; }
+  .bets { display: grid; gap: 10px; }
+  .bet { display: grid; gap: 10px; }
+  .bet.locked-out { opacity: 0.5; }
+  .bet .q { display: grid; grid-template-columns: auto 1fr; gap: 10px; align-items: start; }
+  .bet .q span { font: 400 15px/1 var(--display); color: var(--neon); padding-top: 3px; }
+  .bet .q b { font-weight: 600; line-height: 1.35; }
+  .bet .line { font-size: 14px; color: var(--ink-soft); }
+  .bet .line strong { color: var(--ink); }
+  .ou { display: inline-flex; border: 2px solid var(--ink); border-radius: 999px; overflow: hidden; }
+  .ou label { padding: 7px 14px; font-weight: 700; font-size: 14.5px; cursor: pointer; }
+  .ou input { position: absolute; opacity: 0; pointer-events: none; }
+  .ou label:has(input:checked) { background: var(--ink); color: var(--paper); }
+  .ou label:has(input:focus-visible) { outline: 3px solid var(--gold); outline-offset: -3px; }
+  .betrow { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+  .betrow input[type="number"] { width: 110px; }
+  .result { font-weight: 700; }
+
+  .final { text-align: center; padding: 26px 20px; }
+  .final .eyebrow { color: var(--ink-soft); }
+  .final .worth { font: 400 clamp(44px, 12vw, 72px)/1 var(--display); margin: 8px 0 4px; font-variant-numeric: tabular-nums; }
+  .final p { margin: 0; color: var(--ink-soft); }
+  .breakdown { list-style: none; margin: 14px 0 0; padding: 0; display: grid; gap: 6px; }
+  .breakdown li { display: flex; justify-content: space-between; gap: 12px; border-bottom: 1px dashed var(--line); padding-bottom: 6px; }
+  .future { margin-top: 14px; display: grid; gap: 10px; }
+  .future p { margin: 0; }
+
+  .reset { margin-top: 40px; display: flex; flex-wrap: wrap; gap: 10px; align-items: center; color: var(--ink-soft); font-size: 14px; }
+
+  @media (max-width: 560px) {
+    .totals b, .wallet b { font-size: 18px; }
+    .totals div, .wallet div { padding: 8px 10px; }
+    .events { grid-template-columns: 1fr; }
+    .slider label { flex-direction: column; gap: 2px; }
+    .slider label span:last-child { font-weight: 600; color: var(--ink-soft); }
+    .opt { grid-template-columns: 22px minmax(0, 1fr); }
+    .opt .price { grid-column: 2; text-align: left; display: flex; gap: 10px; align-items: baseline; }
+    .opt .price .stars { display: inline; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <header class="sign">
+    <div class="welcome"><a href="index.html">Player's guide</a> · Team sheet</div>
+    <h1>Vegas on a <span>Budget</span></h1>
+    <p>You just landed your first job on the Las Vegas Strip. Make the money last, survive what life throws at you, and finish with the highest net worth.</p>
+  </header>
+
+  <label class="team-name">Team name
+    <input type="text" id="team" maxlength="40" placeholder="e.g. The High Rollers" autocomplete="off">
+  </label>
+
+  <!-- Step 1 -->
+  <section id="budget" class="step">
+    <div class="step-head">
+      <span class="badge">1</span>
+      <h2>Build your budget</h2>
+      <p>Pick one option in each category. Your budget needs at least <b id="min-stars"></b> stars: nobody sticks to a budget they hate.</p>
+    </div>
+
+    <div class="card">
+      <div class="paycheck">
+        <div>
+          <div class="eyebrow">Your monthly paycheck</div>
+          <div id="job"></div>
+        </div>
+        <div class="big" id="takehome"></div>
+        <p id="paynote"></p>
+      </div>
+      <ul class="fixed" id="fixed"></ul>
+    </div>
+
+    <div class="cats" id="cats"></div>
+
+    <div class="card summary">
+      <div class="totals">
+        <div><span>Spending</span><b id="t-spend"></b></div>
+        <div><span>Left over</span><b id="t-left"></b></div>
+        <div><span>Stars</span><b id="t-stars"></b></div>
+      </div>
+      <div class="split">
+        <h3>The 50/30/20 check</h3>
+        <div class="bar" id="bar" role="img"></div>
+        <div class="legend" id="legend"></div>
+      </div>
+      <div class="slider">
+        <label for="invest"><span>Where your savings go</span><span id="invest-label"></span></label>
+        <input type="range" id="invest" min="0" max="100" step="10" value="50">
+        <p>The <b>emergency fund</b> is cash for surprises. <b>Investments</b> grow over time, but they're locked away for later, so they can't pay for a surprise.</p>
+      </div>
+      <p class="warn" id="warn" hidden></p>
+      <div class="lockrow">
+        <button type="button" class="btn primary" id="lock">Lock our budget</button>
+        <button type="button" class="btn" id="unlock" hidden>Change our budget</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- Step 2 -->
+  <section id="life" class="step">
+    <div class="step-head">
+      <span class="badge">2</span>
+      <h2>Six months later…</h2>
+      <p>Your budget ran for six months. Now spin the Wheel of Life: tap whatever the host lands on.</p>
+    </div>
+    <p class="waiting" data-wait>Lock your budget first.</p>
+    <div class="wallet" id="wallet"></div>
+    <div class="events" id="events"></div>
+    <div class="card ask" id="ask" hidden></div>
+    <ol class="ledger" id="ledger"></ol>
+    <button type="button" class="btn small undo" id="undo" hidden>Undo the last event</button>
+  </section>
+
+  <!-- Step 3 -->
+  <section id="overunder" class="step">
+    <div class="step-head">
+      <span class="badge">3</span>
+      <h2>Over / Under</h2>
+      <p>The host reads a number. Bet chips on whether the real answer is over or under it. Right: win your bet. Wrong: lose it.</p>
+    </div>
+    <div class="stack"><span class="chip">$</span><div><b id="chips"></b><div class="eyebrow" style="color:var(--ink-soft)">chips in front of you</div></div></div>
+    <div class="bets" id="bets"></div>
+  </section>
+
+  <!-- Step 4 -->
+  <section id="final" class="step">
+    <div class="step-head">
+      <span class="badge">4</span>
+      <h2>Cash out</h2>
+      <p>Read your net worth to the host. Highest net worth wins.</p>
+    </div>
+    <div class="card final">
+      <div class="eyebrow">Net worth</div>
+      <div class="worth" id="worth"></div>
+      <p id="worth-team"></p>
+      <ul class="breakdown" id="breakdown"></ul>
+    </div>
+    <div class="card future" id="future"></div>
+  </section>
+
+  <div class="reset">
+    <span>Everything is saved on this phone only.</span>
+    <button type="button" class="btn small" id="reset">Start over</button>
+  </div>
+
+  <footer>Made for a Business Club activity. The job, prices and events are realistic but made up for the game.</footer>
+</div>
+
+<div class="dock" id="dock" aria-live="polite"></div>
+
+<script src="game.js"></script>
+<script>
+(function () {
+  var V = window.VEGAS;
+  var KEY = 'vegas-budget-team';
+  var $ = function (id) { return document.getElementById(id); };
+  var money = V.money;
+
+  function blank() {
+    return { team: '', choices: {}, invest: 50, locked: false, events: [], bets: [] };
+  }
+  var state = load();
+
+  function load() {
+    try {
+      var v = JSON.parse(localStorage.getItem(KEY));
+      if (v && typeof v === 'object' && v.choices) return Object.assign(blank(), v);
+    } catch (e) { /* fall through */ }
+    return blank();
+  }
+  function save() {
+    try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) { /* storage unavailable: the sheet lasts for this visit */ }
+  }
+  function esc(s) {
+    return String(s).replace(/[&<>"]/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c];
+    });
+  }
+  function signed(n) {
+    if (n === 0) return '<span class="num">$0</span>';
+    return '<span class="num ' + (n > 0 ? 'gain' : 'lose') + '">' + (n > 0 ? '+' : '') + money(n) + '</span>';
+  }
+  function starStr(n) { return '★★★'.slice(0, n); }
+
+  /* ---------- Budget math ---------- */
+  function budget() {
+    var spend = V.fixedTotal, needs = V.fixedTotal, stars = 0, picked = 0;
+    V.categories.forEach(function (cat) {
+      var o = V.option(cat.key, state.choices[cat.key]);
+      if (!o) return;
+      picked++;
+      spend += o.cost;
+      stars += o.stars;
+      if (cat.kind === 'need') {
+        needs += Math.min.apply(null, cat.options.map(function (x) { return x.cost; }));
+      }
+    });
+    var left = V.takeHome - spend;
+    return {
+      spend: spend, needs: needs, wants: spend - needs, left: left, stars: stars,
+      complete: picked === V.categories.length,
+      investMonthly: left > 0 ? left * state.invest / 100 : 0,
+      emergencyMonthly: left > 0 ? left * (100 - state.invest) / 100 : 0
+    };
+  }
+
+  // Where the team stands after six months of their budget, then every event in order.
+  function wallet() {
+    var b = budget();
+    var w = { emergency: 0, invested: 0, debt: 0 };
+    for (var m = 0; m < V.months; m++) {
+      w.debt *= 1 + V.cardApr / 100 / 12;
+      if (b.left >= 0) {
+        w.emergency += b.emergencyMonthly;
+        w.invested += b.investMonthly;
+      } else {
+        w.debt += -b.left;
+      }
+    }
+    w.start = { emergency: w.emergency, invested: w.invested, debt: w.debt };
+    state.events.forEach(function (ev) { apply(w, ev.amount); });
+    return w;
+  }
+  // Money in pays down the card first. Money out comes from the emergency fund, then goes on the card.
+  function apply(w, amount) {
+    if (amount > 0) {
+      var pay = Math.min(amount, w.debt);
+      w.debt -= pay;
+      w.emergency += amount - pay;
+    } else if (amount < 0) {
+      var cost = -amount;
+      var fromFund = Math.min(cost, w.emergency);
+      w.emergency -= fromFund;
+      w.debt += cost - fromFund;
+    }
+  }
+  function chips() {
+    var c = V.startChips;
+    state.bets.forEach(function (bet) {
+      if (bet && bet.answer) c += bet.answer === bet.pick ? bet.wager : -bet.wager;
+    });
+    return c;
+  }
+
+  /* ---------- Step 1: budget ---------- */
+  $('min-stars').textContent = V.minStars;
+  $('job').textContent = V.job + ', ' + money(V.salary) + ' a year';
+  $('takehome').textContent = money(V.takeHome);
+  $('paynote').textContent = 'That\'s after federal tax and Social Security. Nevada has no state income tax, so nothing comes out for the state.';
+  $('fixed').innerHTML = '<li><b>Bills everyone pays</b><b class="num">' + money(V.fixedTotal) + '</b></li>' +
+    V.fixed.map(function (f) {
+      return '<li><span>' + esc(f.label) + '<small>' + esc(f.note) + '</small></span><span class="num">' + money(f.cost) + '</span></li>';
+    }).join('');
+
+  $('cats').innerHTML = V.categories.map(function (cat) {
+    return '<fieldset><legend>' + esc(cat.label) + '<small>' + (cat.kind === 'need' ? 'need' : 'want') + '</small></legend><div class="opts">' +
+      cat.options.map(function (o) {
+        return '<label class="opt"><input type="radio" name="' + cat.key + '" value="' + o.key + '">' +
+          '<span><b>' + esc(o.label) + '</b><small>' + esc(o.detail) + '</small></span>' +
+          '<span class="price">' + money(o.cost) + '<span class="stars" aria-label="' + o.stars + ' stars">' + starStr(o.stars) + '</span></span></label>';
+      }).join('') + '</div></fieldset>';
+  }).join('');
+
+  $('cats').addEventListener('change', function (e) {
+    if (e.target.type !== 'radio' || state.locked) return;
+    state.choices[e.target.name] = e.target.value;
+    save();
+    render();
+  });
+  $('invest').addEventListener('input', function () {
+    if (state.locked) return;
+    state.invest = Number(this.value);
+    save();
+    render();
+  });
+  $('team').addEventListener('input', function () {
+    state.team = this.value;
+    save();
+    renderFinal();
+  });
+  $('lock').addEventListener('click', function () {
+    state.locked = true;
+    save();
+    render();
+    document.getElementById('life').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  });
+  $('unlock').addEventListener('click', function () {
+    if (state.events.length && !confirm('Change your budget? Your six months will be re-run, and the life events you already tapped stay.')) return;
+    state.locked = false;
+    save();
+    render();
+  });
+
+  function renderBudget() {
+    var b = budget();
+    V.categories.forEach(function (cat) {
+      document.querySelectorAll('input[name="' + cat.key + '"]').forEach(function (r) {
+        r.checked = state.choices[cat.key] === r.value;
+        r.disabled = state.locked;
+      });
+    });
+    $('invest').value = state.invest;
+    $('invest').disabled = state.locked;
+    $('invest-label').textContent = (100 - state.invest) + '% emergency fund · ' + state.invest + '% invested';
+
+    $('t-spend').textContent = money(b.spend);
+    $('t-left').innerHTML = '<span class="' + (b.left < 0 ? 'lose' : 'gain') + '">' + money(b.left) + '</span>';
+    $('t-stars').innerHTML = b.stars + ' <span class="stars">★</span><small>need ' + V.minStars + '+</small>';
+
+    // 50/30/20 bar, as a share of take-home pay (or of spending, if the team overspends).
+    var base = Math.max(V.takeHome, b.spend);
+    var pct = function (n) { return (n / base * 100) + '%'; };
+    var saved = Math.max(b.left, 0), over = Math.max(-b.left, 0);
+    $('bar').innerHTML =
+      '<i class="needs" style="width:' + pct(b.needs) + '"></i>' +
+      '<i class="wants" style="width:' + pct(b.wants) + '"></i>' +
+      (saved ? '<i class="save" style="width:' + pct(saved) + '"></i>' : '') +
+      (over ? '<i class="over" style="width:' + pct(over) + '"></i>' : '');
+    var share = function (n) { return Math.round(n / V.takeHome * 100) + '%'; };
+    $('bar').setAttribute('aria-label', 'Needs ' + share(b.needs) + ', wants ' + share(b.wants) + ', savings ' + share(saved) + ' of take-home pay');
+    $('legend').innerHTML =
+      '<span><i style="background:var(--s-in)"></i>Needs <b class="num">' + share(b.needs) + '</b> <small>aim ≤ 50%</small></span>' +
+      '<span><i style="background:var(--neon)"></i>Wants <b class="num">' + share(b.wants) + '</b> <small>aim ≤ 30%</small></span>' +
+      (over
+        ? '<span class="lose">Overspending ' + money(over) + ' a month: it goes on a ' + V.cardApr + '% credit card</span>'
+        : '<span><i style="background:var(--s-invest)"></i>Savings <b class="num">' + share(saved) + '</b> <small>aim ≥ 20%</small></span>');
+
+    var problem = '';
+    if (!b.complete) problem = 'Pick an option in every category.';
+    else if (b.stars < V.minStars) problem = 'Only ' + b.stars + ' stars. Upgrade something: you need at least ' + V.minStars + '.';
+    $('warn').hidden = !problem || state.locked;
+    $('warn').textContent = problem;
+    $('lock').hidden = state.locked;
+    $('lock').disabled = !!problem;
+    $('unlock').hidden = !state.locked;
+
+    var dock = $('dock');
+    dock.hidden = state.locked;
+    dock.innerHTML = 'Left over <b class="' + (b.left < 0 ? 'lose' : '') + '">' + money(b.left) + '</b>/month' +
+      '<span>Stars <b>' + b.stars + '</b> of ' + V.minStars + '+</span>';
+  }
+
+  /* ---------- Step 2: life events ---------- */
+  var pending = null;
+
+  $('events').innerHTML = V.events.map(function (ev) {
+    return '<button type="button" data-ev="' + ev.key + '">' + esc(ev.label) + '<small>' + esc(ev.text) + '</small></button>';
+  }).join('');
+
+  $('events').addEventListener('click', function (e) {
+    var btn = e.target.closest('[data-ev]');
+    if (!btn || !state.locked) return;
+    var ev = V.event(btn.getAttribute('data-ev'));
+    if (ev.optional) {
+      pending = ev;
+      renderAsk();
+      $('ask').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    } else {
+      record(ev);
+    }
+  });
+
+  function renderAsk() {
+    var ask = $('ask');
+    if (!pending) { ask.hidden = true; return; }
+    ask.hidden = false;
+    ask.innerHTML = '<h3>' + esc(pending.label) + '</h3><p>' + esc(pending.text) + ' Your call.</p>' +
+      '<div class="lockrow"><button type="button" class="btn primary" data-pick="yes">' + esc(pending.optional.yes) + '</button>' +
+      '<button type="button" class="btn" data-pick="no">' + esc(pending.optional.no) + '</button>' +
+      '<button type="button" class="btn small" data-pick="cancel">Cancel</button></div>';
+  }
+  $('ask').addEventListener('click', function (e) {
+    var btn = e.target.closest('[data-pick]');
+    if (!btn || !pending) return;
+    var pick = btn.getAttribute('data-pick');
+    var ev = pending;
+    pending = null;
+    renderAsk();
+    if (pick !== 'cancel') record(ev, pick);
+  });
+
+  function record(ev, pick) {
+    var roll = Math.random();
+    var out = ev.effect(state.choices, pick, roll);
+    state.events.push({ key: ev.key, label: ev.label, note: out.note, amount: out.amount });
+    save();
+    render();
+  }
+  $('undo').addEventListener('click', function () {
+    state.events.pop();
+    save();
+    render();
+  });
+
+  function renderLife() {
+    var on = state.locked;
+    var sec = $('life');
+    sec.classList.toggle('locked-out', !on);
+    sec.querySelector('[data-wait]').hidden = on;
+    var w = wallet();
+    $('wallet').innerHTML =
+      '<div><span>Emergency fund</span><b>' + money(w.emergency) + '</b><small>Cash for surprises</small></div>' +
+      '<div><span>Invested</span><b>' + money(w.invested) + '</b><small>Locked away for later</small></div>' +
+      '<div><span>Credit card</span><b class="' + (w.debt > 0.5 ? 'lose' : '') + '">' + money(w.debt) + '</b><small>Owed at ' + V.cardApr + '% a year</small></div>';
+    $('events').querySelectorAll('button').forEach(function (b) { b.disabled = !on; });
+    $('ledger').innerHTML = state.events.map(function (ev) {
+      return '<li><b>' + esc(ev.label) + '</b><span class="amt">' + signed(ev.amount) + '</span><small>' + esc(ev.note) + '</small></li>';
+    }).join('');
+    $('undo').hidden = !state.events.length;
+  }
+
+  /* ---------- Step 3: Over / Under ---------- */
+  $('bets').innerHTML = V.questions.map(function (q, i) {
+    return '<div class="card bet" data-i="' + i + '">' +
+      '<div class="q"><span>' + (i + 1) + '</span><div><b>' + esc(q.q) + '</b><div class="line">The line: <strong>' + esc(q.line) + '</strong></div></div></div>' +
+      '<div class="betrow" data-slot="controls"></div></div>';
+  }).join('');
+
+  function renderBets() {
+    var stack = chips();
+    $('chips').textContent = money(stack);
+    // A question opens once the one before it is settled.
+    var open = true;
+    document.querySelectorAll('.bet').forEach(function (card) {
+      var i = Number(card.getAttribute('data-i'));
+      var bet = state.bets[i];
+      var slot = card.querySelector('[data-slot]');
+      card.classList.toggle('locked-out', !open);
+      if (bet && bet.answer) {
+        var won = bet.answer === bet.pick;
+        slot.innerHTML = '<span>You bet ' + money(bet.wager) + ' on <b>' + bet.pick.toUpperCase() + '</b>. The answer was ' + bet.answer.toUpperCase() + '.</span> ' +
+          '<span class="result">' + signed(won ? bet.wager : -bet.wager) + '</span>';
+        return;
+      }
+      if (bet && bet.locked) {
+        slot.innerHTML = '<span>Locked: ' + money(bet.wager) + ' on <b>' + bet.pick.toUpperCase() + '</b>. What did the host reveal?</span>' +
+          '<button type="button" class="btn small" data-answer="over">It was OVER</button>' +
+          '<button type="button" class="btn small" data-answer="under">It was UNDER</button>';
+        open = false;
+        return;
+      }
+      if (!open) { slot.innerHTML = '<span style="color:var(--ink-soft)">Opens once question ' + i + ' is settled.</span>'; return; }
+      var pick = bet && bet.pick;
+      var wager = bet ? bet.wager : Math.min(50, stack);
+      slot.innerHTML =
+        '<span class="ou" role="radiogroup" aria-label="Over or under">' +
+          '<label><input type="radio" name="ou' + i + '" value="over"' + (pick === 'over' ? ' checked' : '') + '>Over</label>' +
+          '<label><input type="radio" name="ou' + i + '" value="under"' + (pick === 'under' ? ' checked' : '') + '>Under</label>' +
+        '</span>' +
+        '<input type="number" min="0" max="' + stack + '" step="10" value="' + wager + '" aria-label="Chips to bet" data-wager>' +
+        '<button type="button" class="btn small primary" data-lockbet>Lock bet</button>';
+      open = false;
+    });
+  }
+
+  $('bets').addEventListener('click', function (e) {
+    var card = e.target.closest('.bet');
+    if (!card) return;
+    var i = Number(card.getAttribute('data-i'));
+    if (e.target.closest('[data-lockbet]')) {
+      var pickEl = card.querySelector('input[type="radio"]:checked');
+      if (!pickEl) { alert('Pick OVER or UNDER first.'); return; }
+      var wager = Math.round(Number(card.querySelector('[data-wager]').value) || 0);
+      wager = Math.max(0, Math.min(wager, chips()));
+      state.bets[i] = { pick: pickEl.value, wager: wager, locked: true };
+      save();
+      renderBets();
+      renderFinal();
+    }
+    var ans = e.target.closest('[data-answer]');
+    if (ans && state.bets[i]) {
+      state.bets[i].answer = ans.getAttribute('data-answer');
+      save();
+      renderBets();
+      renderFinal();
+    }
+  });
+
+  /* ---------- Step 4: cash out ---------- */
+  function renderFinal() {
+    var w = wallet();
+    var c = chips();
+    var worth = w.emergency + w.invested + c - w.debt;
+    $('worth').innerHTML = '<span class="' + (worth < 0 ? 'lose' : '') + '">' + money(worth) + '</span>';
+    $('worth-team').textContent = state.team ? state.team : 'Add your team name at the top.';
+    $('breakdown').innerHTML =
+      '<li><span>Emergency fund</span><b class="num">' + money(w.emergency) + '</b></li>' +
+      '<li><span>Investments</span><b class="num">' + money(w.invested) + '</b></li>' +
+      '<li><span>Over/Under chips</span><b class="num">' + money(c) + '</b></li>' +
+      '<li><span>Credit card debt</span><b class="num' + (w.debt > 0.5 ? ' lose' : '') + '">' + (w.debt > 0.5 ? '−' : '') + money(w.debt) + '</b></li>';
+
+    var b = budget();
+    var lines = [];
+    if (state.locked && b.investMonthly > 0) {
+      var at62 = V.grow(w.invested, b.investMonthly, 40);
+      lines.push('<p><b>Future you:</b> keep investing <b>' + money(b.investMonthly) + '</b> a month until you\'re 62 and, at 7% a year, your investments grow to about <b class="gain">' + money(at62) + '</b>. You\'d only have put in ' + money(w.invested + b.investMonthly * 480) + '.</p>');
+    } else if (state.locked) {
+      lines.push('<p><b>Future you:</b> you\'re not investing anything yet. Even $100 a month from 22 to 62 at 7% grows to about <b class="gain">' + money(V.grow(0, 100, 40)) + '</b>.</p>');
+    }
+    if (w.debt > 0.5) {
+      var months = 0, bal = w.debt, paid = 0;
+      while (bal > 0.005 && months < 600) {
+        bal *= 1 + V.cardApr / 100 / 12;
+        var p = Math.min(150, bal);
+        bal -= p; paid += p; months++;
+      }
+      lines.push('<p><b>That card:</b> paying $150 a month, it takes <b>' + months + ' months</b> to clear ' + money(w.debt) + ', and you\'d pay <b class="lose">' + money(paid - w.debt) + '</b> in interest along the way.</p>');
+    }
+    $('future').innerHTML = lines.join('');
+    $('future').hidden = !lines.length;
+  }
+
+  $('reset').addEventListener('click', function () {
+    if (!confirm('Start over? This clears your budget, events and bets on this phone.')) return;
+    state = blank();
+    pending = null;
+    save();
+    $('team').value = '';
+    render();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  });
+
+  function render() {
+    renderBudget();
+    renderLife();
+    renderBets();
+    renderFinal();
+  }
+
+  $('team').value = state.team;
+  render();
+})();
+</script>
+</body>
+</html>

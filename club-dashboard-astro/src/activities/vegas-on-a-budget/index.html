@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Vegas Player's Guide</title>
+<link rel="stylesheet" href="/activity-assets/fonts.css">
+<link rel="stylesheet" href="vegas.css">
+<style>
+  /* Layout: a player's guide for phones. How to win, the house rules, four rounds with live progress, then the money words. Same look as the presenter's page. */
+  .page { max-width: 880px; }
+  .sign .cta { margin-top: 20px; }
+  .sign .btn.gold { font-size: 17px; padding: 13px 24px; }
+
+  .formula { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 10px 12px; }
+  .formula div { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 12px 16px; text-align: center; min-width: 130px; }
+  .formula div b { display: block; font-family: var(--display); font-weight: 400; font-size: 16px; }
+  .formula div span { font-size: 13.5px; color: var(--ink-soft); }
+  .formula .op { font: 400 26px/1 var(--display); color: var(--neon); }
+  .formula .debt b { color: var(--loss); }
+
+  .rules { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+  .rules li { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; display: grid; grid-template-columns: 34px 1fr; gap: 12px; align-items: start; }
+  .rules svg { width: 26px; height: 26px; margin-top: 1px; color: var(--neon); }
+  .rules b { display: block; }
+  .rules span { color: var(--ink-soft); font-size: 15.5px; }
+
+  .rounds { display: grid; gap: 12px; }
+  .round { display: grid; grid-template-columns: 76px minmax(0, 1fr) auto; gap: 18px; align-items: center; background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 18px 20px; }
+  .round .n { font: 600 13px/1.2 var(--body); letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-soft); }
+  .round .n b { display: block; font: 400 40px/1 var(--display); color: var(--neon); letter-spacing: 0; }
+  .round h3 { font-size: 19px; }
+  .round p { margin: 4px 0 0; color: var(--ink-soft); font-size: 15px; }
+  .status { display: inline-block; margin-top: 8px; font-size: 13px; font-weight: 700; background: var(--chip); color: var(--ink); border-radius: 999px; padding: 3px 10px; font-variant-numeric: tabular-nums; }
+  .status.done { background: var(--gold); color: var(--gold-ink); }
+
+  .words { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .word { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; }
+  .word b { display: block; font-size: 16px; }
+  .word span { display: block; color: var(--ink-soft); font-size: 14.5px; }
+
+  @media (max-width: 640px) {
+    .round { grid-template-columns: 1fr; gap: 10px; }
+    .round .n { display: flex; align-items: baseline; gap: 8px; }
+    .round .n b { font-size: 28px; }
+    .round .btn { justify-self: start; }
+    .words { grid-template-columns: 1fr; }
+    .formula { flex-direction: column; gap: 4px; }
+    .formula div { width: 100%; display: flex; justify-content: space-between; align-items: baseline; gap: 12px; text-align: left; }
+    .formula div b { font-size: 15px; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <header class="sign">
+    <div class="welcome">Player's guide</div>
+    <h1>Vegas on a <span>Budget</span></h1>
+    <p>You just landed your first job on the Las Vegas Strip. Every team gets the same job and the same paycheck. Four rounds. Highest net worth wins.</p>
+    <div class="cta"><a class="btn gold" href="team.html">Open your team sheet</a></div>
+  </header>
+
+  <section>
+    <div class="section-head">
+      <h2>How to win</h2>
+      <p>Your team sheet adds this up for you. Make the number as big as you can.</p>
+    </div>
+    <div class="formula" aria-label="Net worth equals emergency fund plus investments plus chips minus credit card debt">
+      <div><b>Emergency fund</b><span>cash for surprises</span></div>
+      <span class="op" aria-hidden="true">+</span>
+      <div><b>Investments</b><span>locked away for later</span></div>
+      <span class="op" aria-hidden="true">+</span>
+      <div><b>Chips</b><span>from Over/Under</span></div>
+      <span class="op" aria-hidden="true">−</span>
+      <div class="debt"><b>Card debt</b><span>at 24% a year</span></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="section-head">
+      <h2>House rules</h2>
+    </div>
+    <ul class="rules">
+      <li>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="2.5" width="10" height="19" rx="2.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M11 18.5h2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        <div><b>One phone per team.</b><span>Pick one person to run the team sheet and type in your team name. Everyone else helps decide.</span></div>
+      </li>
+      <li>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l2.7 5.6 6.1.8-4.5 4.2 1.1 6.1L12 16.8l-5.4 2.9 1.1-6.1-4.5-4.2 6.1-.8z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>
+        <div><b>Build a budget you could live with.</b><span>Nicer options earn stars, and your budget needs at least 11. Living on rice and the bus doesn't count.</span></div>
+      </li>
+      <li>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 3v18M3 12h18M5.6 5.6l12.8 12.8M18.4 5.6L5.6 18.4" stroke="currentColor" stroke-width="1.5"/></svg>
+        <div><b>Tap exactly what the wheel lands on.</b><span>Every team gets the same life events. Some cost you more or less depending on what you picked in your budget.</span></div>
+      </li>
+      <li>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="10.5" width="14" height="10" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><path d="M8 10.5V7.5a4 4 0 0 1 8 0v3" fill="none" stroke="currentColor" stroke-width="2"/></svg>
+        <div><b>Lock bets before the reveal.</b><span>In Over/Under, pick over or under and lock your bet before the host shows the answer. Then tap what they revealed.</span></div>
+      </li>
+      <li>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12a8 8 0 1 0 2.3-5.7M4 4v4h4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <div><b>Stay on the same phone and browser.</b><span>Your sheet saves on this phone only. Use a normal tab, not a private one, or it can vanish when the tab closes.</span></div>
+      </li>
+    </ul>
+  </section>
+
+  <section>
+    <div class="section-head">
+      <h2>The four rounds</h2>
+      <p>Your host runs the clock. Each round lives on your team sheet.</p>
+    </div>
+    <div class="rounds">
+      <article class="round">
+        <div class="n">Round<b>1</b></div>
+        <div>
+          <h3>Build the budget</h3>
+          <p>$3,600 a month after tax. Pick housing, a ride, food, a phone, fun and shopping. Then split what's left between an emergency fund and investments.</p>
+          <span class="status" data-round="budget">Not started</span>
+        </div>
+        <a class="btn" href="team.html#budget">Go</a>
+      </article>
+      <article class="round">
+        <div class="n">Round<b>2</b></div>
+        <div>
+          <h3>Six months later…</h3>
+          <p>Your budget has run for six months. The host spins the Wheel of Life and surprises hit every team.</p>
+          <span class="status" data-round="life">Waiting for your budget</span>
+        </div>
+        <a class="btn" href="team.html#life">Go</a>
+      </article>
+      <article class="round">
+        <div class="n">Round<b>3</b></div>
+        <div>
+          <h3>Over / Under</h3>
+          <p>Eight money questions. You start with $300 in chips. Bet on what you know, not on luck.</p>
+          <span class="status" data-round="bets">0 of 8 settled</span>
+        </div>
+        <a class="btn" href="team.html#overunder">Go</a>
+      </article>
+      <article class="round">
+        <div class="n">Round<b>4</b></div>
+        <div>
+          <h3>Cash out</h3>
+          <p>Read your net worth to the host. The team sheet also shows what your choices would mean for future you.</p>
+          <span class="status" data-round="final">Not yet</span>
+        </div>
+        <a class="btn" href="team.html#final">Go</a>
+      </article>
+    </div>
+  </section>
+
+  <section>
+    <div class="section-head">
+      <h2>Money words</h2>
+      <p>You'll hear these all game.</p>
+    </div>
+    <div class="words">
+      <div class="word"><b>Take-home pay</b><span>What actually lands in your account after taxes. Your salary is bigger than your paycheck.</span></div>
+      <div class="word"><b>Needs vs. wants</b><span>A place to live is a need. The pool and the view are wants. On your sheet, the cheapest option in a category is the need.</span></div>
+      <div class="word"><b>50 / 30 / 20</b><span>A starting point: about half of take-home on needs, under a third on wants, at least a fifth saved.</span></div>
+      <div class="word"><b>Emergency fund</b><span>Cash set aside only for surprises, like a repair or a doctor visit. It keeps a bad week off your credit card.</span></div>
+      <div class="word"><b>Investing</b><span>Putting money into things that can grow, like a fund that owns a slice of many companies. It can drop in the short run.</span></div>
+      <div class="word"><b>APR</b><span>The yearly interest rate on a loan or credit card. The higher it is, the more borrowing costs you.</span></div>
+      <div class="word"><b>Compound interest</b><span>Earning interest on your interest. Slow at first, then fast. It works for you when you save and against you when you owe.</span></div>
+      <div class="word"><b>House edge</b><span>The small slice a casino keeps from every bet, on average. It's built into every game.</span></div>
+    </div>
+  </section>
+
+  <footer>Made for a Business Club activity. The job, prices and life events are realistic but made up for the game.</footer>
+</div>
+
+<script src="game.js"></script>
+<script>
+(function () {
+  var V = window.VEGAS;
+  function set(key, text, done) {
+    var chip = document.querySelector('[data-round="' + key + '"]');
+    chip.textContent = text;
+    chip.classList.toggle('done', !!done);
+  }
+  function update() {
+    var s = null;
+    try { s = JSON.parse(localStorage.getItem('vegas-budget-team')); } catch (e) { s = null; }
+    if (!s || typeof s !== 'object') s = { choices: {}, events: [], bets: [] };
+    var picked = V.categories.filter(function (c) { return s.choices && s.choices[c.key]; }).length;
+    var events = Array.isArray(s.events) ? s.events.length : 0;
+    var settled = Array.isArray(s.bets) ? s.bets.filter(function (b) { return b && b.answer; }).length : 0;
+    var total = V.questions.length;
+
+    if (s.locked) set('budget', 'Budget locked', true);
+    else set('budget', picked ? picked + ' of ' + V.categories.length + ' picked' : 'Not started');
+    if (!s.locked) set('life', 'Waiting for your budget');
+    else set('life', events === 1 ? '1 event so far' : events + ' events so far', events > 0);
+    set('bets', settled + ' of ' + total + ' settled', settled === total);
+    set('final', s.locked && settled === total ? 'Ready to cash out' : 'Not yet', s.locked && settled === total);
+  }
+  update();
+  window.addEventListener('pageshow', update);
+  document.addEventListener('visibilitychange', function () { if (!document.hidden) update(); });
+})();
+</script>
+</body>
+</html>

@@ -4,7 +4,7 @@ Where the project is **right now** and what to do next. Overwrite this file in
 place; do not append history to it — history lives in git and
 [REBUILD-PLAN.md](REBUILD-PLAN.md).
 
-_Last refreshed: 2026-10-26._
+_Last refreshed: 2026-10-27._
 
 ---
 
@@ -19,7 +19,8 @@ _Last refreshed: 2026-10-26._
 | Schema | `supabase-schema.sql` STEPs 0–20 all applied (STEP 20's `events.slides_url` confirmed present 2026-10-26) |
 
 The app is in real use. As of 2026-10-26: **116 profiles** (5 officers), 2 real
-meetings (Sep 30 and Oct 14, 2026; plus 2 cancelled tests), 50 check-ins,
+meetings (Sep 30 and Oct 14, 2026; plus 2 cancelled tests; the owner created
+the 3rd, Oct 27 2:40–3:40 PM, on 2026-10-27), 50 check-ins,
 0 announcements, 0 photos, 0 recaps, and **no slides links set** on either
 meeting. 55 of the profiles
 profiles were pre-registered on 2026-09-25 from the "Business Club Attendance
@@ -50,7 +51,11 @@ description and check-ins, and officers keep every edit control. Meeting
 activities are served from the site at `/activities/<slug>/` instead of
 Claude artifacts: **Website Hunt** (public — the team game, no answers) and
 **Website Lab** (officers only — the presenter view with the answer key),
-both attached to the Oct 14 meeting. Registry: `src/lib/activities.ts`; how
+both attached to the Oct 14 meeting. 2026-10-27: **Vegas on a Budget**
+(public — player's guide + one-phone team sheet) and its **presenter page**
+(officers only — Over/Under answers, Wheel of Life, leaderboard) attached to
+the Oct 27 "3rd Business Meeting"; copied from the `Cloud` repo's `vegas/`,
+with Bungee self-hosted. Registry: `src/lib/activities.ts`; how
 they're served and why they're code, not uploads:
 [ARCHITECTURE.md](ARCHITECTURE.md#meeting-activities), AGENTS.md invariant 11.
 
@@ -112,7 +117,9 @@ Nothing is half-finished; these are choices, roughly in the order that pays off.
    Still needs a real person: an officer opens the Lab itself, and runs
    **Present at the next meeting** — a live code being scanned is the one path
    not exercised since the calendar moved; a member should see the Hunt but
-   not the Lab.
+   not the Lab. Same for the Oct 27 meeting: Vegas on a Budget was checked
+   signed out (listed, team sheet runs, fonts load, presenter page → sign-in);
+   the presenter page as a real officer is unchecked.
 3. **Put real content on `/about`.** The design is built and empty. One past
    meeting with a recap, a photo or two, and officer bios turns the
    placeholder into the record — recap and photos from `/meetings/[id]` now
