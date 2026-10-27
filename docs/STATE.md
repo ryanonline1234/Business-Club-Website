@@ -55,7 +55,13 @@ both attached to the Oct 14 meeting. 2026-10-27: **Vegas on a Budget**
 (public — player's guide + one-phone team sheet) and its **presenter page**
 (officers only — Over/Under answers, Wheel of Life, leaderboard) attached to
 the Oct 27 "3rd Business Meeting"; copied from the `Cloud` repo's `vegas/`,
-with Bungee self-hosted. Registry: `src/lib/activities.ts`; how
+with Bungee self-hosted. Same day, before the meeting: the newest phone dropped
+to ★★ (so the cheapest legal budget is the sensible one, not "finance the
+newest phone"), Over/Under bets capped at 100 chips, a 30-second gist on the
+team pages, and host steps on the presenter page so officers can run it
+without the owner. `game.js` is loaded as `game.js?v=2` because public
+activities are cached with stale-while-revalidate; bump the `v` whenever
+`game.js` changes. Registry: `src/lib/activities.ts`; how
 they're served and why they're code, not uploads:
 [ARCHITECTURE.md](ARCHITECTURE.md#meeting-activities), AGENTS.md invariant 11.
 

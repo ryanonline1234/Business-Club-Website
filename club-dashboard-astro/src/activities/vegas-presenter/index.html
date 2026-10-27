@@ -25,6 +25,14 @@
   .say .eyebrow { color: var(--ink-soft); }
   .say ul { margin: 6px 0 0; padding-left: 20px; display: grid; gap: 4px; }
 
+  /* Host steps: what to click and when, so anyone can run a round cold. */
+  .host { margin-top: 16px; border: 2px dashed var(--gold); border-radius: 12px; padding: 14px 18px; }
+  .host .eyebrow { color: var(--star); }
+  .host ol, .host ul { margin: 6px 0 0; padding-left: 22px; display: grid; gap: 5px; }
+  .script { font-size: 19px; line-height: 1.5; margin: 8px 0 0; }
+  .hostgrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 12px; }
+  .hostgrid .host { margin-top: 0; }
+
   /* Round 1 menu */
   .pay { display: flex; flex-wrap: wrap; gap: 10px 28px; align-items: baseline; margin-bottom: 14px; }
   .pay .big { font: 400 40px/1 var(--display); color: var(--money); }
@@ -119,7 +127,7 @@
 
   @media (max-width: 900px) {
     .plan { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-    .menu, .rules, .house { grid-template-columns: 1fr; }
+    .menu, .rules, .house, .hostgrid { grid-template-columns: 1fr; }
     .wheel-wrap { grid-template-columns: 1fr; }
   }
   @media (max-width: 560px) {
@@ -142,6 +150,7 @@
     <h1>Vegas on a <span>Budget</span></h1>
     <p>Your first job on the Strip pays <b>$3,600 a month</b>. Budget it, survive the Wheel of Life, bet on what you know, and find out why the house always wins (and how you can be the house).</p>
     <nav class="jump" aria-label="Sections">
+      <a href="#host">Hosting</a>
       <a href="#plan">Game plan</a>
       <a href="#round1">1 · Budget</a>
       <a href="#round2">2 · Wheel of Life</a>
@@ -150,6 +159,39 @@
       <a href="#board">Leaderboard</a>
     </nav>
   </header>
+
+  <section id="host">
+    <div class="section-head">
+      <span class="eyebrow">For whoever is hosting</span>
+      <h2>Host it with no prep</h2>
+      <p>You don't need to have played before. Put this page on the big screen and work down it: every round below has host steps (what to click and when) and talking points (what to say). The team sheet does all the math.</p>
+    </div>
+    <div class="card">
+      <div class="eyebrow">Read this out loud first</div>
+      <p class="script">“Congrats, you all just got your first job on the Las Vegas Strip: guest services at a resort, $52,000 a year, about $3,600 a month after tax. Every team gets the same paycheck. First you'll build a budget you could actually live with. Then six months fly by and life throws surprises at you. Then you'll bet on money trivia. Your team sheet does all the math. The team with the most money at the end wins.”</p>
+    </div>
+    <div class="hostgrid">
+      <div class="host">
+        <div class="eyebrow">Before you start</div>
+        <ol>
+          <li>Open this page on the screen everyone can see.</li>
+          <li>Split into teams of 3 or 4.</li>
+          <li>One phone per team opens the participant version (link under “The game plan”) and taps <b>Open your team sheet</b>.</li>
+          <li>Each team types a team name at the top of the sheet.</li>
+          <li>Read the script above, then start Round 1.</li>
+        </ol>
+      </div>
+      <div class="host">
+        <div class="eyebrow">If something goes wrong</div>
+        <ul>
+          <li><b>Picked the wrong budget?</b> Tap <b>Change our budget</b>. The six months re-run; events already tapped stay.</li>
+          <li><b>Tapped the wrong event?</b> <b>Undo the last event</b>, under the event list.</li>
+          <li><b>Lost the sheet?</b> It saves on that phone and browser only. Reopen it in the same browser (not a private tab). If it's gone, re-pick the budget and re-tap the events; it takes a minute.</li>
+          <li><b>Running late?</b> Ask fewer Over/Under questions and go straight to the leaderboard.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
 
   <section id="plan">
     <div class="section-head">
@@ -187,6 +229,15 @@
       <div class="card"><b>50 / 30 / 20</b><span>Aim for about 50% on needs, 30% on wants, 20% saved. The cheapest option in a category is the need; paying more for it is a want.</span></div>
       <div class="card"><b>Split your savings</b><span>Choose how much goes to an emergency fund (cash for surprises) vs. investments (they grow, but they're locked away).</span></div>
     </div>
+    <div class="host">
+      <div class="eyebrow">Host steps</div>
+      <ol>
+        <li>Leave the menu above on screen. Teams pick one option per category on step 1 of their sheet.</li>
+        <li>Point out the two rules: at least <span class="min-stars"></span> ★ (the sheet won't lock without them), and anything they overspend goes on a 24% credit card.</li>
+        <li>Give them about 8 minutes, with a 2-minute warning.</li>
+        <li>Every team taps <b>Lock our budget</b> before you move on.</li>
+      </ol>
+    </div>
     <div class="say">
       <div class="eyebrow">Talking points</div>
       <ul>
@@ -218,6 +269,16 @@
         <div class="history" id="history"></div>
       </div>
     </div>
+    <div class="host">
+      <div class="eyebrow">Host steps</div>
+      <ol>
+        <li>Say: “Your budget just ran for six months.” Teams see their savings on step 2 of the sheet.</li>
+        <li>Click <b>Spin the wheel</b> and read the event out loud.</li>
+        <li>Every team taps that same event on their sheet. The sheet works out what it costs them, based on what they picked.</li>
+        <li>Two events are choices (the birthday weekend and the slot machine): give teams 20 seconds to decide, then they tap their answer.</li>
+        <li>Spin 3 or 4 times in all.</li>
+      </ol>
+    </div>
     <div class="say">
       <div class="eyebrow">Talking points</div>
       <ul>
@@ -232,7 +293,7 @@
     <div class="section-head">
       <span class="eyebrow">Round 3 · 12 minutes</span>
       <h2>Over / Under</h2>
-      <p>Each team starts with <b id="r3-chips"></b> in chips. Read the question and the line. Teams pick over or under, bet any amount, and lock it. Then reveal.</p>
+      <p>Each team starts with <b id="r3-chips"></b> in chips. Read the question and the line. Teams pick over or under, bet up to <b id="r3-max"></b> a question, and lock it. Then reveal.</p>
     </div>
     <div class="card ou-stage">
       <div class="count" id="ou-count"></div>
@@ -245,6 +306,16 @@
         <button type="button" class="btn" id="ou-next">Next question &rarr;</button>
       </div>
       <div class="dots" id="ou-dots"></div>
+    </div>
+    <div class="host">
+      <div class="eyebrow">Host steps</div>
+      <ol>
+        <li>Read the question and the line out loud.</li>
+        <li>Teams pick over or under on step 3 of their sheet, choose a bet (up to <span class="max-bet"></span>) and tap <b>Lock bet</b>.</li>
+        <li>Once every team has locked, click <b>Reveal the answer</b> and read the explanation.</li>
+        <li>Teams tap what it was (over or under). Their chips update.</li>
+        <li>Click <b>Next question</b>. About a minute each; skip some if you're short on time.</li>
+      </ol>
     </div>
   </section>
 
@@ -297,6 +368,14 @@
       <h2>Leaderboard</h2>
       <p>Each team reads its net worth from step 4 of the team sheet. Highest net worth wins the table.</p>
     </div>
+    <div class="host">
+      <div class="eyebrow">Host steps</div>
+      <ol>
+        <li>Each team reads out its net worth; type it in below with the team name.</li>
+        <li>Ask the top team what they picked and why. Then ask a team that got hit hard on the Wheel of Life what they'd change.</li>
+        <li>Close with the big idea: spend less than you make, keep cash for surprises, and invest the rest early.</li>
+      </ol>
+    </div>
     <form class="board-form" id="board-form">
       <input type="text" id="b-team" placeholder="Team name" maxlength="40" required aria-label="Team name">
       <input type="number" id="b-worth" placeholder="Net worth ($)" step="1" required aria-label="Net worth in dollars">
@@ -318,7 +397,7 @@
   </footer>
 </div>
 
-<script src="game.js"></script>
+<script src="game.js?v=2"></script>
 <script>
 (function () {
   var V = window.VEGAS;
@@ -449,6 +528,9 @@
     { call: 'over', real: 'About $525,000', why: 'You put in $96,000. Compounding does the rest: most of the money arrives in the last 15 years.' }
   ];
   $('r3-chips').textContent = money(V.startChips);
+  $('r3-max').textContent = money(V.maxBet);
+  document.querySelectorAll('.min-stars').forEach(function (n) { n.textContent = V.minStars; });
+  document.querySelectorAll('.max-bet').forEach(function (n) { n.textContent = money(V.maxBet); });
   var ou = { i: 0, revealed: {} };
   $('ou-dots').innerHTML = V.questions.map(function (q, i) {
     return '<button type="button" aria-label="Question ' + (i + 1) + '" data-i="' + i + '"></button>';

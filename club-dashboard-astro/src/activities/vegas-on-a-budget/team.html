@@ -20,6 +20,11 @@
 
   .team-name { display: grid; gap: 6px; margin-top: 24px; font-weight: 700; }
 
+  .gist { margin-top: 20px; }
+  .gist summary { cursor: pointer; font: 400 16px/1.2 var(--display); }
+  .gist ol { margin: 10px 0 0; padding-left: 22px; display: grid; gap: 6px; font-size: 15px; }
+  .gist ol span { color: var(--ink-soft); }
+
   .paycheck { display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; align-items: baseline; }
   .paycheck .big { font: 400 34px/1 var(--display); color: var(--money); }
   .paycheck p { margin: 0; color: var(--ink-soft); font-size: 15px; grid-column: 1 / -1; }
@@ -147,6 +152,16 @@
     <p>You just landed your first job on the Las Vegas Strip. Make the money last, survive what life throws at you, and finish with the highest net worth.</p>
   </header>
 
+  <details class="card gist" open>
+    <summary>How to play, in 30 seconds</summary>
+    <ol>
+      <li><b>Budget your paycheck.</b> <span>Pick one option per category below. You need at least <span class="min-stars">11</span> stars, then tap Lock our budget.</span></li>
+      <li><b>Life happens.</b> <span>When the host spins the Wheel of Life, tap the same event in step 2.</span></li>
+      <li><b>Bet on what you know.</b> <span>In step 3, pick over or under and bet up to <span class="max-bet">$100</span>. Lock it before the reveal.</span></li>
+      <li><b>Most money wins.</b> <span>Step 4 adds it up. Read your net worth to the host.</span></li>
+    </ol>
+  </details>
+
   <label class="team-name">Team name
     <input type="text" id="team" maxlength="40" placeholder="e.g. The High Rollers" autocomplete="off">
   </label>
@@ -217,7 +232,7 @@
     <div class="step-head">
       <span class="badge">3</span>
       <h2>Over / Under</h2>
-      <p>The host reads a number. Bet chips on whether the real answer is over or under it. Right: win your bet. Wrong: lose it.</p>
+      <p>The host reads a number. Bet chips on whether the real answer is over or under it, up to <b id="max-bet"></b> a question. Right: win your bet. Wrong: lose it.</p>
     </div>
     <div class="stack"><span class="chip">$</span><div><b id="chips"></b><div class="eyebrow" style="color:var(--ink-soft)">chips in front of you</div></div></div>
     <div class="bets" id="bets"></div>
@@ -249,7 +264,7 @@
 
 <div class="dock" id="dock" aria-live="polite"></div>
 
-<script src="game.js"></script>
+<script src="game.js?v=2"></script>
 <script>
 (function () {
   var V = window.VEGAS;
@@ -345,6 +360,9 @@
 
   /* ---------- Step 1: budget ---------- */
   $('min-stars').textContent = V.minStars;
+  $('max-bet').textContent = money(V.maxBet);
+  document.querySelectorAll('.min-stars').forEach(function (n) { n.textContent = V.minStars; });
+  document.querySelectorAll('.max-bet').forEach(function (n) { n.textContent = money(V.maxBet); });
   $('job').textContent = V.job + ', ' + money(V.salary) + ' a year';
   $('takehome').textContent = money(V.takeHome);
   $('paynote').textContent = 'That\'s after federal tax and Social Security. Nevada has no state income tax, so nothing comes out for the state.';
@@ -548,7 +566,7 @@
           '<label><input type="radio" name="ou' + i + '" value="over"' + (pick === 'over' ? ' checked' : '') + '>Over</label>' +
           '<label><input type="radio" name="ou' + i + '" value="under"' + (pick === 'under' ? ' checked' : '') + '>Under</label>' +
         '</span>' +
-        '<input type="number" min="0" max="' + stack + '" step="10" value="' + wager + '" aria-label="Chips to bet" data-wager>' +
+        '<input type="number" min="0" max="' + Math.min(stack, V.maxBet) + '" step="10" value="' + wager + '" aria-label="Chips to bet" data-wager>' +
         '<button type="button" class="btn small primary" data-lockbet>Lock bet</button>';
       open = false;
     });
@@ -562,7 +580,7 @@
       var pickEl = card.querySelector('input[type="radio"]:checked');
       if (!pickEl) { alert('Pick OVER or UNDER first.'); return; }
       var wager = Math.round(Number(card.querySelector('[data-wager]').value) || 0);
-      wager = Math.max(0, Math.min(wager, chips()));
+      wager = Math.max(0, Math.min(wager, chips(), V.maxBet));
       state.bets[i] = { pick: pickEl.value, wager: wager, locked: true };
       save();
       renderBets();

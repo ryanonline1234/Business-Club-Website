@@ -10,6 +10,8 @@
     minStars: 11,
     cardApr: 24,
     startChips: 300,
+    // Most chips a team can bet on one question, so Over/Under adds to the budget instead of deciding the game.
+    maxBet: 100,
     investReturn: 0.07,
 
     // Bills everyone pays, whatever they pick.
@@ -19,6 +21,8 @@
     ],
 
     // In a "need" category the cheapest option is the need and anything above it is a want.
+    // Stars are priced so the cheapest way to reach minStars is a sensible budget; the newest
+    // phone gets no more stars than last year's, so financing it never pays.
     categories: [
       {
         key: 'housing', label: 'Housing', kind: 'need',
@@ -47,7 +51,7 @@
       {
         key: 'phone', label: 'Phone', kind: 'need',
         options: [
-          { key: 'newest', label: 'Newest phone on a payment plan', detail: 'Plus an unlimited plan', cost: 150, stars: 3 },
+          { key: 'newest', label: 'Newest phone on a payment plan', detail: 'Plus an unlimited plan', cost: 150, stars: 2 },
           { key: 'lastyear', label: "Last year's phone", detail: 'Plus an unlimited plan', cost: 85, stars: 2 },
           { key: 'prepaid', label: 'Keep your phone, prepaid plan', detail: 'Plenty of data, no frills', cost: 40, stars: 1 }
         ]

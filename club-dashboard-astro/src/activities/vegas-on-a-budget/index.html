@@ -12,6 +12,12 @@
   .sign .cta { margin-top: 20px; }
   .sign .btn.gold { font-size: 17px; padding: 13px 24px; }
 
+  .gist { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; counter-reset: gist; }
+  .gist li { counter-increment: gist; display: grid; grid-template-columns: 40px 1fr; gap: 12px; align-items: start; background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; }
+  .gist li::before { content: counter(gist); font: 400 26px/1 var(--display); color: var(--neon); text-align: center; }
+  .gist b { display: block; font-size: 17px; }
+  .gist span { color: var(--ink-soft); font-size: 15.5px; }
+
   .formula { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 10px 12px; }
   .formula div { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 12px 16px; text-align: center; min-width: 130px; }
   .formula div b { display: block; font-family: var(--display); font-weight: 400; font-size: 16px; }
@@ -60,6 +66,19 @@
     <p>You just landed your first job on the Las Vegas Strip. Every team gets the same job and the same paycheck. Four rounds. Highest net worth wins.</p>
     <div class="cta"><a class="btn gold" href="team.html">Open your team sheet</a></div>
   </header>
+
+  <section>
+    <div class="section-head">
+      <h2>The gist</h2>
+      <p>The whole game in 30 seconds. The rest of this page is detail.</p>
+    </div>
+    <ol class="gist">
+      <li><div><b>Budget your paycheck.</b><span>$3,600 a month. Pick one option in each category. Nicer options earn stars, and you need at least <span class="min-stars">11</span>: a budget has to be one you could live with.</span></div></li>
+      <li><div><b>Life happens.</b><span>The host spins the Wheel of Life. Tap the same event on your sheet; what it costs depends on what you picked.</span></div></li>
+      <li><div><b>Bet on what you know.</b><span>Eight money questions. Bet up to <span class="max-bet">$100</span> a question on whether the answer is over or under the line.</span></div></li>
+      <li><div><b>Most money wins.</b><span>Savings + investments + chips − credit card debt. Your team sheet adds it up.</span></div></li>
+    </ol>
+  </section>
 
   <section>
     <div class="section-head">
@@ -133,7 +152,7 @@
         <div class="n">Round<b>3</b></div>
         <div>
           <h3>Over / Under</h3>
-          <p>Eight money questions. You start with $300 in chips. Bet on what you know, not on luck.</p>
+          <p>Eight money questions. You start with $300 in chips and can bet up to $100 a question. Bet on what you know, not on luck.</p>
           <span class="status" data-round="bets">0 of 8 settled</span>
         </div>
         <a class="btn" href="team.html#overunder">Go</a>
@@ -170,10 +189,12 @@
   <footer>Made for a Business Club activity. The job, prices and life events are realistic but made up for the game.</footer>
 </div>
 
-<script src="game.js"></script>
+<script src="game.js?v=2"></script>
 <script>
 (function () {
   var V = window.VEGAS;
+  document.querySelectorAll('.min-stars').forEach(function (n) { n.textContent = V.minStars; });
+  document.querySelectorAll('.max-bet').forEach(function (n) { n.textContent = V.money(V.maxBet); });
   function set(key, text, done) {
     var chip = document.querySelector('[data-round="' + key + '"]');
     chip.textContent = text;
