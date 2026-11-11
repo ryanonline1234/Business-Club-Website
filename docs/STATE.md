@@ -4,7 +4,7 @@ Where the project is **right now** and what to do next. Overwrite this file in
 place; do not append history to it — history lives in git and
 [REBUILD-PLAN.md](REBUILD-PLAN.md).
 
-_Last refreshed: 2026-10-27._
+_Last refreshed: 2026-11-10._
 
 ---
 
@@ -61,7 +61,17 @@ newest phone"), Over/Under bets capped at 100 chips, a 30-second gist on the
 team pages, and host steps on the presenter page so officers can run it
 without the owner. `game.js` is loaded as `game.js?v=2` because public
 activities are cached with stale-while-revalidate; bump the `v` whenever
-`game.js` changes. Registry: `src/lib/activities.ts`; how
+`game.js` changes. 2026-11-10: **Semester Review** (officers only, it holds
+every answer) attached to the Nov 11 "4th Business Meeting", whose slides are
+the Queen of Apostles teaching-volunteer deck: a projected game-show board with
+one column per fall meeting, every team answers every clue, host-run scoring
+with Undo, and a Final Bet. Its clues live in `questions.js` so next year's
+officers can swap them; source is the `Cloud` repo's `semester-review/`.
+
+The owner is deliberately compiling this year's meeting material (slides
+linked on each meeting page, activities as code here) as a base for next
+year's meetings after the seniors graduate. Keep each meeting's material
+findable from its meeting page. Registry: `src/lib/activities.ts`; how
 they're served and why they're code, not uploads:
 [ARCHITECTURE.md](ARCHITECTURE.md#meeting-activities), AGENTS.md invariant 11.
 

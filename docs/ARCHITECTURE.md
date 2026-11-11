@@ -442,7 +442,9 @@ started life as Claude artifacts; moved 2026-10-26).
   the player's guide and team sheet) is public and its presenter page
   (`vegas-presenter`, the Over/Under answers) is officers-only; each carries
   its own copy of `vegas.css` and `game.js`, and `game.js` holds only the
-  betting lines.
+  betting lines. The Semester Review (`semester-review`) is officers-only:
+  it is a host-run board for the projector, and its `questions.js` holds
+  every answer.
 - **Response headers:** a CSP of `default-src 'self'` with
   `connect-src 'none'` and `form-action 'none'` (activity scripts cannot call
   the API or post anywhere), `x-robots-tag: noindex` (the demo businesses are
