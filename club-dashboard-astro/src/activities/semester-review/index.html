@@ -1,0 +1,744 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Semester Review</title>
+<link rel="stylesheet" href="/activity-assets/fonts.css">
+<style>
+  /* Layout: a game-show board for one projector. The stage is dark; each column wears the
+     look of the meeting it reviews (notebook for the AP class, JeopardyLabs blue for the
+     first meeting's game, Website Lab's paper and highlighter, Vegas plum and neon), so the
+     board reads as the semester in one picture. Clues open full screen in their column's look. */
+  :root {
+    --stage: #111215;
+    --stage-2: #1b1c22;
+    --stage-line: #30323c;
+    --stage-ink: #f4f1ea;
+    --stage-soft: #a9a7a0;
+    --gold: #ffc94d;
+    --focus: #8cadff;
+    /* Defaults for buttons and cards outside a column look. */
+    --ink: var(--stage-ink);
+    --soft: var(--stage-soft);
+    --card: var(--stage-2);
+    --line: var(--stage-line);
+    --btn: var(--gold);
+    --btn-ink: #15130c;
+    --right-bg: var(--gold);
+    --right-ink: #15130c;
+    --right-line: var(--gold);
+    color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  html, body { margin: 0; min-height: 100%; }
+  body {
+    background: radial-gradient(1400px 700px at 50% -20%, #2b2d36, var(--stage) 70%) var(--stage);
+    color: var(--stage-ink);
+    font-family: "Public Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+    font-size: 16px;
+    line-height: 1.45;
+  }
+  button, input { font: inherit; }
+  :focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+
+  .app { min-height: 100vh; min-height: 100dvh; display: grid; grid-template-rows: auto 1fr auto; gap: clamp(10px, 1.4vw, 20px); padding: clamp(12px, 2vw, 28px) clamp(12px, 2vw, 28px) 0; }
+
+  /* Header */
+  .top { display: flex; flex-wrap: wrap; gap: 12px 24px; align-items: end; justify-content: space-between; }
+  .brand h1 { margin: 0; font-family: "Bricolage Grotesque", "Arial Black", sans-serif; font-weight: 800; font-size: clamp(28px, 3.4vw, 52px); line-height: 1; letter-spacing: -0.02em; }
+  .stripe { display: flex; gap: 3px; width: clamp(160px, 22vw, 320px); height: 6px; margin-top: 10px; }
+  .stripe i { flex: 1; border-radius: 3px; }
+  .brand p { margin: 10px 0 0; color: var(--stage-soft); font-size: clamp(13px, 1.1vw, 16px); }
+  .tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+  .left { color: var(--stage-soft); font-size: 14px; font-weight: 700; margin-right: 4px; }
+  .tool { min-height: 40px; padding: 8px 16px; border-radius: 999px; border: 1.5px solid var(--stage-line); background: transparent; color: var(--stage-ink); font-weight: 700; cursor: pointer; }
+  .tool:hover { background: #24262e; }
+  .tool--final { border-color: var(--gold); color: var(--gold); }
+
+  /* Board */
+  /* Columns share the board's rows (subgrid), so a header that wraps keeps every tile row level. */
+  .board { display: grid; grid-template-columns: repeat(var(--cols, 4), minmax(0, 1fr)); grid-template-rows: auto repeat(4, minmax(56px, 1fr)); column-gap: clamp(8px, 1.2vw, 16px); row-gap: clamp(6px, 0.8vw, 12px); min-height: 0; }
+  .col { grid-row: 1 / -1; display: grid; grid-template-rows: subgrid; min-width: 0; }
+  .head, .tile { background: var(--bg); background-image: var(--bg-img, none); color: var(--ink); border: var(--edge, 0); border-radius: 14px; }
+  .head { position: relative; margin: 0; padding: clamp(10px, 1.2vw, 18px); display: grid; gap: 6px; align-content: center; min-height: clamp(76px, 10vh, 116px); }
+  .head__name { justify-self: start; font-family: var(--font); font-weight: var(--weight); font-size: clamp(15px, 1.8vw, 30px); line-height: 1.05; text-transform: var(--case, none); letter-spacing: var(--track, 0); text-shadow: var(--head-shadow, none); }
+  .head__from { font-family: "Public Sans", sans-serif; font-size: clamp(10px, 0.85vw, 13px); font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--soft); line-height: 1.3; }
+  .tile { cursor: pointer; display: grid; place-items: center; font-family: var(--num-font, var(--font)); font-weight: var(--num-weight, var(--weight)); font-size: clamp(22px, 3.6vw, 60px); line-height: 1; color: var(--num, var(--ink)); text-shadow: var(--num-shadow, none); transition: transform 0.15s ease, filter 0.15s ease; }
+  .tile:hover:not(:disabled) { transform: translateY(-2px); filter: brightness(1.06); }
+  .tile.is-used { cursor: default; color: transparent; text-shadow: none; filter: saturate(0.25) brightness(0.5); }
+  .tile.is-used::after { content: "✓"; color: var(--soft); font-family: "Public Sans", sans-serif; font-size: clamp(16px, 1.8vw, 28px); }
+
+  /* The four looks. Each sets the variables the board, clue screen and buttons read. */
+  .look-notebook {
+    --bg: #fbf8ef;
+    --bg-img: linear-gradient(90deg, transparent 22px, #e9a3a3 22px 24px, transparent 24px), repeating-linear-gradient(transparent 0 23px, #d6e0f0 23px 24px);
+    --ink: #1f2a44; --soft: #56607a;
+    --font: "Young Serif", Georgia, serif; --weight: 400; --q-font: "Young Serif", Georgia, serif; --q-weight: 400;
+    --card: #ffffff; --line: #1f2a44;
+    --right-bg: #d4eedb; --right-ink: #12442a; --right-line: #1f7a45;
+    --btn: #1f2a44; --btn-ink: #fbf8ef;
+  }
+  .look-jeopardy {
+    --bg: #0a17a8;
+    --bg-img: radial-gradient(120% 100% at 50% 0%, #1b2ee0, #070f86);
+    --ink: #ffffff; --soft: #c3cbff;
+    --font: "Public Sans", Arial, sans-serif; --weight: 800; --case: uppercase; --track: 0.02em; --head-shadow: 2px 2px 0 #000;
+    --q-font: "Public Sans", Arial, sans-serif; --q-weight: 800; --q-shadow: 2px 2px 0 #000;
+    --num: #ffcc33; --num-shadow: 3px 3px 0 #000;
+    --card: rgba(255, 255, 255, 0.08); --line: rgba(255, 255, 255, 0.4);
+    --right-bg: #ffcc33; --right-ink: #070f86; --right-line: #ffcc33;
+    --btn: #ffcc33; --btn-ink: #070f86;
+  }
+  .look-lab {
+    --bg: #f3f5f9; --edge: 2px solid #dbe1eb;
+    --ink: #13213c; --soft: #4a5874;
+    --font: "Bricolage Grotesque", Arial, sans-serif; --weight: 800; --q-font: "Bricolage Grotesque", Arial, sans-serif; --q-weight: 700;
+    --card: #ffffff; --line: #c3ccdb;
+    --right-bg: #ffc94d; --right-ink: #13213c; --right-line: #13213c;
+    --btn: #13213c; --btn-ink: #f3f5f9;
+  }
+  .look-vegas {
+    --bg: #23123b;
+    --bg-img: radial-gradient(120% 100% at 50% 0%, #34205a, #1a0d2e);
+    --ink: #fbf5ea; --soft: #cdbbe6;
+    --font: "Bungee", "Arial Black", Impact, sans-serif; --weight: 400; --q-font: "Public Sans", Arial, sans-serif; --q-weight: 700;
+    --num: #f2b705; --num-shadow: 0 0 18px rgba(242, 183, 5, 0.35);
+    --card: rgba(255, 255, 255, 0.07); --line: #5a3d86;
+    --right-bg: #ff5aa5; --right-ink: #23123b; --right-line: #ff5aa5;
+    --btn: #f2b705; --btn-ink: #23123b;
+  }
+  .col.look-vegas .head, .col.look-vegas .tile { outline: 3px dotted #f2b705; outline-offset: -7px; }
+  .look-vegas .head__name { color: #ff5aa5; text-shadow: 0 0 14px rgba(255, 90, 165, 0.5); }
+  .look-lab .head__name { background: linear-gradient(transparent 58%, #ffc94d 58% 92%, transparent 92%); padding: 0 2px; }
+  .col.look-lab .head::after { content: "A+"; position: absolute; top: 8px; right: 10px; font: 700 clamp(18px, 1.8vw, 28px)/1 Caveat, cursive; color: #c92a2a; transform: rotate(-10deg); }
+
+  /* Full-screen clue and Final Bet */
+  dialog.full { width: 100vw; height: 100vh; height: 100dvh; max-width: 100vw; max-height: 100vh; max-height: 100dvh; margin: 0; padding: 0; border: 0; background: transparent; color: inherit; }
+  dialog::backdrop { background: rgba(8, 8, 10, 0.82); }
+  .stage { height: 100%; overflow: auto; background: var(--bg, var(--stage)); background-image: var(--bg-img, none); color: var(--ink); display: grid; grid-template-rows: auto 1fr auto; gap: clamp(12px, 2vh, 28px); padding: clamp(18px, 3vw, 56px); }
+  .stage.look-notebook { padding-left: clamp(64px, 6vw, 100px); background-image: linear-gradient(90deg, transparent 40px, #eab0b0 40px 42px, transparent 42px), repeating-linear-gradient(transparent 0 39px, #e0e8f4 39px 40px); }
+  .stage.look-vegas { outline: 6px dotted #f2b705; outline-offset: -14px; padding: clamp(32px, 3.4vw, 60px); }
+  .stage__top { display: flex; justify-content: space-between; align-items: start; gap: 16px; }
+  .kicker { font-family: var(--font); font-weight: var(--weight); font-size: clamp(18px, 2vw, 32px); line-height: 1.1; text-transform: var(--case, none); text-shadow: var(--head-shadow, none); }
+  .look-vegas .kicker { color: #ff5aa5; }
+  .from { margin-top: 6px; color: var(--soft); font-weight: 700; font-size: clamp(12px, 1vw, 16px); letter-spacing: 0.06em; text-transform: uppercase; }
+  .value { font-family: var(--num-font, var(--font)); font-weight: var(--num-weight, var(--weight)); color: var(--num, var(--ink)); text-shadow: var(--num-shadow, none); font-size: clamp(36px, 5vw, 84px); line-height: 1; white-space: nowrap; }
+  .value--name { font-size: clamp(22px, 3vw, 46px); white-space: normal; text-align: right; max-width: 60%; }
+  .stage__mid { display: grid; align-content: center; gap: clamp(14px, 2.4vh, 32px); width: 100%; max-width: 1500px; margin: 0 auto; }
+  .q { margin: 0; font-family: var(--q-font, "Public Sans"); font-weight: var(--q-weight, 700); font-size: clamp(24px, 3.3vw, 58px); line-height: 1.2; text-wrap: balance; text-shadow: var(--q-shadow, none); }
+  .lead { margin: 0; font-size: clamp(17px, 1.6vw, 26px); max-width: 52em; }
+  .choices { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: clamp(8px, 1.2vw, 18px); }
+  .choice { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: clamp(10px, 1.2vw, 18px); padding: clamp(12px, 1.6vw, 22px) clamp(14px, 1.8vw, 26px); border-radius: 16px; background: var(--card); border: 2px solid var(--line); font-size: clamp(18px, 2vw, 34px); font-weight: 600; line-height: 1.25; transition: opacity 0.3s ease, background-color 0.3s ease; }
+  .choice b { width: 1.8em; height: 1.8em; border-radius: 50%; display: grid; place-items: center; background: var(--btn); color: var(--btn-ink); font-family: "Public Sans", sans-serif; font-weight: 800; font-size: 0.8em; }
+  .choice.is-right { background: var(--right-bg); color: var(--right-ink); border-color: var(--right-line); }
+  .choice.is-right b { background: var(--right-ink); color: var(--right-bg); }
+  .choice.is-dim { opacity: 0.35; }
+  .why { margin: 0; padding: 12px 18px; border-radius: 10px; border-left: 6px solid var(--right-line); background: var(--card); font-size: clamp(16px, 1.6vw, 26px); line-height: 1.4; }
+  .stage__bot { display: grid; gap: 12px; justify-items: center; }
+  .row { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; }
+  .btn { min-height: 48px; padding: 10px 22px; border-radius: 999px; border: 2px solid var(--btn); background: var(--btn); color: var(--btn-ink); font-weight: 800; font-size: clamp(15px, 1.2vw, 18px); cursor: pointer; }
+  .btn--ghost { background: transparent; color: var(--ink); border-color: var(--line); }
+  .btn:disabled { opacity: 0.45; cursor: not-allowed; }
+  .award__label { margin: 0; font-weight: 700; font-size: clamp(15px, 1.2vw, 19px); }
+  .who { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+  .who button { min-height: 46px; padding: 8px 18px; border-radius: 999px; border: 2px solid var(--line); background: var(--card); color: var(--ink); font-weight: 700; font-size: clamp(15px, 1.3vw, 20px); cursor: pointer; }
+  .who button[aria-pressed="true"] { background: var(--right-bg); color: var(--right-ink); border-color: var(--right-line); }
+  .who button[aria-pressed="true"]::before { content: "✓ "; }
+  .note { margin: 0; color: var(--soft); }
+  .timer { position: relative; min-width: 150px; padding: 6px 18px; border-radius: 999px; border: 2px solid var(--line); background: var(--card); font-weight: 800; font-size: clamp(16px, 1.4vw, 22px); font-variant-numeric: tabular-nums; text-align: center; overflow: hidden; }
+  .timer::before { content: ""; position: absolute; inset: 0 auto 0 0; width: calc(var(--p, 1) * 100%); background: var(--right-bg); opacity: 0.35; }
+  .timer span { position: relative; }
+  .timer.is-up { background: var(--right-bg); color: var(--right-ink); }
+
+  /* Final Bet */
+  .bets { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
+  .bet { display: grid; gap: 4px; padding: 14px 16px; border-radius: 14px; background: var(--card); border: 2px solid var(--line); }
+  .bet span { font-weight: 800; font-size: 18px; }
+  .bet small { color: var(--soft); font-weight: 600; }
+  .bet input { min-height: 46px; padding: 6px 12px; border-radius: 10px; border: 2px solid var(--line); background: rgba(0, 0, 0, 0.25); color: var(--ink); font-size: 22px; font-weight: 800; font-variant-numeric: tabular-nums; }
+  .winner { color: var(--num, var(--ink)); }
+  .standings { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; max-width: 760px; width: 100%; counter-reset: rank; }
+  .standings li { counter-increment: rank; display: grid; grid-template-columns: 40px minmax(0, 1fr) auto auto; gap: 12px; align-items: center; padding: 12px 18px; border-radius: 14px; background: var(--card); border: 2px solid var(--line); font-size: clamp(17px, 1.6vw, 24px); }
+  .standings li::before { content: counter(rank); font-family: var(--font); color: var(--soft); }
+  .standings li:first-child { border-color: var(--num, var(--gold)); }
+  .standings span { font-weight: 800; }
+  .standings small { color: var(--soft); font-weight: 700; }
+  .standings b { font-variant-numeric: tabular-nums; }
+
+  /* Scoreboard */
+  .scores { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; justify-content: space-between; padding: 12px 0 clamp(12px, 2vw, 24px); border-top: 1px solid var(--stage-line); }
+  .teams { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px; }
+  .team { display: flex; align-items: baseline; gap: 10px; padding: 8px 16px; border-radius: 12px; background: var(--stage-2); border: 1.5px solid var(--stage-line); }
+  .team span { font-weight: 700; color: var(--stage-soft); }
+  .team b { font-family: "Bricolage Grotesque", sans-serif; font-weight: 800; font-size: clamp(20px, 2vw, 30px); font-variant-numeric: tabular-nums; }
+  .team.is-lead { border-color: var(--gold); }
+  .team.is-lead span::before { content: "★ "; color: var(--gold); }
+  .team--empty { padding: 0; background: none; border: 0; }
+  .score-tools { display: flex; flex-wrap: wrap; gap: 8px; }
+
+  /* Host guide and team editor */
+  dialog.panel { width: calc(100vw - 32px); max-width: 760px; max-height: calc(100vh - 32px); padding: clamp(18px, 3vw, 32px); border: 1px solid var(--stage-line); border-radius: 18px; background: var(--stage-2); color: var(--stage-ink); }
+  .panel h2:focus { outline: none; }
+  .panel h2 { margin: 0 0 10px; font-family: "Bricolage Grotesque", sans-serif; font-weight: 800; font-size: clamp(24px, 2.4vw, 32px); }
+  .panel .eyebrow { margin: 18px 0 6px; font-size: 12.5px; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; color: var(--gold); }
+  .panel .script { margin: 0; font-size: 18px; line-height: 1.55; }
+  .panel ol, .panel ul { margin: 0; padding-left: 22px; display: grid; gap: 6px; }
+  .panel .row { justify-content: flex-end; margin-top: 20px; }
+  .trows { list-style: none; padding: 0; margin: 10px 0 0; display: grid; gap: 8px; }
+  .trow { display: grid; grid-template-columns: minmax(0, 1fr) 70px auto auto auto; gap: 8px; align-items: center; }
+  .trow input, .team-add input { min-height: 44px; padding: 6px 12px; border-radius: 10px; border: 1.5px solid var(--stage-line); background: var(--stage); color: var(--stage-ink); }
+  .trow__score { text-align: right; font-variant-numeric: tabular-nums; }
+  .mini { min-height: 40px; padding: 6px 10px; border-radius: 10px; border: 1.5px solid var(--stage-line); background: transparent; color: var(--stage-ink); font-weight: 700; cursor: pointer; }
+  .mini--x { color: #ff9b9b; }
+  .team-add { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; margin-top: 14px; }
+
+  @media (max-width: 760px) {
+    .board { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: none; row-gap: 16px; }
+    .col { grid-row: auto; grid-template-rows: auto repeat(4, minmax(56px, 1fr)); gap: 6px; }
+    .choices { grid-template-columns: 1fr; }
+    .trow { grid-template-columns: minmax(0, 1fr) 56px auto auto; }
+    .trow .mini--x { grid-column: 1 / -1; justify-self: start; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .tile, .choice { transition: none; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="top">
+    <div class="brand">
+      <h1 id="title">Semester Review</h1>
+      <div class="stripe" aria-hidden="true"><i style="background:#e9a3a3"></i><i style="background:#2b3cf0"></i><i style="background:#ffc94d"></i><i style="background:#ff5aa5"></i></div>
+      <p id="sub"></p>
+    </div>
+    <nav class="tools" aria-label="Game controls">
+      <span class="left" id="left"></span>
+      <button type="button" class="tool" id="btn-guide">Host guide</button>
+      <button type="button" class="tool" id="btn-teams">Teams</button>
+      <button type="button" class="tool tool--final" id="btn-final">Final Bet</button>
+      <button type="button" class="tool" id="btn-new">New game</button>
+    </nav>
+  </header>
+
+  <main class="board" id="board" aria-label="Game board"></main>
+
+  <footer class="scores" aria-label="Scoreboard">
+    <ol class="teams" id="teams"></ol>
+    <div class="score-tools">
+      <button type="button" class="tool" id="btn-undo">Undo</button>
+    </div>
+  </footer>
+</div>
+
+<dialog class="full" id="clue" aria-labelledby="clue-q">
+  <div class="stage" id="clue-stage">
+    <div class="stage__top">
+      <div><div class="kicker" id="clue-cat"></div><div class="from" id="clue-from"></div></div>
+      <div class="value" id="clue-value"></div>
+    </div>
+    <div class="stage__mid">
+      <p class="q" id="clue-q"></p>
+      <ol class="choices" id="clue-choices"></ol>
+      <p class="why" id="clue-why" aria-live="polite" hidden></p>
+    </div>
+    <div class="stage__bot">
+      <div class="timer" id="clue-timer" hidden><span></span></div>
+      <div class="row" id="clue-ask">
+        <button type="button" class="btn btn--ghost" id="clue-back">Back to board</button>
+        <button type="button" class="btn btn--ghost" id="clue-time">20-second timer</button>
+        <button type="button" class="btn" id="clue-reveal">Reveal the answer</button>
+      </div>
+      <div class="stage__bot" id="clue-award" hidden>
+        <p class="award__label">Tap every team that got it:</p>
+        <div class="who" id="clue-who"></div>
+        <div class="row">
+          <button type="button" class="btn btn--ghost" id="clue-none">Nobody got it</button>
+          <button type="button" class="btn" id="clue-give">Give points</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</dialog>
+
+<dialog class="full" id="final" aria-labelledby="final-title">
+  <div class="stage" id="final-stage">
+    <div class="stage__top">
+      <div><div class="kicker">Final Bet</div><div class="from" id="final-from"></div></div>
+      <div class="value value--name" id="final-cat"></div>
+    </div>
+    <div class="stage__mid" id="final-mid"></div>
+    <div class="stage__bot" id="final-bot"></div>
+  </div>
+</dialog>
+
+<dialog class="panel" id="guide" aria-labelledby="guide-title">
+  <h2 id="guide-title" tabindex="-1" autofocus>Host it with no prep</h2>
+  <p>Put this page on the big screen and run it from the laptop. About 20 minutes for the board, plus 3 for the Final Bet.</p>
+  <p class="eyebrow">Read this out loud first</p>
+  <p class="script">“This is our whole semester on one board. Each column is something we did together: the AP Business class intro, the Jeopardy from our first meeting, Website Lab, and Vegas on a Budget. Every team answers every question: write A, B, C or D, and hold it up when I say. Right answers score the tile's points, and wrong answers cost nothing. At the end there's a Final Bet, where you can wager your points on one last question.”</p>
+  <p class="eyebrow">How to run it</p>
+  <ol>
+    <li>Split into teams of 3 or 4, each with paper to write a letter on. Tap <b>Teams</b> and add their names.</li>
+    <li>A team picks a column and a value. Take turns picking.</li>
+    <li>Read the question and the four choices out loud. Tap <b>20-second timer</b> if you want a clock.</li>
+    <li>Everyone holds up their letter at once. Tap <b>Reveal the answer</b> and read the explanation.</li>
+    <li>Tap every team that got it, then <b>Give points</b>. If nobody did, tap <b>Nobody got it</b>.</li>
+    <li>When the board is done or time is short, tap <b>Final Bet</b>. Teams secretly write a wager, you type them in, then show the last question.</li>
+  </ol>
+  <p class="eyebrow">If something goes wrong</p>
+  <ul>
+    <li><b>Wrong team or wrong tile?</b> <b>Undo</b> takes back the last thing you did. Press it again to go further back.</li>
+    <li><b>A score is off?</b> <b>Teams</b> has +100 and −100 for each team.</li>
+    <li><b>Closed the tab?</b> The game saves in this browser. Reopen the same page on the same laptop.</li>
+    <li><b>Short on time?</b> Skip straight to the Final Bet.</li>
+  </ul>
+  <div class="row"><button type="button" class="btn" id="guide-close">Got it</button></div>
+</dialog>
+
+<dialog class="panel" id="teams-dlg" aria-labelledby="teams-title">
+  <h2 id="teams-title">Teams</h2>
+  <p>Teams of 3 or 4. Their names and scores show along the bottom of the board.</p>
+  <ul class="trows" id="team-rows"></ul>
+  <form class="team-add" id="team-add">
+    <input type="text" id="team-name" maxlength="24" placeholder="Team name" aria-label="New team name" autocomplete="off">
+    <button type="submit" class="btn">Add team</button>
+  </form>
+  <div class="row">
+    <button type="button" class="btn btn--ghost" id="teams-four">Add Teams 1 to 4</button>
+    <button type="button" class="btn" id="teams-done">Done</button>
+  </div>
+</dialog>
+
+<script src="questions.js?v=1"></script>
+<script>
+(function () {
+  var R = window.REVIEW;
+  var KEY = 'semester-review-v1';
+  var LETTERS = ['A', 'B', 'C', 'D'];
+
+  function $(id) { return document.getElementById(id); }
+  function el(tag, attrs, text) {
+    var n = document.createElement(tag);
+    for (var k in attrs || {}) n.setAttribute(k, attrs[k]);
+    if (text != null) n.textContent = text;
+    return n;
+  }
+  function clear(n) { while (n.firstChild) n.removeChild(n.firstChild); }
+  function pts(n) { return (n < 0 ? '−' : '') + Math.abs(n).toLocaleString('en-US'); }
+  function button(label, cls, onClick) {
+    var b = el('button', { type: 'button', 'class': cls }, label);
+    b.addEventListener('click', onClick);
+    return b;
+  }
+  function row(items) {
+    var r = el('div', { 'class': 'row' });
+    items.forEach(function (b) { r.appendChild(b); });
+    return r;
+  }
+
+  /* ---------- State: saved in this browser so a refresh or closed tab loses nothing ---------- */
+  function fresh(teams, nextId) { return { teams: teams || [], used: {}, log: [], final: null, nextId: nextId || 1 }; }
+  function load() {
+    try {
+      var s = JSON.parse(localStorage.getItem(KEY));
+      if (s && Array.isArray(s.teams) && s.used && Array.isArray(s.log)) return s;
+    } catch (e) { /* storage unavailable or unreadable: start a new game */ }
+    return fresh();
+  }
+  var state = load();
+  function save() {
+    try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) { /* the game still works for this visit */ }
+  }
+  function findTeam(id) {
+    for (var i = 0; i < state.teams.length; i++) if (state.teams[i].id === id) return state.teams[i];
+    return null;
+  }
+  function addPoints(id, n) { var t = findTeam(id); if (t) t.score += n; }
+  function tileKey(c, i) { return R.categories[c].key + '-' + i; }
+  function tilesLeft() {
+    var n = 0;
+    R.categories.forEach(function (cat, c) { cat.clues.forEach(function (x, i) { if (!state.used[tileKey(c, i)]) n++; }); });
+    return n;
+  }
+
+  /* ---------- Board and scoreboard ---------- */
+  function render() { renderBoard(); renderScores(); }
+
+  function renderBoard() {
+    var board = $('board');
+    clear(board);
+    board.style.setProperty('--cols', R.categories.length);
+    R.categories.forEach(function (cat, c) {
+      var col = el('section', { 'class': 'col look-' + cat.look, 'aria-label': cat.name });
+      var head = el('h2', { 'class': 'head' });
+      head.appendChild(el('span', { 'class': 'head__name' }, cat.name));
+      head.appendChild(el('span', { 'class': 'head__from' }, cat.from));
+      col.appendChild(head);
+      cat.clues.forEach(function (clue, i) {
+        var used = !!state.used[tileKey(c, i)];
+        var tile = el('button', {
+          type: 'button',
+          'class': 'tile' + (used ? ' is-used' : ''),
+          'data-c': String(c),
+          'data-i': String(i),
+          'aria-label': cat.name + ' for ' + clue.value + (used ? ', already played' : '')
+        }, used ? '' : String(clue.value));
+        if (used) tile.disabled = true;
+        col.appendChild(tile);
+      });
+      board.appendChild(col);
+    });
+  }
+
+  function renderScores() {
+    var list = $('teams');
+    clear(list);
+    if (!state.teams.length) {
+      var li = el('li', { 'class': 'team team--empty' });
+      li.appendChild(button('Add teams to start', 'btn', openTeams));
+      list.appendChild(li);
+    }
+    var top = state.teams.reduce(function (m, t) { return Math.max(m, t.score); }, 0);
+    state.teams.forEach(function (t) {
+      var li = el('li', { 'class': 'team' + (top > 0 && t.score === top ? ' is-lead' : '') });
+      li.appendChild(el('span', null, t.name));
+      li.appendChild(el('b', null, pts(t.score)));
+      list.appendChild(li);
+    });
+    $('btn-undo').disabled = !state.log.length;
+    var left = tilesLeft();
+    $('left').textContent = left ? left + (left === 1 ? ' tile left' : ' tiles left') : 'Board cleared';
+  }
+
+  $('board').addEventListener('click', function (e) {
+    var tile = e.target.closest('.tile');
+    if (!tile || tile.disabled) return;
+    openClue(Number(tile.getAttribute('data-c')), Number(tile.getAttribute('data-i')));
+  });
+
+  /* ---------- Timer ---------- */
+  var timer = null;
+  function stopTimer() { if (timer) clearInterval(timer); timer = null; }
+  function startTimer(box, seconds) {
+    stopTimer();
+    var end = Date.now() + seconds * 1000;
+    box.hidden = false;
+    function tick() {
+      var ms = Math.max(0, end - Date.now());
+      box.style.setProperty('--p', (ms / (seconds * 1000)).toFixed(3));
+      box.firstChild.textContent = ms ? Math.ceil(ms / 1000) + ' seconds' : 'Time!';
+      box.classList.toggle('is-up', !ms);
+      if (!ms) stopTimer();
+    }
+    tick();
+    timer = setInterval(tick, 100);
+  }
+
+  /* ---------- Clues ---------- */
+  function fillChoices(list, clue, revealed) {
+    clear(list);
+    clue.choices.forEach(function (text, k) {
+      var li = el('li', { 'class': 'choice' + (revealed ? (k === clue.answer ? ' is-right' : ' is-dim') : '') });
+      li.appendChild(el('b', null, LETTERS[k]));
+      li.appendChild(el('span', null, text));
+      list.appendChild(li);
+    });
+  }
+
+  // Team buttons the host taps to mark who got it. `picked` maps team id → true.
+  function renderWho(box, picked, onChange) {
+    clear(box);
+    if (!state.teams.length) {
+      box.appendChild(el('p', { 'class': 'note' }, 'No teams yet, so nothing to score. Add teams from Teams on the board.'));
+      return;
+    }
+    state.teams.forEach(function (t) {
+      var b = el('button', { type: 'button', 'aria-pressed': picked[t.id] ? 'true' : 'false' }, t.name);
+      b.addEventListener('click', function () {
+        picked[t.id] = !picked[t.id];
+        b.setAttribute('aria-pressed', picked[t.id] ? 'true' : 'false');
+        onChange();
+      });
+      box.appendChild(b);
+    });
+  }
+  function pickedIds(picked) {
+    return state.teams.filter(function (t) { return picked[t.id]; }).map(function (t) { return t.id; });
+  }
+
+  var cur = null; // the open clue: { c, i, picked }
+  function openClue(c, i) {
+    var cat = R.categories[c], clue = cat.clues[i];
+    cur = { c: c, i: i, picked: {} };
+    $('clue-stage').className = 'stage look-' + cat.look;
+    $('clue-cat').textContent = cat.name;
+    $('clue-from').textContent = cat.from;
+    $('clue-value').textContent = String(clue.value);
+    $('clue-q').textContent = clue.q;
+    fillChoices($('clue-choices'), clue, false);
+    $('clue-why').hidden = true;
+    $('clue-ask').hidden = false;
+    $('clue-award').hidden = true;
+    $('clue-timer').hidden = true;
+    stopTimer();
+    $('clue').showModal();
+    $('clue-reveal').focus();
+  }
+  function revealClue() {
+    var clue = R.categories[cur.c].clues[cur.i];
+    stopTimer();
+    $('clue-timer').hidden = true;
+    fillChoices($('clue-choices'), clue, true);
+    $('clue-why').textContent = clue.why;
+    $('clue-why').hidden = false;
+    $('clue-ask').hidden = true;
+    renderWho($('clue-who'), cur.picked, updateGive);
+    $('clue-award').hidden = false;
+    updateGive();
+    ($('clue-who').querySelector('button') || $('clue-none')).focus();
+  }
+  function updateGive() {
+    var n = pickedIds(cur.picked).length;
+    var value = R.categories[cur.c].clues[cur.i].value;
+    $('clue-give').disabled = !n;
+    $('clue-give').textContent = n ? 'Give ' + value + ' to ' + n + (n === 1 ? ' team' : ' teams') : 'Give points';
+  }
+  function finishClue(award) {
+    var key = tileKey(cur.c, cur.i);
+    var value = R.categories[cur.c].clues[cur.i].value;
+    var ids = award ? pickedIds(cur.picked) : [];
+    ids.forEach(function (id) { addPoints(id, value); });
+    state.used[key] = true;
+    state.log.push({ type: 'tile', tile: key, value: value, teams: ids });
+    save();
+    closeClue();
+    render();
+  }
+  function closeClue() {
+    stopTimer();
+    if ($('clue').open) $('clue').close();
+    cur = null;
+  }
+
+  $('clue-back').addEventListener('click', closeClue);
+  $('clue-time').addEventListener('click', function () { startTimer($('clue-timer'), 20); });
+  $('clue-reveal').addEventListener('click', revealClue);
+  $('clue-none').addEventListener('click', function () { finishClue(false); });
+  $('clue-give').addEventListener('click', function () { finishClue(true); });
+  // Esc backs out without using up the tile.
+  $('clue').addEventListener('cancel', function () { stopTimer(); cur = null; });
+
+  /* ---------- Final Bet ---------- */
+  function openFinal() {
+    if (!state.final) {
+      var left = tilesLeft();
+      if (left && !confirm(left + (left === 1 ? ' tile is' : ' tiles are') + ' still on the board. Go to the Final Bet anyway?')) return;
+      state.final = { stage: 'wager', wagers: {}, right: {} };
+      save();
+    }
+    renderFinal();
+    $('final').showModal();
+  }
+  function closeFinal() { stopTimer(); if ($('final').open) $('final').close(); }
+  function maxWager(t) { return Math.max(0, t.score); }
+
+  function renderFinal() {
+    var F = R.final, f = state.final, mid = $('final-mid'), bot = $('final-bot');
+    clear(mid);
+    clear(bot);
+    $('final-stage').className = 'stage look-' + F.look;
+    $('final-cat').textContent = F.name;
+    $('final-from').textContent = F.from;
+
+    if (f.stage === 'wager') {
+      mid.appendChild(el('h2', { 'class': 'q', id: 'final-title' }, 'Place your bets'));
+      mid.appendChild(el('p', { 'class': 'lead' }, 'The category is ' + F.name + '. Each team secretly writes a wager, from 0 up to its score, before anyone sees the question. Get it right and win the wager; get it wrong and lose it.'));
+      var bets = el('div', { 'class': 'bets' });
+      if (!state.teams.length) bets.appendChild(el('p', { 'class': 'note' }, 'No teams yet. Add teams from Teams on the board.'));
+      state.teams.forEach(function (t) {
+        var max = maxWager(t);
+        var lab = el('label', { 'class': 'bet' });
+        lab.appendChild(el('span', null, t.name));
+        lab.appendChild(el('small', null, 'Score ' + pts(t.score) + ' · bet 0 to ' + pts(max)));
+        var input = el('input', { type: 'number', min: '0', max: String(max), step: '50', inputmode: 'numeric', value: String(f.wagers[t.id] || 0) });
+        input.addEventListener('input', function () {
+          f.wagers[t.id] = Math.max(0, Math.min(Math.round(Number(input.value) || 0), max));
+          save();
+        });
+        input.addEventListener('change', function () { input.value = String(f.wagers[t.id] || 0); });
+        lab.appendChild(input);
+        bets.appendChild(lab);
+      });
+      mid.appendChild(bets);
+      bot.appendChild(row([
+        button('Back to board', 'btn btn--ghost', closeFinal),
+        button('Lock bets and show the question', 'btn', function () { f.stage = 'question'; save(); renderFinal(); })
+      ]));
+    } else if (f.stage === 'question' || f.stage === 'reveal') {
+      var revealed = f.stage === 'reveal';
+      mid.appendChild(el('p', { 'class': 'q', id: 'final-title' }, F.q));
+      var list = el('ol', { 'class': 'choices' });
+      fillChoices(list, F, revealed);
+      mid.appendChild(list);
+      if (!revealed) {
+        var box = el('div', { 'class': 'timer', hidden: '' });
+        box.appendChild(el('span'));
+        bot.appendChild(box);
+        bot.appendChild(row([
+          button('Back to board', 'btn btn--ghost', closeFinal),
+          button('30-second timer', 'btn btn--ghost', function () { startTimer(box, 30); }),
+          button('Reveal the answer', 'btn', function () { stopTimer(); f.stage = 'reveal'; save(); renderFinal(); })
+        ]));
+      } else {
+        mid.appendChild(el('p', { 'class': 'why' }, F.why));
+        bot.appendChild(el('p', { 'class': 'award__label' }, 'Tap every team that got it right:'));
+        var who = el('div', { 'class': 'who' });
+        renderWho(who, f.right, function () { save(); });
+        bot.appendChild(who);
+        bot.appendChild(row([button('Settle the bets', 'btn', settleFinal)]));
+      }
+    } else {
+      standings(mid);
+      bot.appendChild(row([button('Back to board', 'btn', closeFinal)]));
+    }
+    var focus = bot.querySelector('.btn:not(.btn--ghost)') || bot.querySelector('button');
+    if (focus) focus.focus();
+  }
+
+  function settleFinal() {
+    var f = state.final;
+    var deltas = state.teams.map(function (t) {
+      var w = Math.min(f.wagers[t.id] || 0, maxWager(t));
+      return { id: t.id, delta: f.right[t.id] ? w : -w };
+    });
+    deltas.forEach(function (d) { addPoints(d.id, d.delta); });
+    state.log.push({ type: 'final', deltas: deltas });
+    f.deltas = deltas;
+    f.stage = 'done';
+    save();
+    render();
+    renderFinal();
+  }
+
+  function standings(mid) {
+    var sorted = state.teams.slice().sort(function (a, b) { return b.score - a.score; });
+    if (sorted.length) {
+      var top = sorted[0].score;
+      var winners = sorted.filter(function (t) { return t.score === top; }).map(function (t) { return t.name; });
+      mid.appendChild(el('h2', { 'class': 'q winner', id: 'final-title' }, winners.length > 1 ? 'A tie: ' + winners.join(' and ') : winners[0] + ' wins!'));
+    } else {
+      mid.appendChild(el('h2', { 'class': 'q', id: 'final-title' }, 'Final standings'));
+    }
+    var deltas = state.final.deltas || [];
+    var ol = el('ol', { 'class': 'standings' });
+    sorted.forEach(function (t) {
+      var d = deltas.filter(function (x) { return x.id === t.id; })[0];
+      var li = el('li');
+      li.appendChild(el('span', null, t.name));
+      li.appendChild(el('small', null, d ? (d.delta > 0 ? 'won ' + pts(d.delta) : d.delta < 0 ? 'lost ' + pts(-d.delta) : 'bet 0') : ''));
+      li.appendChild(el('b', null, pts(t.score)));
+      ol.appendChild(li);
+    });
+    mid.appendChild(ol);
+  }
+
+  $('btn-final').addEventListener('click', openFinal);
+  $('final').addEventListener('cancel', stopTimer);
+
+  /* ---------- Undo: takes back the last award, score fix or settled Final Bet ---------- */
+  $('btn-undo').addEventListener('click', function () {
+    var last = state.log.pop();
+    if (!last) return;
+    if (last.type === 'tile') {
+      last.teams.forEach(function (id) { addPoints(id, -last.value); });
+      delete state.used[last.tile];
+    } else if (last.type === 'adjust') {
+      addPoints(last.team, -last.delta);
+    } else if (last.type === 'final') {
+      last.deltas.forEach(function (d) { addPoints(d.id, -d.delta); });
+      if (state.final) state.final.stage = 'reveal';
+    }
+    save();
+    render();
+  });
+
+  /* ---------- Teams ---------- */
+  function openTeams() { renderTeamRows(); $('teams-dlg').showModal(); $('team-name').focus(); }
+  function addTeam(name) {
+    state.teams.push({ id: state.nextId++, name: name, score: 0 });
+    save();
+    render();
+    renderTeamRows();
+  }
+  function renderTeamRows() {
+    var ul = $('team-rows');
+    clear(ul);
+    if (!state.teams.length) ul.appendChild(el('li', { 'class': 'note' }, 'No teams yet.'));
+    state.teams.forEach(function (t) {
+      var li = el('li', { 'class': 'trow' });
+      var name = el('input', { type: 'text', value: t.name, maxlength: '24', 'aria-label': 'Name of ' + t.name, autocomplete: 'off' });
+      name.addEventListener('change', function () {
+        var v = name.value.trim();
+        if (!v) { name.value = t.name; return; }
+        t.name = v;
+        save();
+        render();
+      });
+      li.appendChild(name);
+      li.appendChild(el('b', { 'class': 'trow__score' }, pts(t.score)));
+      [-100, 100].forEach(function (d) {
+        li.appendChild(button(d > 0 ? '+100' : '−100', 'mini', function () {
+          addPoints(t.id, d);
+          state.log.push({ type: 'adjust', team: t.id, delta: d });
+          save();
+          render();
+          renderTeamRows();
+        }));
+      });
+      li.appendChild(button('Remove', 'mini mini--x', function () {
+        if (!confirm('Remove ' + t.name + '? Its score goes with it.')) return;
+        state.teams = state.teams.filter(function (o) { return o.id !== t.id; });
+        save();
+        render();
+        renderTeamRows();
+      }));
+      ul.appendChild(li);
+    });
+    $('teams-four').hidden = state.teams.length > 0;
+  }
+  $('team-add').addEventListener('submit', function (e) {
+    e.preventDefault();
+    var v = $('team-name').value.trim();
+    if (!v) return;
+    addTeam(v);
+    $('team-name').value = '';
+    $('team-name').focus();
+  });
+  $('teams-four').addEventListener('click', function () { for (var k = 1; k <= 4; k++) addTeam('Team ' + k); });
+  $('teams-done').addEventListener('click', function () { $('teams-dlg').close(); });
+  $('btn-teams').addEventListener('click', openTeams);
+
+  /* ---------- Guide and new game ---------- */
+  $('btn-guide').addEventListener('click', function () { $('guide').showModal(); });
+  $('guide-close').addEventListener('click', function () { $('guide').close(); });
+  $('btn-new').addEventListener('click', function () {
+    if (!confirm('Start a new game? Scores, played tiles and the Final Bet are cleared. Team names stay.')) return;
+    var teams = state.teams.map(function (t) { return { id: t.id, name: t.name, score: 0 }; });
+    state = fresh(teams, state.nextId);
+    save();
+    render();
+  });
+
+  document.title = R.title;
+  $('title').textContent = R.title;
+  $('sub').textContent = 'Business Club · ' + R.term + ' · every team answers every question';
+  render();
+  // First time on this browser: open the host guide so whoever is hosting starts there.
+  if (!state.teams.length && !state.log.length) $('guide').showModal();
+})();
+</script>
+</body>
+</html>

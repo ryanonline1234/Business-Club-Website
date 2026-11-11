@@ -50,6 +50,8 @@ export interface Activity {
 const WEBSITES_MEETING = '51ab2bae-f28e-4dd1-9666-edced601c39f';
 /** "3rd Business Meeting", 2026-10-27 — the personal finance meeting. */
 const VEGAS_MEETING = '607e7965-7162-4d23-bb2b-c6547f7dfb84';
+/** "4th Business Meeting", 2026-11-11 — next semester's volunteering intro and the fall review. */
+const REVIEW_MEETING = '2b360f58-1105-418d-914f-5837a3fa6bb5';
 
 export const ACTIVITIES: readonly Activity[] = [
   {
@@ -79,6 +81,13 @@ export const ACTIVITIES: readonly Activity[] = [
     summary: 'The run sheet: budget menu, Wheel of Life, the Over/Under answers and the leaderboard.',
     audience: 'officers',
     meetings: [VEGAS_MEETING],
+  },
+  {
+    slug: 'semester-review',
+    title: 'Semester Review',
+    summary: 'The fall in one game-show board, a column per meeting. Every team answers every question, then a Final Bet. Run it from the projector laptop; teams only need paper.',
+    audience: 'officers',
+    meetings: [REVIEW_MEETING],
   },
 ];
 
