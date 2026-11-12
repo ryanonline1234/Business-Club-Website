@@ -27,7 +27,12 @@ export interface AttendanceSheetRow {
   name: string | null;
   email: string;
   checked_in_at: string;
+  /** 'manual' rows were checked in by an officer, not scanned (STEP 21). */
+  method?: string | null;
 }
+
+/** Shown in the CHECKED IN column instead of a time for an officer's check-in. */
+const BY_OFFICER = 'By officer';
 
 const TZ = 'America/Los_Angeles';
 
@@ -159,6 +164,11 @@ export async function buildAttendancePdf(
         `${rows.length} ${rows.length === 1 ? 'attendee' : 'attendees'}` +
         (event.status === 'cancelled' ? '   (this meeting was cancelled)' : '');
       text(page, countLine, M, y, 11, bold);
+      if (rows.some((r) => r.method === 'manual')) {
+        y -= 15;
+        const note = `“${BY_OFFICER}” = checked in by an officer from an email they wrote down, not by scanning the code.`;
+        text(page, fit(safe(note), regular, 9, PAGE[0] - 2 * M), M, y, 9, regular, INK_3);
+      }
       y -= 12;
       page.drawLine({ start: { x: M, y }, end: { x: PAGE[0] - M, y }, thickness: 1.2, color: GOLD });
       y -= 24;
@@ -188,8 +198,15 @@ export async function buildAttendancePdf(
     const em = safe(r.email);
     const emSize = Math.max(7, Math.min(9.5, (9.5 * EMAIL_W) / Math.max(1, regular.widthOfTextAtSize(em, 9.5))));
     text(page, fit(em, regular, emSize, EMAIL_W), COL.email, y, emSize, regular, INK_3);
-    const t = safe(fmtTime(r.checked_in_at));
-    text(page, t, COL.timeRight - regular.widthOfTextAtSize(t, 10), y, 10);
+    // An officer's check-in has no meaningful time (it is often typed in after
+    // the meeting), so the column says who recorded it instead.
+    if (r.method === 'manual') {
+      const t = safe(BY_OFFICER);
+      text(page, t, COL.timeRight - regular.widthOfTextAtSize(t, 9), y, 9, regular, INK_3);
+    } else {
+      const t = safe(fmtTime(r.checked_in_at));
+      text(page, t, COL.timeRight - regular.widthOfTextAtSize(t, 10), y, 10);
+    }
     y -= ROW_H;
   });
 

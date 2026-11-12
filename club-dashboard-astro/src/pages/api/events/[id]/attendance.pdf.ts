@@ -51,7 +51,7 @@ export const GET: APIRoute = async ({ params, request }) => {
 
   const { data: attendance, error: attendanceError } = await supabaseAdmin
     .from('attendance')
-    .select('checked_in_at, profiles:member_id ( name, email )')
+    .select('checked_in_at, method, profiles:member_id ( name, email )')
     .eq('event_id', id)
     .order('checked_in_at', { ascending: true });
   if (attendanceError) {
@@ -65,7 +65,12 @@ export const GET: APIRoute = async ({ params, request }) => {
 
   const rows: AttendanceSheetRow[] = (attendance ?? []).map((a: any) => {
     const p = one(a.profiles) as { name: string | null; email: string | null } | null;
-    return { name: p?.name ?? null, email: p?.email ?? '—', checked_in_at: a.checked_in_at as string };
+    return {
+      name: p?.name ?? null,
+      email: p?.email ?? '—',
+      checked_in_at: a.checked_in_at as string,
+      method: (a.method as string | null) ?? null,
+    };
   });
 
   let bytes: Uint8Array;

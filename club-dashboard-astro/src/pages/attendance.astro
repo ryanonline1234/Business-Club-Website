@@ -3,7 +3,10 @@
  * /attendance — scoped by role.
  *
  * Officers see the full club log: per-event turnout for the recent five
- * meetings, headline figures, and the member/event/time table.
+ * meetings, headline figures, and the member/event/time table. They can also
+ * check people in by email (POST /api/attendance/manual — the board or sheet
+ * after a meeting) and remove a check-in from the log (DELETE
+ * /api/attendance/:id).
  * Members see ONLY their own check-in history and their own totals — no
  * other members' rows, no emails. (The previous version showed the entire
  * club-wide log to every member; that scoping bug is what this fixes.)
@@ -61,6 +64,7 @@ const SHEETS_LIMIT = 60;
 const SHEETS_SHOWN = 6;
 
 interface LogRow {
+  id: string;
   name: string;
   eventId: string;
   eventTitle: string;
@@ -169,11 +173,13 @@ if (session.isOfficer) {
       });
     }
     return {
+      id: r.id as string,
       name: profile?.name?.trim() || 'Unknown member',
       eventId: r.event_id ?? '',
       eventTitle: title,
       when: r.checked_in_at ? `${fmtDay(r.checked_in_at)} · ${fmtTime(r.checked_in_at)}` : '—',
-      method: r.method === 'qr' ? 'QR' : 'Code',
+      // 'manual' = an officer checked them in by email (STEP 21).
+      method: r.method === 'qr' ? 'QR' : r.method === 'manual' ? 'Officer' : 'Code',
     };
   });
 
@@ -322,6 +328,59 @@ if (!session.isOfficer) {
           )}
         </section>
 
+        {/* Check people in by email: for anyone who couldn't scan the code and
+            wrote their email on the board or a sheet. Shares the add-members
+            panel's look (global .addm styles). */}
+        <section aria-labelledby="mci-h" class="owned addm" id="check-in">
+          <div class="section-head">
+            <h2 id="mci-h">Check someone in</h2>
+            <span class="spacer"></span>
+            <span class="flag">Officer only</span>
+          </div>
+          <p class="small muted addm__lede">
+            Someone couldn&rsquo;t scan the code and wrote their email on the board? Type it
+            in here, even after the meeting. They show up on that meeting&rsquo;s PDF right
+            away. If they don&rsquo;t have an account yet, one is made for them, and the
+            check-in is already on it when they first sign in with Google.
+          </p>
+          {sheets.length > 0 ? (
+            <details class="addm__wrap" open={Astro.url.searchParams.has('checkin')}>
+              <summary>Check people in by email</summary>
+              <form class="addm__form" id="mci-form" novalidate>
+                <label class="field">
+                  <span>Meeting</span>
+                  <select class="select" id="mci-event">
+                    {sheets.map((m) => (
+                      <option value={m.id}>{m.isToday ? 'Today' : m.day} · {m.title}</option>
+                    ))}
+                  </select>
+                </label>
+                <label class="field">
+                  <span>Emails — one per line</span>
+                  <textarea
+                    class="textarea"
+                    id="mci-text"
+                    rows="5"
+                    placeholder={"avachen28@mittymonarch.com\nNoah Kim, noahkim27@mittymonarch.com"}
+                  ></textarea>
+                  <span class="field__hint">
+                    School addresses only. A name beside an email is used for a new account until
+                    they first sign in.
+                  </span>
+                </label>
+                <button class="btn btn--sm" type="submit" id="mci-go">Check in</button>
+                <span class="row-err" id="mci-err" role="alert" style="display:none"></span>
+              </form>
+              <div id="mci-out" class="addm__out" hidden></div>
+            </details>
+          ) : (
+            <div class="state">
+              <b>No meetings to check people in to yet</b>
+              <p>A meeting shows up here once its check-in opens, 30 minutes before it starts.</p>
+            </div>
+          )}
+        </section>
+
         <section aria-labelledby="log-h" class="owned">
           <div class="section-head">
             <h2 id="log-h">Check-in log</h2>
@@ -362,6 +421,7 @@ if (!session.isOfficer) {
                       <th>Event</th>
                       <th>When</th>
                       <th>Method</th>
+                      <th><span class="sr">Remove</span></th>
                     </tr>
                   </thead>
                   <tbody>
@@ -371,6 +431,17 @@ if (!session.isOfficer) {
                         <td data-label="Event">{r.eventTitle}</td>
                         <td data-label="When"><span class="num">{r.when}</span></td>
                         <td data-label="Method">{r.method}</td>
+                        <td>
+                          <button
+                            class="btn btn--sm btn--danger"
+                            type="button"
+                            data-remove={r.id}
+                            data-who={r.name}
+                            data-what={r.eventTitle}
+                            aria-label={`Remove ${r.name}'s check-in for ${r.eventTitle}`}
+                          >Remove</button>
+                          <span class="row-err" role="alert" style="display:none"></span>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -537,3 +608,133 @@ if (!session.isOfficer) {
     </script>
   )}
 </DashboardLayout>
+
+<script>
+  /* ── Check someone in, and remove a check-in (officer) ─────────────────────
+     Results are rendered with createElement + textContent. Never innerHTML:
+     these strings include addresses and names typed by a person. Both
+     elements only exist for officers, so for members this does nothing. */
+  {
+    const form = document.getElementById('mci-form') as HTMLFormElement | null;
+    const eventSel = document.getElementById('mci-event') as HTMLSelectElement | null;
+    const text = document.getElementById('mci-text') as HTMLTextAreaElement | null;
+    const go = document.getElementById('mci-go') as HTMLButtonElement | null;
+    const err = document.getElementById('mci-err') as HTMLElement | null;
+    const out = document.getElementById('mci-out') as HTMLElement | null;
+
+    if (form && eventSel && text && go && err && out) {
+      const showErr = (msg: string) => {
+        err.textContent = msg;
+        err.style.display = '';
+      };
+
+      form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        err.style.display = 'none';
+        out.hidden = true;
+        out.replaceChildren();
+
+        const body = text.value.trim();
+        if (!body) return showErr('Type at least one email address.');
+
+        go.disabled = true;
+        const label = go.textContent;
+        go.textContent = 'Checking in…';
+
+        try {
+          const res = await fetch('/api/attendance/manual', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ event_id: eventSel.value, text: body }),
+          });
+          const payload = await res.json().catch(() => null);
+
+          if (!res.ok) {
+            showErr(payload?.error ?? 'Could not check those people in.');
+            return;
+          }
+
+          const s = payload?.summary ?? { checked_in: 0, created: 0, already: 0, rejected: 0 };
+          const head = document.createElement('b');
+          const parts = [s.checked_in + s.created + ' checked in'];
+          if (s.created) parts.push(s.created + (s.created === 1 ? ' new account' : ' new accounts'));
+          if (s.already) parts.push(s.already + ' already checked in');
+          if (s.rejected) parts.push(s.rejected + ' skipped');
+          head.textContent = parts.join(' · ');
+          out.append(head);
+
+          // Only the problems need itemising; the rest shows in the log on reload.
+          const bad = (payload?.results ?? []).filter((r: any) => r.outcome === 'rejected');
+          if (bad.length) {
+            const ul = document.createElement('ul');
+            ul.className = 'addm__bad';
+            for (const r of bad) {
+              const li = document.createElement('li');
+              const who = document.createElement('span');
+              who.textContent = r.email;
+              const why = document.createElement('em');
+              why.textContent = r.reason ?? 'Skipped.';
+              li.append(who, document.createTextNode(' — '), why);
+              ul.append(li);
+            }
+            out.append(ul);
+          }
+          out.hidden = false;
+
+          if (s.checked_in + s.created > 0) {
+            // Reload so the sheet counts and the log show the new rows; keep
+            // the form open.
+            setTimeout(() => {
+              const url = new URL(location.href);
+              url.searchParams.set('checkin', '1');
+              url.hash = 'check-in';
+              location.href = url.toString();
+            }, 1400);
+          } else {
+            text.focus();
+          }
+        } catch {
+          showErr('Network problem — no one was checked in. Try again.');
+        } finally {
+          go.disabled = false;
+          go.textContent = label;
+        }
+      });
+    }
+
+    const table = document.getElementById('att-table');
+    table?.addEventListener('click', async (e) => {
+      const btn = (e.target as HTMLElement).closest<HTMLButtonElement>('button[data-remove]');
+      if (!btn) return;
+      const who = btn.dataset.who ?? 'this member';
+      const what = btn.dataset.what ?? 'this meeting';
+      if (!confirm(`Remove ${who}'s check-in for ${what}? It comes off the meeting's PDF too.`)) return;
+
+      const rowErr = btn.parentElement?.querySelector<HTMLElement>('.row-err') ?? null;
+      if (rowErr) rowErr.style.display = 'none';
+      btn.disabled = true;
+      try {
+        const res = await fetch(`/api/attendance/${encodeURIComponent(btn.dataset.remove ?? '')}`, {
+          method: 'DELETE',
+        });
+        const payload = await res.json().catch(() => null);
+        if (!res.ok && res.status !== 404) {
+          if (rowErr) {
+            rowErr.textContent = payload?.error ?? 'Could not remove it.';
+            rowErr.style.display = '';
+          }
+          btn.disabled = false;
+          return;
+        }
+        // Gone (or already gone): drop the row now; counts catch up on reload.
+        btn.closest('tr')?.remove();
+      } catch {
+        if (rowErr) {
+          rowErr.textContent = 'Network problem — nothing was removed.';
+          rowErr.style.display = '';
+        }
+        btn.disabled = false;
+      }
+    });
+  }
+</script>
