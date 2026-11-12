@@ -4,7 +4,7 @@ Where the project is **right now** and what to do next. Overwrite this file in
 place; do not append history to it — history lives in git and
 [REBUILD-PLAN.md](REBUILD-PLAN.md).
 
-_Last refreshed: 2026-11-10._
+_Last refreshed: 2026-11-11._
 
 ---
 
@@ -16,7 +16,7 @@ _Last refreshed: 2026-11-10._
 | Vercel project | `mitty-business-club` (team `ryanonline1234s-projects`) |
 | Repo | `ryanonline1234/Business-Club-Website` (renamed 2026-08-13 from `Business-Club-Finance-Helper`) |
 | Branch | `rebuild/mbc-portal` — **identical to `main`**; deploys go out from either |
-| Schema | `supabase-schema.sql` STEPs 0–20 all applied (STEP 20's `events.slides_url` confirmed present 2026-10-26) |
+| Schema | `supabase-schema.sql` STEPs 0–20 applied (STEP 20's `events.slides_url` confirmed present 2026-10-26). **STEP 21** (manual check-in: `attendance.method` allows `'manual'`, new `checked_in_by`) applied 2026-11-11, before its code deployed |
 
 The app is in real use. As of 2026-10-26: **116 profiles** (5 officers), 2 real
 meetings (Sep 30 and Oct 14, 2026; plus 2 cancelled tests; the owner created
@@ -74,6 +74,16 @@ year's meetings after the seniors graduate. Keep each meeting's material
 findable from its meeting page. Registry: `src/lib/activities.ts`; how
 they're served and why they're code, not uploads:
 [ARCHITECTURE.md](ARCHITECTURE.md#meeting-activities), AGENTS.md invariant 11.
+
+Check someone in by email (2026-11-11, owner request): on `/attendance`,
+officers pick a meeting and type emails people wrote on the board (after the
+meeting is the main use; there is no closing time). Someone with no account
+gets one, made exactly as add-by-email does (shared `src/lib/member-invite.ts`),
+so the check-in is already on it when they first sign in with Google. Rows
+are `method: 'manual'` with `checked_in_by`, show "By officer" on the PDF and
+"Officer" in the log, and the log has a Remove button per check-in. Schema
+STEP 21 (applied 2026-11-11). Tested live with the owner's own account on
+the Oct 27 meeting, then removed: net zero rows.
 
 Calendar retired (2026-10-26, owner decision — it felt awkward): the
 **Meetings** tab replaces Calendar in both navs. `/meetings` lists every

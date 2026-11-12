@@ -222,7 +222,7 @@ Schema features with no code behind them. All inherited; none regressed.
 | `events.capacity` | Validated positive on create and displayed on the meeting page, but check-in never compares attendance against it |
 | `events.status = 'completed'` | Allowed by the check constraint, set by nothing. Events are `active` until cancelled |
 | `attendance.qr_data` | Never written |
-| `attendance.method = 'password'` | Allowed value, unreachable — the only writer hardcodes `'qr'` |
+| `attendance.method = 'password'` | Allowed value, unreachable — QR check-in writes `'qr'` and officers' check-in by email writes `'manual'` |
 | `audit_logs` | Full table + officer read policy, zero writes. Role changes and approvals log to the Vercel function log (`console.info` with actor/target ids) instead — ephemeral, but currently the only trail |
 | Finance tables (`categories`, `transactions`, `budgets`) | Retained, read by nothing, UI cut. Re-enabling treasury is a page, not a migration. `budgets.spent` is still a lie (never incremented) if that day comes — derive it at read time |
 

@@ -107,9 +107,10 @@ One row per member per event.
 |---|---|---|
 | `id` | `uuid` PK | |
 | `event_id` | `uuid` | FK → `events`, not null |
-| `member_id` | `uuid` | FK → `profiles`, not null — **always the session user**; the API never accepts a client-supplied id |
-| `checked_in_at` | `timestamptz` | default `now()` |
-| `method` | `text` | `'password' \| 'qr'`; the only writer hardcodes `'qr'` |
+| `member_id` | `uuid` | FK → `profiles`, not null — the session user for a QR check-in (`/api/attendance/checkin` never accepts a client-supplied id); for `manual`, the profile an **officer** named by email (`/api/attendance/manual`) |
+| `checked_in_at` | `timestamptz` | default `now()`. A `manual` row typed in after the QR window closed carries the meeting's `start_time` instead, so histories list the meeting's day |
+| `method` | `text` | `'password' \| 'qr' \| 'manual'` (STEP 21 added `manual`). QR check-in writes `'qr'`; an officer's check-in by email writes `'manual'`; `'password'` is unreachable |
+| `checked_in_by` | `uuid` | STEP 21. FK → `profiles`, `on delete set null`. The officer who wrote a `manual` row; null for scans |
 | `qr_data` | `text` | never written |
 | `created_at` | `timestamptz` | |
 

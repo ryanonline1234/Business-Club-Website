@@ -780,3 +780,31 @@ alter table public.events
   add constraint events_slides_url_check
   check (slides_url is null
          or (slides_url like 'https://%' and length(slides_url) <= 2048));
+
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- MANUAL CHECK-IN — STEP 21
+--
+-- ✅ SAFE TO RUN ANY TIME, repeatedly, on a live database — run it BEFORE the
+--   code deploy (SQL first, then code). It only WIDENS the method check and
+--   adds one nullable column, so every existing row and every current reader
+--   is unchanged and nobody can be locked out. Without it,
+--   POST /api/attendance/manual answers "run STEP 21".
+-- ═══════════════════════════════════════════════════════════════════════════
+
+-- ── STEP 21: officers check people in by email (2026-11-11) ────────────────
+-- method 'manual' = written by POST /api/attendance/manual from /attendance
+-- (an officer typing in emails people wrote on the board), not by the member
+-- scanning the code. checked_in_by = the officer who typed it; set null if
+-- that officer's profile is ever deleted, so the check-in itself survives.
+-- Reads and writes go through supabaseAdmin; STEP 14's attendance policies
+-- need no change.
+alter table public.attendance
+  drop constraint if exists attendance_method_check;
+
+alter table public.attendance
+  add constraint attendance_method_check
+  check (method in ('password', 'qr', 'manual'));
+
+alter table public.attendance
+  add column if not exists checked_in_by uuid references public.profiles on delete set null;

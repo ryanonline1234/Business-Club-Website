@@ -60,6 +60,8 @@ checks. The role values remain as titles.
 | `GET` | `/api/events/:id/attendance.pdf` | officer | `/attendance` meeting sheets, `/meetings/[id]` |
 | `PATCH` | `/api/events/:id/recap` | officer | `/meetings/[id]` recap editor (past meetings) |
 | `POST` | `/api/attendance/checkin` | **approved** | `/checkin` |
+| `POST` | `/api/attendance/manual` | officer | `/attendance` check someone in |
+| `DELETE` | `/api/attendance/:id` | officer | `/attendance` check-in log Remove |
 | `PATCH` | `/api/members/:id` | officer | `/members` role select |
 | `POST` | `/api/members/invite` | officer | `/members` add-members panel |
 | `PATCH` | `/api/members/:id/status` | officer | `/members` approval queue |
@@ -341,6 +343,43 @@ end, no grace — `lib/event-time.ts`).
   duplicate lookup; the unique constraint catches the race and returns the
   same 409 without `checked_in_at`
 - guard responses · `500` (fixed message, detail in the log)
+
+### `POST /api/attendance/manual` — officer
+
+Check people in to a meeting **by email**, for anyone who couldn't scan the
+code and wrote their email on the board or a sheet (owner request,
+2026-11-11). The one endpoint that writes attendance for someone other than
+the caller, hence the officer gate; `/api/attendance/checkin` must never gain
+that ability.
+
+| Field | Type | Notes |
+|---|---|---|
+| `event_id` | uuid | The meeting. Must exist, not be `cancelled`, and have opened (`start_time − 30 min`); **no closing time** — after the meeting is the main use |
+| `text` | string | One entry per line, the same shapes `/api/members/invite` accepts; ≤ 100 addresses |
+
+Per address, after the same parsing and **school-domain** rule as
+`/api/members/invite` (shared: `src/lib/member-invite.ts`): find the profile
+by email, or **create the account exactly as add-by-email does** — so the
+person's first Google sign-in lands on the account that already holds this
+check-in. A suspended (`rejected`) account is refused. Then insert
+`method: 'manual'`, `checked_in_by: <officer>`. `checked_in_at` is now while
+the QR window is open, otherwise the meeting's `start_time`, so a member's
+history lists the meeting's day; `created_at` keeps the real time.
+
+**Responses:** `200 { summary: { checked_in, created, already, rejected }, results: [...], event }`
+— every address reported (`checked_in` existing member · `created` new
+account + checked in · `already` · `rejected` with a reason safe to render)
+· `400` (bad JSON, no meeting, no addresses, over the cap) · `403 { reason: "event_cancelled" | "checkin_not_open" }`
+· `404` · guard responses · `500` (detail in the log; "run STEP 21" if the
+database predates it — accounts created before that point stay created).
+
+### `DELETE /api/attendance/:id` — officer
+
+Removes one check-in, from the check-in log on `/attendance` (a mistyped
+email, the wrong meeting). Any method, not only `manual`: officers already
+manage all attendance. Deletes and reads back in one statement; the function
+log names the officer. **Responses:** `200 { removed: true }` · `400`
+(non-UUID) · `404` (already gone) · guard responses · `500`.
 
 ---
 
